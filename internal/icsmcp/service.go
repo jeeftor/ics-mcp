@@ -269,22 +269,64 @@ func (s *Service) RunRefresher(ctx context.Context) {
 
 // UpcomingMeetings returns ongoing and future meetings sorted by start time.
 func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
+	now, lookaheadDays := s.resolveUpcomingWindow(query)
+	limit := query.limit(10)
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	meetings := meetingsFromEvents(events, now)
+	slices.SortFunc(meetings, func(a, b Meeting) int {
+		return a.StartTime.Compare(b.StartTime)
+	})
+	return meetings, nil
+}
+
+// UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
+func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
+	now, lookaheadDays := s.resolveUpcomingWindow(query)
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000)
+	if err != nil {
+		return nil, err
+	}
+	meetings := meetingsFromEvents(events, now)
+	limitPerCalendar := query.limit(10)
+	groupIndex := map[string]int{}
+	var groups []CalendarMeetingGroup
+	for _, meeting := range meetings {
+		index, ok := groupIndex[meeting.CalendarID]
+		if !ok {
+			index = len(groups)
+			groupIndex[meeting.CalendarID] = index
+			groups = append(groups, CalendarMeetingGroup{
+				CalendarID:   meeting.CalendarID,
+				CalendarName: meeting.CalendarName,
+			})
+		}
+		if len(groups[index].Meetings) >= limitPerCalendar {
+			continue
+		}
+		groups[index].Meetings = append(groups[index].Meetings, meeting)
+	}
+	slices.SortFunc(groups, func(a, b CalendarMeetingGroup) int {
+		return strings.Compare(a.CalendarName, b.CalendarName)
+	})
+	return groups, nil
+}
+
+func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
 	now := query.Now
 	if now.IsZero() {
 		now = s.now()
-	}
-	limit := query.Limit
-	if limit <= 0 {
-		limit = 10
 	}
 	lookaheadDays := query.LookaheadDays
 	if lookaheadDays <= 0 {
 		lookaheadDays = 30
 	}
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, limit)
-	if err != nil {
-		return nil, err
-	}
+	return now, lookaheadDays
+}
+
+func meetingsFromEvents(events []EventInstance, now time.Time) []Meeting {
 	meetings := make([]Meeting, 0, len(events))
 	for _, event := range events {
 		ongoing := event.Start.Before(now) && event.End.After(now)
@@ -302,36 +344,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 			StartTime:       event.Start,
 		})
 	}
-	slices.SortFunc(meetings, func(a, b Meeting) int {
-		return a.StartTime.Compare(b.StartTime)
-	})
-	return meetings, nil
-}
-
-// UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
-func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
-	meetings, err := s.UpcomingMeetings(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	groupIndex := map[string]int{}
-	var groups []CalendarMeetingGroup
-	for _, meeting := range meetings {
-		index, ok := groupIndex[meeting.CalendarID]
-		if !ok {
-			index = len(groups)
-			groupIndex[meeting.CalendarID] = index
-			groups = append(groups, CalendarMeetingGroup{
-				CalendarID:   meeting.CalendarID,
-				CalendarName: meeting.CalendarName,
-			})
-		}
-		groups[index].Meetings = append(groups[index].Meetings, meeting)
-	}
-	slices.SortFunc(groups, func(a, b CalendarMeetingGroup) int {
-		return strings.Compare(a.CalendarName, b.CalendarName)
-	})
-	return groups, nil
+	return meetings
 }
 
 // Status returns service state.

@@ -63,6 +63,14 @@ type UpcomingQuery struct {
 	LookaheadDays int       `json:"lookahead_days,omitempty"`
 }
 
+// upcomingDefaults resolves default query limits.
+func (q UpcomingQuery) limit(defaultLimit int) int {
+	if q.Limit > 0 {
+		return q.Limit
+	}
+	return defaultLimit
+}
+
 // Meeting is the MCP-facing meeting representation.
 type Meeting struct {
 	Day             string    `json:"day"`

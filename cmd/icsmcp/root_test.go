@@ -50,3 +50,19 @@ func TestParseLogLevelRejectsUnknownLevel(t *testing.T) {
 		t.Fatalf("parseLogLevel(verbose) error = nil, want error")
 	}
 }
+
+func TestResolveDBPathUsesConfigDirByDefault(t *testing.T) {
+	got := resolveDBPath("/config", "")
+
+	if got != "/config/icsmcp.sqlite3" {
+		t.Fatalf("resolveDBPath() = %q, want /config/icsmcp.sqlite3", got)
+	}
+}
+
+func TestResolveDBPathAllowsExplicitOverride(t *testing.T) {
+	got := resolveDBPath("/config", "/tmp/custom.sqlite3")
+
+	if got != "/tmp/custom.sqlite3" {
+		t.Fatalf("resolveDBPath() = %q, want /tmp/custom.sqlite3", got)
+	}
+}

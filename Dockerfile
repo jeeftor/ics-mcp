@@ -10,4 +10,4 @@ COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 USER 65532:65532
 EXPOSE 3333
 ENTRYPOINT ["/usr/local/bin/icsmcp"]
-CMD ["serve", "--http-addr", "0.0.0.0:3333", "--db-path", "/data/icsmcp.sqlite3"]
+CMD ["serve", "--http-addr", "0.0.0.0:3333", "--config-dir", "/config"]
