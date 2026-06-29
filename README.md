@@ -35,7 +35,9 @@ go run main.go serve \
 
 Keep `.env` private because ICS feed URLs often contain bearer-style access tokens.
 
-The server loads `.env` from the current directory and then from the config directory. For Docker, put persistent config in `/config`:
+The server loads an optional `.env` from the config directory first, then an optional `.env` from the current working directory. Existing environment variables are not overwritten, so runtime env values still win over files.
+
+For Docker, put persistent config in `/config`:
 
 ```text
 /config/.env
@@ -54,6 +56,16 @@ ICSMCP_LOG_COLOR=true
 The suffix after `ICSMCP_CALENDAR_` is the stable key. Underscores are shown as spaces by default. Calendars from `.env` and `--calendar name=url` are upserted on startup; calendars added in the UI, API, or MCP tools are not deleted just because they are absent from startup config.
 
 After startup, SQLite is the runtime source of truth for display names, enabled state, refresh state, and cached event instances.
+
+Local config-directory smoke test:
+
+```bash
+mkdir -p config
+$EDITOR config/.env
+go run main.go serve --config-dir ./config --log-level debug
+```
+
+The startup output prints the Admin UI, MCP endpoint, and status URL. The SQLite database should appear at `./config/icsmcp.sqlite3`.
 
 ## HTTP API
 
@@ -95,6 +107,8 @@ docker run --rm -p 3333:3333 \
   ghcr.io/jeeftor/ics-mcp:latest \
   serve --http-addr 0.0.0.0:3333 --config-dir /config --log-level info
 ```
+
+Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
 ## Releases
 
