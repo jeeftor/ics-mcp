@@ -5,143 +5,224 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ICS MCP Admin</title>
   <style>
-    body { margin: 0; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d252c; background: #f6f7f8; }
-    header { padding: 20px 28px; background: #27343d; color: white; }
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f7;
+      --panel: #ffffff;
+      --panel-soft: #eef3f4;
+      --text: #1d252c;
+      --muted: #667781;
+      --line: #d7dee2;
+      --accent: #28666e;
+      --accent-dark: #1d4f56;
+      --danger: #9d2f2f;
+      --code: #101820;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    header { background: #25323a; color: white; border-bottom: 1px solid #1a252b; }
+    .topbar { max-width: 1180px; margin: 0 auto; padding: 18px 24px 14px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
     h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
-    .endpoints { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #dce6eb; }
-    .endpoints code { color: #ffffff; }
-    main { max-width: 1120px; margin: 0 auto; padding: 24px; }
-    section { margin-top: 28px; }
+    .subtitle { margin-top: 4px; color: #cad7dd; font-size: 13px; }
+    .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; background: rgba(255,255,255,.08); color: #eef6f7; font-size: 12px; }
+    .tabs { max-width: 1180px; margin: 0 auto; padding: 0 24px; display: flex; gap: 6px; }
+    .tab { appearance: none; border: 0; border-radius: 7px 7px 0 0; padding: 11px 16px; background: transparent; color: #d8e4e8; font: inherit; cursor: pointer; }
+    .tab.active { background: var(--bg); color: var(--text); font-weight: 650; }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    section { margin-top: 22px; }
+    section:first-child { margin-top: 0; }
     h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: 0; }
+    h3 { margin: 0 0 8px; font-size: 14px; }
     form { display: grid; grid-template-columns: minmax(160px, 240px) minmax(260px, 1fr) auto; gap: 10px; margin-bottom: 22px; }
-    input, select, textarea { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; font: inherit; }
-    textarea { width: 100%; min-height: 160px; resize: vertical; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    button { padding: 9px 12px; border: 1px solid #60717c; border-radius: 6px; background: #ffffff; color: #1d252c; font: inherit; cursor: pointer; }
-    button.primary { background: #28666e; color: white; border-color: #28666e; }
-    button.danger { border-color: #b55454; color: #8d2525; }
-    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #d8dde1; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #e2e6e9; text-align: left; vertical-align: top; }
+    input, select, textarea { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; color: var(--text); font: inherit; }
+    textarea { width: 100%; min-height: 190px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    button { padding: 9px 12px; border: 1px solid #60717c; border-radius: 6px; background: #ffffff; color: var(--text); font: inherit; cursor: pointer; }
+    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    button.primary:hover { background: var(--accent-dark); }
+    button.danger { border-color: #b55454; color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid var(--line); }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e3e8eb; text-align: left; vertical-align: top; }
     th { background: #eef1f3; font-weight: 650; }
     td.actions { white-space: nowrap; }
-    .muted { color: #687782; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-    .error { color: #9c2f2f; max-width: 360px; overflow-wrap: anywhere; }
-    .tool-runner { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
-    .tool-list { display: grid; gap: 8px; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .muted { color: var(--muted); }
+    .error { color: var(--danger); max-width: 360px; overflow-wrap: anywhere; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+    .block { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 14px; min-width: 0; }
+    .block.soft { background: var(--panel-soft); }
+    .metric { display: grid; gap: 4px; }
+    .metric-value { font-size: 22px; font-weight: 700; }
+    .kv { display: grid; gap: 8px; }
+    .kv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .endpoint-list { display: grid; gap: 8px; }
+    .endpoint-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+    .endpoint-row code, .copy-box { overflow-wrap: anywhere; }
+    .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+    .setup-block { background: white; border: 1px solid var(--line); border-radius: 7px; padding: 14px; min-width: 0; }
+    .setup-block pre, .copy-box, .tool-output { margin: 8px 0 0; padding: 11px; overflow: auto; background: var(--code); color: #e6edf3; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .tool-runner { display: grid; grid-template-columns: minmax(230px, 330px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .tool-list { display: grid; gap: 8px; max-height: calc(100vh - 250px); overflow: auto; padding-right: 3px; }
     .tool-button { text-align: left; background: #fff; }
-    .tool-button.active { border-color: #28666e; box-shadow: inset 3px 0 0 #28666e; }
-    .tool-output { margin: 12px 0 0; padding: 12px; min-height: 160px; overflow: auto; background: #101820; color: #e6edf3; border-radius: 6px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .tool-button.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+    .tool-output { min-height: 260px; font-size: 13px; }
+    .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     .json-key { color: #7dd3fc; }
     .json-string { color: #86efac; }
     .json-number { color: #fbbf24; }
     .json-boolean { color: #f0abfc; }
     .json-null { color: #cbd5e1; }
-    .json-tree { display: grid; gap: 2px; }
     .json-node { margin-left: 14px; }
     .json-node > summary { cursor: pointer; color: #e6edf3; }
     .json-leaf { margin-left: 14px; white-space: pre-wrap; }
-    .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
-    .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-    .setup-block { background: white; border: 1px solid #d8dde1; border-radius: 6px; padding: 12px; }
-    .setup-block h3 { margin: 0 0 8px; font-size: 14px; }
-    .setup-block pre { margin: 8px 0 0; padding: 10px; overflow: auto; background: #101820; color: #e6edf3; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     @media (max-width: 760px) {
+      .topbar { grid-template-columns: 1fr; align-items: start; padding: 16px 14px 12px; }
+      .status-pills { justify-content: flex-start; }
+      .tabs { padding: 0 14px; overflow-x: auto; }
       main { padding: 14px; }
-      form { grid-template-columns: 1fr; }
-      .tool-runner { grid-template-columns: 1fr; }
+      form, .tool-runner { grid-template-columns: 1fr; }
+      .kv-row, .endpoint-row { grid-template-columns: 1fr; gap: 3px; }
       table, thead, tbody, tr, th, td { display: block; }
       thead { display: none; }
-      tr { border-bottom: 1px solid #d8dde1; }
+      tr { border-bottom: 1px solid var(--line); }
       td { border: 0; }
-      td::before { content: attr(data-label); display: block; font-size: 12px; color: #687782; margin-bottom: 4px; }
+      td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>ICS MCP Debug</h1>
-    <div class="endpoints">
-      <span>Admin UI <code id="admin-url">/</code></span>
-      <span>MCP Server <code id="mcp-url">/mcp</code></span>
-      <span>Status API <code id="status-url">/api/status</code></span>
-      <span>Health <code id="health-url">/healthz</code></span>
-      <span>Metrics <code id="metrics-url">/metrics</code></span>
-      <span>Version <code id="version-label">loading</code></span>
+    <div class="topbar">
+      <div>
+        <h1>ICS MCP</h1>
+        <div class="subtitle">Calendar MCP server admin and debug console</div>
+      </div>
+      <div class="status-pills">
+        <span class="pill">Version <code id="version-label">loading</code></span>
+        <span class="pill">Timezone <code id="timezone-label">loading</code></span>
+        <span class="pill">Calendars <code id="calendar-count-label">0</code></span>
+      </div>
     </div>
+    <nav class="tabs" aria-label="Debug pages">
+      <button class="tab active" type="button" data-tab="info">Info</button>
+      <button class="tab" type="button" data-tab="calendars">Calendars</button>
+      <button class="tab" type="button" data-tab="tools">Tools</button>
+    </nav>
   </header>
+
   <main>
-    <form id="add-form">
-      <input id="name" name="name" placeholder="Calendar name" required>
-      <input id="url" name="url" placeholder="ICS URL" required>
-      <button class="primary" type="submit">Add Calendar</button>
-    </form>
-    <section>
-      <h2>Calendars</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>ID</th>
-            <th>Enabled</th>
-            <th>Refresh</th>
-            <th>Events</th>
-            <th>Error</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="calendars"></tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Set Me Up</h2>
-      <div class="setup-grid">
-        <div class="setup-block">
-          <h3>MCP Endpoint</h3>
-          <div><span class="muted">Internal:</span> <code id="setup-internal-mcp">/mcp</code></div>
-          <div id="setup-external-row"><span class="muted">External:</span> <code id="setup-external-mcp"></code></div>
-        </div>
-        <div class="setup-block">
-          <h3>HTTP Client Config</h3>
-          <pre id="setup-http-json">{}</pre>
-        </div>
-        <div class="setup-block">
-          <h3>Server Run Command</h3>
-          <pre id="setup-command">icsmcp serve</pre>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <h2>Next Meetings By Calendar</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Calendar</th>
-            <th>When</th>
-            <th>Meeting</th>
-            <th>Duration</th>
-          </tr>
-        </thead>
-        <tbody id="meetings"></tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Tool Preview</h2>
-      <div class="tool-runner">
-        <div id="tools" class="tool-list"></div>
-        <div>
-          <textarea id="tool-args" spellcheck="false">{}</textarea>
-          <div class="tool-controls">
-            <button id="run-tool" class="primary" type="button">Run Tool</button>
-            <span id="tool-status" class="muted"></span>
+    <div id="panel-info" class="panel active">
+      <section>
+        <h2>Debug Info</h2>
+        <div class="grid">
+          <div class="block metric">
+            <span class="muted">Configured calendars</span>
+            <span id="summary-calendars" class="metric-value">0</span>
           </div>
-          <pre id="tool-output" class="tool-output">{}</pre>
+          <div class="block metric">
+            <span class="muted">Cached events</span>
+            <span id="summary-events" class="metric-value">0</span>
+          </div>
+          <div class="block metric">
+            <span class="muted">External URL</span>
+            <span id="summary-external" class="metric-value">None</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section>
+        <h2>Endpoints</h2>
+        <div class="block endpoint-list">
+          <div class="endpoint-row"><span class="muted">Admin UI</span><code id="admin-url">/</code></div>
+          <div class="endpoint-row"><span class="muted">MCP Server</span><code id="mcp-url">/mcp</code></div>
+          <div class="endpoint-row"><span class="muted">Status API</span><code id="status-url">/api/status</code></div>
+          <div class="endpoint-row"><span class="muted">Health</span><code id="health-url">/healthz</code></div>
+          <div class="endpoint-row"><span class="muted">Metrics</span><code id="metrics-url">/metrics</code></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Set Me Up</h2>
+        <div class="setup-grid">
+          <div class="setup-block">
+            <h3>MCP Endpoint</h3>
+            <div class="kv">
+              <div class="kv-row"><span class="muted">Internal</span><code id="setup-internal-mcp">/mcp</code></div>
+              <div id="setup-external-row" class="kv-row"><span class="muted">External</span><code id="setup-external-mcp"></code></div>
+            </div>
+          </div>
+          <div class="setup-block">
+            <h3>HTTP Client Config</h3>
+            <pre id="setup-http-json">{}</pre>
+          </div>
+          <div class="setup-block">
+            <h3>Server Run Command</h3>
+            <pre id="setup-command">icsmcp serve</pre>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="panel-calendars" class="panel">
+      <section>
+        <h2>Calendars</h2>
+        <form id="add-form">
+          <input id="name" name="name" placeholder="Calendar name" required>
+          <input id="url" name="url" placeholder="ICS URL" required>
+          <button class="primary" type="submit">Add Calendar</button>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>ID</th>
+              <th>Enabled</th>
+              <th>Refresh</th>
+              <th>Events</th>
+              <th>Error</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="calendars"></tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Next Meetings By Calendar</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Calendar</th>
+              <th>When</th>
+              <th>Meeting</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody id="meetings"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <div id="panel-tools" class="panel">
+      <section>
+        <h2>MCP Tools</h2>
+        <div class="tool-runner">
+          <div id="tools" class="tool-list"></div>
+          <div>
+            <textarea id="tool-args" spellcheck="false">{}</textarea>
+            <div class="tool-controls">
+              <button id="run-tool" class="primary" type="button">Run Tool</button>
+              <span id="tool-status" class="muted"></span>
+            </div>
+            <pre id="tool-output" class="tool-output">{}</pre>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
+
   <script>
     const tbody = document.querySelector('#calendars');
     const meetingsBody = document.querySelector('#meetings');
@@ -154,6 +235,15 @@
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => selectTab(tab.dataset.tab));
+    });
+
+    function selectTab(name) {
+      document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === name));
+      document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'panel-' + name));
+    }
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -173,9 +263,30 @@
       const status = await api('/api/status');
       lastStatus = status;
       const calendars = arrayOrEmpty(await api('/api/calendars'));
-      renderVersion(status.version);
+      renderStatus(status, calendars);
       renderEndpoints(status);
       renderSetup(status);
+      renderCalendars(calendars);
+      await loadMeetings();
+      await loadTools();
+    }
+
+    function renderStatus(status, calendars) {
+      const eventCount = calendars.reduce((sum, calendar) => sum + (calendar.event_count || 0), 0);
+      const version = status.version || {};
+      document.querySelector('#version-label').textContent = `${version.version || 'dev'} ${version.commit || ''}`.trim();
+      document.querySelector('#timezone-label').textContent = status.timezone || 'local';
+      document.querySelector('#calendar-count-label').textContent = calendars.length;
+      document.querySelector('#summary-calendars').textContent = calendars.length;
+      document.querySelector('#summary-events').textContent = eventCount;
+      document.querySelector('#summary-external').textContent = status.external_url || 'None';
+    }
+
+    function renderCalendars(calendars) {
+      if (calendars.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="muted">No calendars configured.</td></tr>';
+        return;
+      }
       tbody.replaceChildren(...calendars.map((calendar) => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -207,12 +318,10 @@
         });
         return row;
       }));
-      await loadMeetings();
-      await loadTools();
     }
 
     async function loadMeetings() {
-      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10'));
+      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true'));
       if (groups.length === 0) {
         meetingsBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming meetings in the cache.</td></tr>';
         return;
@@ -222,10 +331,11 @@
         for (const [index, meeting] of group.meetings.entries()) {
           const row = document.createElement('tr');
           const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
+          const flags = [meeting.all_day ? 'All day' : '', meeting.cancelled ? 'Cancelled' : ''].filter(Boolean).join(' | ');
           row.innerHTML = `
           <td data-label="Calendar">${index === 0 ? `${escapeHTML(group.calendar_name)}<br><span class="muted mono">${escapeHTML(group.calendar_id)}</span>` : ''}</td>
-          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)}</span></td>
-          <td data-label="Meeting">${escapeHTML(meeting.name)}</td>
+          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)} ${escapeHTML(meeting.timezone || '')}</span></td>
+          <td data-label="Meeting">${escapeHTML(meeting.name)}${flags ? `<br><span class="muted">${escapeHTML(flags)}</span>` : ''}</td>
           <td data-label="Duration">${meeting.duration_minutes} min</td>`;
           rows.push(row);
         }
@@ -279,11 +389,6 @@
       ].join('\n');
     }
 
-    function renderVersion(version) {
-      if (!version) return;
-      document.querySelector('#version-label').textContent = `${version.version} ${version.commit}`;
-    }
-
     async function loadTools() {
       if (tools.length === 0) {
         tools = arrayOrEmpty(await api('/api/tools'));
@@ -334,6 +439,7 @@
       });
       form.reset();
       await load();
+      selectTab('calendars');
     });
 
     runTool.addEventListener('click', async () => {
@@ -400,7 +506,7 @@
     }
 
     load().catch((error) => {
-      tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHTML(error.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="error">${escapeHTML(error.message)}</td></tr>`;
     });
   </script>
 </body>
