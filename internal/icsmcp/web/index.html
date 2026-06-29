@@ -235,14 +235,26 @@
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
+    const tabStorageKey = 'icsmcp.activeTab';
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => selectTab(tab.dataset.tab));
     });
 
     function selectTab(name) {
+      if (!document.querySelector('#panel-' + name)) {
+        name = 'info';
+      }
       document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === name));
       document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'panel-' + name));
+      window.localStorage.setItem(tabStorageKey, name);
+      if (window.location.hash !== '#' + name) {
+        history.replaceState(null, '', '#' + name);
+      }
+    }
+
+    function restoreTab() {
+      selectTab(window.location.hash.replace('#', '') || window.localStorage.getItem(tabStorageKey) || 'info');
     }
 
     async function api(path, options = {}) {
@@ -505,6 +517,7 @@
       });
     }
 
+    restoreTab();
     load().catch((error) => {
       tbody.innerHTML = `<tr><td colspan="7" class="error">${escapeHTML(error.message)}</td></tr>`;
     });

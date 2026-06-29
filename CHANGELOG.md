@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.0 - 2026-06-29
+
+### Changed
+- Removed the duplicate `calendar_*` MCP tool aliases from discovery in favor of canonical verb-first admin tools.
+- Renamed the meeting-prep preset from `meeting_agenda` to `next_meetings`.
+
+### Fixed
+- The debug UI now keeps the active Info, Calendars, or Tools tab across reloads and refresh actions.
+- The sample Docker Compose file no longer overrides `ICSMCP_TIMEZONE` from `/config/.env` with a default `UTC` value.
+
 ## v1.3.0 - 2026-06-29
 
 ### Improved
