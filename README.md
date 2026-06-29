@@ -194,7 +194,7 @@ Release artifacts:
 
 - GitHub Release archives: `ics-mcp_<version>_<os>_<arch>.tar.gz` or `.zip`
 - Raw binaries: `icsmcp_linux_amd64`, `icsmcp_darwin_arm64`, `icsmcp_windows_amd64.exe`, etc.
-- Docker images: `ghcr.io/jeeftor/ics-mcp:<version>` and `ghcr.io/jeeftor/ics-mcp:latest`
+- Docker images: `ghcr.io/jeeftor/ics-mcp:<semver-without-v>` and `ghcr.io/jeeftor/ics-mcp:latest`, for example `ghcr.io/jeeftor/ics-mcp:1.2.0`
 - Checksums: `checksums.txt`
 
 Update `CHANGELOG.md` before tagging a release.
