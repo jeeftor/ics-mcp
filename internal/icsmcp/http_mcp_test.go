@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
 	defer server.Close()
 
@@ -25,7 +29,16 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET / status = %d", resp.StatusCode)
 	}
+	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	for _, want := range []string{"Next Meetings", "Tool Preview"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("admin UI missing %q", want)
+		}
+	}
 
 	var add Calendar
 	doJSON(t, http.MethodPost, server.URL+"/api/calendars", AddCalendarInput{
@@ -44,6 +57,36 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	doJSON(t, http.MethodPatch, server.URL+"/api/calendars/"+add.ID, UpdateCalendarInput{Name: "Renamed"}, &renamed)
 	if renamed.Name != "Renamed" {
 		t.Fatalf("renamed calendar = %#v", renamed)
+	}
+
+	if err := svc.ReplaceEvents(ctx, add.ID, []EventInstance{{
+		CalendarID:   add.ID,
+		CalendarName: "Renamed",
+		Name:         "Planning",
+		Start:        now.Add(1 * time.Hour),
+		End:          now.Add(2 * time.Hour),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	var meetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	if len(meetings) != 1 || meetings[0].Name != "Planning" {
+		t.Fatalf("meetings preview = %#v", meetings)
+	}
+
+	var tools []ToolInfo
+	doJSON(t, http.MethodGet, server.URL+"/api/tools", nil, &tools)
+	if len(tools) == 0 || tools[0].Name != "upcoming_meetings" {
+		t.Fatalf("tools preview = %#v", tools)
+	}
+
+	var toolResult ToolCallResponse
+	doJSON(t, http.MethodPost, server.URL+"/api/tools/upcoming_meetings/call", ToolCallRequest{
+		Arguments: json.RawMessage(`{"limit":10}`),
+	}, &toolResult)
+	if toolResult.Tool != "upcoming_meetings" {
+		t.Fatalf("tool call response = %#v", toolResult)
 	}
 
 	var status Status

@@ -1,0 +1,91 @@
+package icsmcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+)
+
+// ToolInfo describes an MCP tool for the admin preview UI.
+type ToolInfo struct {
+	Name             string         `json:"name"`
+	Description      string         `json:"description"`
+	DefaultArguments map[string]any `json:"default_arguments"`
+}
+
+// ToolCallRequest is a preview call payload.
+type ToolCallRequest struct {
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+}
+
+// ToolCallResponse is the JSON result shown by the admin preview UI.
+type ToolCallResponse struct {
+	Tool   string `json:"tool"`
+	Result any    `json:"result"`
+}
+
+// ToolInfos returns the MCP tools exposed by this server.
+func ToolInfos() []ToolInfo {
+	return []ToolInfo{
+		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds.", DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
+		{Name: "calendar_list", Description: "List configured calendars and refresh state.", DefaultArguments: map[string]any{}},
+		{Name: "calendar_add", Description: "Add or upsert an ICS calendar.", DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
+		{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL.", DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
+		{Name: "calendar_remove", Description: "Remove a calendar and its cached events.", DefaultArguments: map[string]any{"id": ""}},
+		{Name: "calendar_refresh", Description: "Refresh a calendar feed now.", DefaultArguments: map[string]any{"id": ""}},
+	}
+}
+
+// PreviewToolCall executes a tool-shaped request and returns structured JSON.
+func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.RawMessage) (ToolCallResponse, error) {
+	switch name {
+	case "upcoming_meetings":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		meetings, err := svc.UpcomingMeetings(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "calendar_list":
+		calendars, err := svc.ListCalendarStatus(ctx)
+		return ToolCallResponse{Tool: name, Result: calendarsOutput{Calendars: calendars}}, err
+	case "calendar_add":
+		var in AddCalendarInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		cal, err := svc.AddCalendar(ctx, in)
+		return ToolCallResponse{Tool: name, Result: calendarOutput{Calendar: cal}}, err
+	case "calendar_update":
+		var in updateInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled})
+		return ToolCallResponse{Tool: name, Result: calendarOutput{Calendar: cal}}, err
+	case "calendar_remove":
+		var in removeInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		return ToolCallResponse{Tool: name, Result: okOutput{OK: true}}, svc.RemoveCalendar(ctx, in.ID)
+	case "calendar_refresh":
+		var in refreshInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		return ToolCallResponse{Tool: name, Result: okOutput{OK: true}}, svc.RefreshCalendar(ctx, in.ID, svc.now())
+	default:
+		return ToolCallResponse{}, fmt.Errorf("unknown tool %q", name)
+	}
+}
+
+func decodeToolArgs(raw json.RawMessage, out any) error {
+	if len(raw) == 0 {
+		raw = []byte("{}")
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("decode tool arguments: %w", err)
+	}
+	return nil
+}

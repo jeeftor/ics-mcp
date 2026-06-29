@@ -54,7 +54,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+			logger := slog.New(newColorSlogHandler(os.Stderr, logLevel))
 			return runServe(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger)
 		},
 	}

@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,6 +26,45 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		}
 		status, err := svc.Status(r.Context())
 		writeJSON(w, status, err)
+	})
+	mux.HandleFunc("/api/meetings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		query, err := upcomingQueryFromRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		meetings, err := svc.UpcomingMeetings(r.Context(), query)
+		writeJSON(w, meetings, err)
+	})
+	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, ToolInfos(), nil)
+	})
+	mux.HandleFunc("/api/tools/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/tools/")
+		name, action, _ := strings.Cut(path, "/")
+		if name == "" || action != "call" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in ToolCallRequest
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result, err := PreviewToolCall(r.Context(), svc, name, in.Arguments)
+		writeJSON(w, result, err)
 	})
 	mux.HandleFunc("/api/calendars", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -81,6 +121,27 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		http.ServeFileFS(w, r, webFiles, "web/index.html")
 	})
 	return mux
+}
+
+func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
+	values := r.URL.Query()
+	query := UpcomingQuery{}
+	if raw := values.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.Limit = limit
+	}
+	if raw := values.Get("lookahead_days"); raw != "" {
+		lookahead, err := strconv.Atoi(raw)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.LookaheadDays = lookahead
+	}
+	query.CalendarIDs = values["calendar_id"]
+	return query, nil
 }
 
 func writeJSON(w http.ResponseWriter, value any, err error) {
