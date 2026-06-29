@@ -101,7 +101,7 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 
 - `upcoming_meetings`
 - `upcoming_meetings_by_calendar`
-- `meeting_agenda`
+- `next_meetings`
 - `current_meetings`
 - `search_meetings`
 - `server_status`
@@ -112,18 +112,12 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `remove_calendar`
 - `refresh_calendar`
 - `refresh_all_calendars`
-- `calendar_list`
-- `calendar_add`
-- `calendar_validate`
-- `calendar_update`
-- `calendar_remove`
-- `calendar_refresh`
 
 `upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`.
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
-`meeting_agenda` is the opinionated, token-conscious preset for normal meeting prep. It returns the same shape as `upcoming_meetings`, but always excludes all-day blocks and cancelled events.
+`next_meetings` is the opinionated, token-conscious preset for normal meeting prep. It returns the same shape as `upcoming_meetings`, but always excludes all-day blocks and cancelled events.
 
 `current_meetings` returns only events that have already started and have not ended yet. Ongoing events are marked with `ongoing: true`.
 
@@ -131,13 +125,13 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 
 `server_status` returns build metadata, timezone, optional external URL, and calendar refresh state.
 
-The verb-first admin tools (`list_calendars`, `add_calendar`, `validate_calendar`, `update_calendar`, `remove_calendar`, `refresh_calendar`) are the preferred names. The original `calendar_*` names remain supported for compatibility.
+The admin tools use one canonical verb-first naming style: `list_calendars`, `add_calendar`, `validate_calendar`, `update_calendar`, `remove_calendar`, `refresh_calendar`, and `refresh_all_calendars`.
 
-`calendar_validate` fetches and parses an ICS feed without saving it. It returns fetch status, event count, and a small upcoming-meeting preview so you can test a URL before adding it.
+`validate_calendar` fetches and parses an ICS feed without saving it. It returns fetch status, event count, and a small upcoming-meeting preview so you can test a URL before adding it.
 
 Meeting outputs include `timezone`, `all_day`, `cancelled`, `meeting_url`, and `meeting_url_type`. `meeting_url` is set when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
 
-MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `meeting_agenda`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
+MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `next_meetings`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
 
 ## Debug UI
 
@@ -159,7 +153,7 @@ docker run --rm -p 3333:3333 \
 
 Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. Put `ICSMCP_TIMEZONE` and `ICSMCP_EXTERNAL_URL` there too when the container is reached through a LAN IP, reverse proxy, or non-default port. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
-The repository also includes `compose.yaml`:
+The repository also includes `compose.yaml`. It does not set `ICSMCP_TIMEZONE` itself, so values from `config/.env` are honored inside the container:
 
 ```bash
 mkdir -p config

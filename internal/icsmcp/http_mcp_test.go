@@ -235,22 +235,16 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	for _, want := range []string{
 		"upcoming_meetings",
 		"upcoming_meetings_by_calendar",
-		"meeting_agenda",
+		"next_meetings",
 		"current_meetings",
 		"search_meetings",
 		"server_status",
-		"calendar_list",
 		"list_calendars",
-		"calendar_add",
 		"add_calendar",
-		"calendar_update",
 		"update_calendar",
-		"calendar_remove",
 		"remove_calendar",
-		"calendar_refresh",
 		"refresh_calendar",
 		"refresh_all_calendars",
-		"calendar_validate",
 		"validate_calendar",
 	} {
 		if !contains(toolNames, want) {
@@ -273,7 +267,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	defer feed.Close()
 
 	addResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "calendar_add",
+		Name: "add_calendar",
 		Arguments: map[string]any{
 			"key":  "work",
 			"name": "Work",
@@ -281,7 +275,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		},
 	})
 	if err != nil || addResult.IsError {
-		t.Fatalf("calendar_add result = %#v err = %v", addResult, err)
+		t.Fatalf("add_calendar result = %#v err = %v", addResult, err)
 	}
 	var addOut calendarOutput
 	decodeStructured(t, addResult.StructuredContent, &addOut)
@@ -299,17 +293,17 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
 
-	agendaResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "meeting_agenda",
+	nextResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "next_meetings",
 		Arguments: map[string]any{},
 	})
-	if err != nil || agendaResult.IsError {
-		t.Fatalf("meeting_agenda result = %#v err = %v", agendaResult, err)
+	if err != nil || nextResult.IsError {
+		t.Fatalf("next_meetings result = %#v err = %v", nextResult, err)
 	}
-	var agenda meetingsOutput
-	decodeStructured(t, agendaResult.StructuredContent, &agenda)
-	if len(agenda.Meetings) != 1 || agenda.Meetings[0].AllDay || agenda.Meetings[0].Cancelled {
-		t.Fatalf("meeting agenda = %#v", agenda.Meetings)
+	var next meetingsOutput
+	decodeStructured(t, nextResult.StructuredContent, &next)
+	if len(next.Meetings) != 1 || next.Meetings[0].AllDay || next.Meetings[0].Cancelled {
+		t.Fatalf("next meetings = %#v", next.Meetings)
 	}
 
 	currentResult, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -382,32 +376,32 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	}))
 	defer validateFeed.Close()
 	validateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "calendar_validate",
+		Name:      "validate_calendar",
 		Arguments: map[string]any{"url": validateFeed.URL, "limit": 1},
 	})
 	if err != nil || validateResult.IsError {
-		t.Fatalf("calendar_validate result = %#v err = %v", validateResult, err)
+		t.Fatalf("validate_calendar result = %#v err = %v", validateResult, err)
 	}
 	var validation ValidateCalendarResult
 	decodeStructured(t, validateResult.StructuredContent, &validation)
 	if !validation.OK || validation.EventCount != 1 || len(validation.Meetings) != 1 {
-		t.Fatalf("calendar_validate output = %#v", validation)
+		t.Fatalf("validate_calendar output = %#v", validation)
 	}
 
 	updateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "calendar_update",
+		Name:      "update_calendar",
 		Arguments: map[string]any{"id": addOut.Calendar.ID, "name": "Renamed"},
 	})
 	if err != nil || updateResult.IsError {
-		t.Fatalf("calendar_update result = %#v err = %v", updateResult, err)
+		t.Fatalf("update_calendar result = %#v err = %v", updateResult, err)
 	}
 
 	removeResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "calendar_remove",
+		Name:      "remove_calendar",
 		Arguments: map[string]any{"id": addOut.Calendar.ID},
 	})
 	if err != nil || removeResult.IsError {
-		t.Fatalf("calendar_remove result = %#v err = %v", removeResult, err)
+		t.Fatalf("remove_calendar result = %#v err = %v", removeResult, err)
 	}
 	calendars, err := svc.ListCalendars(ctx)
 	if err != nil {

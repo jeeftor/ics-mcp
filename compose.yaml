@@ -7,9 +7,6 @@ services:
       - "3333:3333"
     volumes:
       - ./config:/config
-    environment:
-      - ICSMCP_TIMEZONE=${ICSMCP_TIMEZONE:-UTC}
-      - ICSMCP_EXTERNAL_URL=${ICSMCP_EXTERNAL_URL:-}
     command:
       - serve
       - --http-addr

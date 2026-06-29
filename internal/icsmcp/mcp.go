@@ -63,7 +63,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 			return nil, groupedMeetingsOutput{Calendars: groups}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "meeting_agenda", Description: "List upcoming meeting-focused items, excluding all-day and cancelled events."},
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.ExcludeAllDay = true
 			in.ExcludeCancelled = true
@@ -86,29 +86,14 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			status, err := svc.Status(ctx)
 			return nil, statusOutput{Status: status}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_list", Description: "List configured calendars and refresh state."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, calendarsOutput, error) {
-			calendars, err := svc.ListCalendarStatus(ctx)
-			return nil, calendarsOutput{Calendars: calendars}, err
-		})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_calendars", Description: "List configured calendars and refresh state."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, calendarsOutput, error) {
 			calendars, err := svc.ListCalendarStatus(ctx)
 			return nil, calendarsOutput{Calendars: calendars}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_add", Description: "Add or upsert an ICS calendar."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in AddCalendarInput) (*mcp.CallToolResult, calendarOutput, error) {
-			cal, err := svc.AddCalendarAndRefresh(ctx, in)
-			return nil, calendarOutput{Calendar: cal}, err
-		})
 	mcp.AddTool(server, &mcp.Tool{Name: "add_calendar", Description: "Add or upsert an ICS calendar."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in AddCalendarInput) (*mcp.CallToolResult, calendarOutput, error) {
 			cal, err := svc.AddCalendarAndRefresh(ctx, in)
-			return nil, calendarOutput{Calendar: cal}, err
-		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, calendarOutput, error) {
-			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled})
 			return nil, calendarOutput{Calendar: cal}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "update_calendar", Description: "Rename, enable, disable, or update a calendar URL."},
@@ -116,17 +101,9 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled})
 			return nil, calendarOutput{Calendar: cal}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_remove", Description: "Remove a calendar and its cached events."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in removeInput) (*mcp.CallToolResult, okOutput, error) {
-			return nil, okOutput{OK: true}, svc.RemoveCalendar(ctx, in.ID)
-		})
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_calendar", Description: "Remove a calendar and its cached events."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in removeInput) (*mcp.CallToolResult, okOutput, error) {
 			return nil, okOutput{OK: true}, svc.RemoveCalendar(ctx, in.ID)
-		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_refresh", Description: "Refresh a calendar feed now."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in refreshInput) (*mcp.CallToolResult, okOutput, error) {
-			return nil, okOutput{OK: true}, svc.RefreshCalendar(ctx, in.ID, time.Now().UTC())
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "refresh_calendar", Description: "Refresh a calendar feed now."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in refreshInput) (*mcp.CallToolResult, okOutput, error) {
@@ -136,11 +113,6 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, refreshAllOutput, error) {
 			results, err := svc.RefreshAllCalendars(ctx)
 			return nil, refreshAllOutput{Results: results}, err
-		})
-	mcp.AddTool(server, &mcp.Tool{Name: "calendar_validate", Description: "Fetch and parse an ICS feed without saving it."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in ValidateCalendarInput) (*mcp.CallToolResult, ValidateCalendarResult, error) {
-			result, err := svc.ValidateCalendar(ctx, in)
-			return nil, result, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "validate_calendar", Description: "Fetch and parse an ICS feed without saving it."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in ValidateCalendarInput) (*mcp.CallToolResult, ValidateCalendarResult, error) {
