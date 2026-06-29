@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3.0 - 2026-06-29
 
 ### Improved
 - Reworked the debug UI into Info, Calendars, and Tools tabs so setup details, calendar management, and MCP tool previews are easier to scan.
