@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICS MCP Admin</title>
+  <style>
+    body { margin: 0; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d252c; background: #f6f7f8; }
+    header { padding: 20px 28px; background: #27343d; color: white; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+    form { display: grid; grid-template-columns: minmax(160px, 240px) minmax(260px, 1fr) auto; gap: 10px; margin-bottom: 22px; }
+    input { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; font: inherit; }
+    button { padding: 9px 12px; border: 1px solid #60717c; border-radius: 6px; background: #ffffff; color: #1d252c; font: inherit; cursor: pointer; }
+    button.primary { background: #28666e; color: white; border-color: #28666e; }
+    button.danger { border-color: #b55454; color: #8d2525; }
+    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #d8dde1; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e2e6e9; text-align: left; vertical-align: top; }
+    th { background: #eef1f3; font-weight: 650; }
+    td.actions { white-space: nowrap; }
+    .muted { color: #687782; }
+    .error { color: #9c2f2f; max-width: 360px; overflow-wrap: anywhere; }
+    @media (max-width: 760px) {
+      main { padding: 14px; }
+      form { grid-template-columns: 1fr; }
+      table, thead, tbody, tr, th, td { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid #d8dde1; }
+      td { border: 0; }
+      td::before { content: attr(data-label); display: block; font-size: 12px; color: #687782; margin-bottom: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <header><h1>ICS MCP Admin</h1></header>
+  <main>
+    <form id="add-form">
+      <input id="name" name="name" placeholder="Calendar name" required>
+      <input id="url" name="url" placeholder="ICS URL" required>
+      <button class="primary" type="submit">Add Calendar</button>
+    </form>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Enabled</th>
+          <th>Refresh</th>
+          <th>Events</th>
+          <th>Error</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="calendars"></tbody>
+    </table>
+  </main>
+  <script>
+    const tbody = document.querySelector('#calendars');
+    const form = document.querySelector('#add-form');
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.status === 204 ? null : response.json();
+    }
+
+    function fmt(value) {
+      return value ? new Date(value).toLocaleString() : 'Never';
+    }
+
+    async function load() {
+      const calendars = await api('/api/calendars');
+      tbody.replaceChildren(...calendars.map((calendar) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td data-label="Name"><input value="${escapeHTML(calendar.name)}" data-field="name"></td>
+          <td data-label="Enabled">${calendar.enabled ? 'Yes' : 'No'}</td>
+          <td data-label="Refresh"><span class="muted">Last:</span> ${fmt(calendar.last_success)}<br><span class="muted">Next:</span> ${fmt(calendar.next_refresh)}</td>
+          <td data-label="Events">${calendar.event_count}</td>
+          <td data-label="Error" class="error">${escapeHTML(calendar.last_error || '')}</td>
+          <td data-label="Actions" class="actions">
+            <button data-action="save">Save</button>
+            <button data-action="refresh">Refresh</button>
+            <button class="danger" data-action="delete">Remove</button>
+          </td>`;
+        row.querySelector('[data-action="save"]').addEventListener('click', async () => {
+          await api('/api/calendars/' + calendar.id, {
+            method: 'PATCH',
+            body: JSON.stringify({ name: row.querySelector('[data-field="name"]').value })
+          });
+          await load();
+        });
+        row.querySelector('[data-action="refresh"]').addEventListener('click', async () => {
+          await api('/api/calendars/' + calendar.id + '/refresh', { method: 'POST' });
+          await load();
+        });
+        row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+          await api('/api/calendars/' + calendar.id, { method: 'DELETE' });
+          await load();
+        });
+        return row;
+      }));
+    }
+
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await api('/api/calendars', {
+        method: 'POST',
+        body: JSON.stringify({ name: form.name.value, url: form.url.value })
+      });
+      form.reset();
+      await load();
+    });
+
+    load().catch((error) => {
+      tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHTML(error.message)}</td></tr>`;
+    });
+  </script>
+</body>
+</html>
+

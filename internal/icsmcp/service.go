@@ -1,0 +1,391 @@
+package icsmcp
+
+import (
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"regexp"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// ServiceOptions configures Service behavior.
+type ServiceOptions struct {
+	RefreshInterval time.Duration
+	Lookahead       time.Duration
+	HTTPClient      *http.Client
+	Logger          *slog.Logger
+}
+
+// Service coordinates calendar config, refreshes, and meeting queries.
+type Service struct {
+	store           *Store
+	refreshInterval time.Duration
+	lookahead       time.Duration
+	httpClient      *http.Client
+	logger          *slog.Logger
+	clockMu         sync.RWMutex
+	clock           func() time.Time
+}
+
+// NewService constructs a calendar service.
+func NewService(store *Store, opts ServiceOptions) *Service {
+	if opts.RefreshInterval == 0 {
+		opts.RefreshInterval = 5 * time.Minute
+	}
+	if opts.Lookahead == 0 {
+		opts.Lookahead = 30 * 24 * time.Hour
+	}
+	if opts.HTTPClient == nil {
+		opts.HTTPClient = http.DefaultClient
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Service{
+		store:           store,
+		refreshInterval: opts.RefreshInterval,
+		lookahead:       opts.Lookahead,
+		httpClient:      opts.HTTPClient,
+		logger:          opts.Logger,
+		clock:           time.Now,
+	}
+}
+
+// SetClock replaces the service clock for tests.
+func (s *Service) SetClock(clock func() time.Time) {
+	s.clockMu.Lock()
+	defer s.clockMu.Unlock()
+	s.clock = clock
+}
+
+func (s *Service) now() time.Time {
+	s.clockMu.RLock()
+	defer s.clockMu.RUnlock()
+	return s.clock().UTC()
+}
+
+// ImportStartupCalendars imports environment and CLI calendars without deleting UI-added calendars.
+func (s *Service) ImportStartupCalendars(ctx context.Context, env map[string]string, cli []string) error {
+	for _, cal := range calendarsFromEnv(env) {
+		if _, err := s.store.upsertCalendar(ctx, cal, true); err != nil {
+			return err
+		}
+		s.logger.Info("imported startup calendar from environment", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name)
+	}
+	for _, value := range cli {
+		cal, err := calendarFromAssignment(value)
+		if err != nil {
+			return err
+		}
+		if _, err := s.store.upsertCalendar(ctx, cal, true); err != nil {
+			return err
+		}
+		s.logger.Info("imported startup calendar from cli", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name)
+	}
+	return nil
+}
+
+// AddCalendar creates or updates a calendar.
+func (s *Service) AddCalendar(ctx context.Context, in AddCalendarInput) (Calendar, error) {
+	cal, err := calendarFromInput(in)
+	if err != nil {
+		return Calendar{}, err
+	}
+	saved, err := s.store.upsertCalendar(ctx, cal, false)
+	if err != nil {
+		return Calendar{}, err
+	}
+	s.logger.Info("calendar saved", "calendar_id", saved.ID, "key", saved.Key, "name", saved.Name, "enabled", saved.Enabled)
+	return saved, nil
+}
+
+// ListCalendars returns configured calendars.
+func (s *Service) ListCalendars(ctx context.Context) ([]Calendar, error) {
+	return s.store.listCalendars(ctx)
+}
+
+// ListCalendarStatus returns calendars with refresh state.
+func (s *Service) ListCalendarStatus(ctx context.Context) ([]CalendarStatus, error) {
+	return s.store.listCalendarStatus(ctx)
+}
+
+// UpdateCalendar updates a calendar by ID.
+func (s *Service) UpdateCalendar(ctx context.Context, id string, in UpdateCalendarInput) (Calendar, error) {
+	return s.store.updateCalendar(ctx, id, in)
+}
+
+// RemoveCalendar deletes a calendar and cached events.
+func (s *Service) RemoveCalendar(ctx context.Context, id string) error {
+	if err := s.store.deleteCalendar(ctx, id); err != nil {
+		return err
+	}
+	s.logger.Info("calendar removed", "calendar_id", id)
+	return nil
+}
+
+// ReplaceEvents replaces cached instances for a calendar.
+func (s *Service) ReplaceEvents(ctx context.Context, calendarID string, events []EventInstance) error {
+	for i := range events {
+		if events[i].ID == "" {
+			events[i].ID = uuid.NewString()
+		}
+		events[i].CalendarID = calendarID
+	}
+	return s.store.replaceEvents(ctx, calendarID, events)
+}
+
+// RefreshCalendar fetches and parses a calendar, preserving cached events on failures.
+func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time) error {
+	cal, err := s.store.calendarByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	s.logger.Debug("calendar refresh starting", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name)
+	state, err := s.store.refreshState(ctx, id)
+	if err != nil {
+		return err
+	}
+	attempt := now.UTC()
+	state.LastAttempt = &attempt
+	next := attempt.Add(s.refreshInterval)
+	state.NextRefresh = &next
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cal.URL, nil)
+	if err != nil {
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "error", err)
+		return err
+	}
+	if state.ETag != "" {
+		req.Header.Set("If-None-Match", state.ETag)
+	}
+	if state.LastModified != "" {
+		req.Header.Set("If-Modified-Since", state.LastModified)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "error", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotModified {
+		success := attempt
+		state.LastSuccess = &success
+		state.LastError = ""
+		s.logger.Info("calendar refresh not modified", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name)
+		return s.store.updateRefreshState(ctx, id, state)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		err := fmt.Errorf("fetch %s: status %d", cal.URL, resp.StatusCode)
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "status", resp.StatusCode)
+		return err
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "error", err)
+		return err
+	}
+	events, err := ParseICS(string(body), attempt, s.lookahead)
+	if err != nil {
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "error", err)
+		return err
+	}
+	for i := range events {
+		events[i].CalendarID = cal.ID
+		events[i].CalendarName = cal.Name
+	}
+	if err := s.ReplaceEvents(ctx, id, events); err != nil {
+		state.LastError = err.Error()
+		_ = s.store.updateRefreshState(ctx, id, state)
+		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "error", err)
+		return err
+	}
+	success := attempt
+	state.LastSuccess = &success
+	state.LastError = ""
+	state.ETag = resp.Header.Get("ETag")
+	state.LastModified = resp.Header.Get("Last-Modified")
+	state.EventCount = len(events)
+	s.logger.Info("calendar refresh succeeded", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name, "event_count", len(events), "next_refresh", next.Format(time.RFC3339))
+	return s.store.updateRefreshState(ctx, id, state)
+}
+
+// RefreshDueCalendars refreshes enabled calendars whose next refresh has arrived.
+func (s *Service) RefreshDueCalendars(ctx context.Context) {
+	now := s.now()
+	statuses, err := s.ListCalendarStatus(ctx)
+	if err != nil {
+		s.logger.Warn("calendar refresh scan failed", "error", err)
+		return
+	}
+	for _, status := range statuses {
+		if !status.Enabled {
+			s.logger.Debug("calendar refresh skipped disabled calendar", "calendar_id", status.ID, "key", status.Key, "name", status.Name)
+			continue
+		}
+		if status.NextRefresh == nil || !status.NextRefresh.After(now) {
+			_ = s.RefreshCalendar(ctx, status.ID, now)
+		} else {
+			s.logger.Debug("calendar refresh skipped until next interval", "calendar_id", status.ID, "key", status.Key, "name", status.Name, "next_refresh", status.NextRefresh.Format(time.RFC3339))
+		}
+	}
+}
+
+// RunRefresher refreshes due calendars until the context is canceled.
+func (s *Service) RunRefresher(ctx context.Context) {
+	s.logger.Info("calendar refresher started", "refresh_interval", s.refreshInterval.String())
+	s.RefreshDueCalendars(ctx)
+	ticker := time.NewTicker(s.refreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("calendar refresher stopped", "error", ctx.Err())
+			return
+		case <-ticker.C:
+			s.RefreshDueCalendars(ctx)
+		}
+	}
+}
+
+// UpcomingMeetings returns ongoing and future meetings sorted by start time.
+func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
+	now := query.Now
+	if now.IsZero() {
+		now = s.now()
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	lookaheadDays := query.LookaheadDays
+	if lookaheadDays <= 0 {
+		lookaheadDays = 30
+	}
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	meetings := make([]Meeting, 0, len(events))
+	for _, event := range events {
+		ongoing := event.Start.Before(now) && event.End.After(now)
+		meetings = append(meetings, Meeting{
+			Day:             event.Start.Format("Monday"),
+			Date:            event.Start.Format("2006-01-02"),
+			Start:           event.Start.Format("15:04"),
+			End:             event.End.Format("15:04"),
+			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
+			Name:            event.Name,
+			Description:     event.Description,
+			CalendarID:      event.CalendarID,
+			CalendarName:    event.CalendarName,
+			Ongoing:         ongoing,
+			StartTime:       event.Start,
+		})
+	}
+	slices.SortFunc(meetings, func(a, b Meeting) int {
+		return a.StartTime.Compare(b.StartTime)
+	})
+	return meetings, nil
+}
+
+// Status returns service state.
+func (s *Service) Status(ctx context.Context) (Status, error) {
+	calendars, err := s.ListCalendarStatus(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+	return Status{Now: s.now(), Calendars: calendars}, nil
+}
+
+func calendarsFromEnv(env map[string]string) []Calendar {
+	var calendars []Calendar
+	for key, value := range env {
+		if !strings.HasPrefix(key, "ICSMCP_CALENDAR_") || value == "" {
+			continue
+		}
+		suffix := strings.TrimPrefix(key, "ICSMCP_CALENDAR_")
+		calendars = append(calendars, Calendar{
+			ID:      stableID(suffix),
+			Key:     suffix,
+			Name:    strings.ReplaceAll(suffix, "_", " "),
+			URL:     value,
+			Enabled: true,
+		})
+	}
+	slices.SortFunc(calendars, func(a, b Calendar) int {
+		return strings.Compare(a.Key, b.Key)
+	})
+	return calendars
+}
+
+func calendarFromAssignment(value string) (Calendar, error) {
+	key, url, ok := strings.Cut(value, "=")
+	if !ok || key == "" || url == "" {
+		return Calendar{}, fmt.Errorf("calendar must be name=url")
+	}
+	return calendarFromInput(AddCalendarInput{Key: key, Name: strings.ReplaceAll(key, "_", " "), URL: url})
+}
+
+func calendarFromInput(in AddCalendarInput) (Calendar, error) {
+	if in.URL == "" {
+		return Calendar{}, fmt.Errorf("calendar URL is required")
+	}
+	key := in.Key
+	if key == "" {
+		key = in.Name
+	}
+	key = normalizeKey(key)
+	if key == "" {
+		return Calendar{}, fmt.Errorf("calendar key or name is required")
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		name = strings.ReplaceAll(key, "_", " ")
+	}
+	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true}, nil
+}
+
+func normalizeKey(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ToUpper(value)
+	re := regexp.MustCompile(`[^A-Z0-9]+`)
+	value = re.ReplaceAllString(value, "_")
+	return strings.Trim(value, "_")
+}
+
+func stableID(key string) string {
+	sum := sha1.Sum([]byte(strings.ToUpper(key)))
+	return hex.EncodeToString(sum[:])
+}
+
+// EnvMap returns the current process environment as a map.
+func EnvMap() map[string]string {
+	env := map[string]string{}
+	for _, item := range os.Environ() {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			env[key] = value
+		}
+	}
+	return env
+}
