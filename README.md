@@ -110,16 +110,45 @@ docker run --rm -p 3333:3333 \
 
 Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
+The repository also includes `compose.yaml`:
+
+```bash
+mkdir -p config
+$EDITOR config/.env
+docker compose up -d
+```
+
+The published image is built from the Go binary into a minimal `scratch` runtime image. It includes the normal public CA certificate bundle so outbound HTTPS calendar feeds work; it does not include private corporate certificate material.
+
+Build the image locally when you want to test the Dockerfile before a release:
+
+```bash
+go build -trimpath -o icsmcp ./main.go
+docker build -t ics-mcp:local .
+docker run --rm -p 3333:3333 \
+  -v "$PWD/config:/config" \
+  ics-mcp:local
+```
+
 ## Releases
 
 GitHub Actions runs GoReleaser for tags matching `v*`.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
 ```
 
 The release workflow runs tests, builds Linux, macOS, and Windows archives/checksums with GoReleaser, publishes plain raw binaries named `icsmcp_<os>_<arch>`, and publishes Docker images for `linux/amd64` and `linux/arm64`.
+
+Release artifacts:
+
+- GitHub Release archives: `ics-mcp_<version>_<os>_<arch>.tar.gz` or `.zip`
+- Raw binaries: `icsmcp_linux_amd64`, `icsmcp_darwin_arm64`, `icsmcp_windows_amd64.exe`, etc.
+- Docker images: `ghcr.io/jeeftor/ics-mcp:<version>` and `ghcr.io/jeeftor/ics-mcp:latest`
+- Checksums: `checksums.txt`
+
+Update `CHANGELOG.md` before tagging a release.
 
 ## Development
 

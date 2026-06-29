@@ -1,6 +1,6 @@
 .env
 .cache/
 data/
+icsmcp
 *.sqlite3
 *.sqlite3-*
-

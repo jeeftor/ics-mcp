@@ -1,0 +1,17 @@
+services:
+  ics-mcp:
+    image: ghcr.io/jeeftor/ics-mcp:latest
+    container_name: ics-mcp
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./config:/config
+    command:
+      - serve
+      - --http-addr
+      - 0.0.0.0:3333
+      - --config-dir
+      - /config
+      - --log-level
+      - info
