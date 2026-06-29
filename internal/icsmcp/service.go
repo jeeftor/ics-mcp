@@ -338,6 +338,8 @@ func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQue
 			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
 			Name:            event.Name,
 			Description:     meetingDescription(event.Description, query),
+			MeetingURL:      event.MeetingURL,
+			MeetingURLType:  event.MeetingURLType,
 			CalendarID:      event.CalendarID,
 			CalendarName:    event.CalendarName,
 			Ongoing:         ongoing,

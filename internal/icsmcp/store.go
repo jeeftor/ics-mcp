@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -62,13 +63,20 @@ func (s *Store) migrate(ctx context.Context) error {
 			uid TEXT NOT NULL,
 			name TEXT NOT NULL,
 			description TEXT NOT NULL,
+			meeting_url TEXT NOT NULL DEFAULT '',
+			meeting_url_type TEXT NOT NULL DEFAULT '',
 			start_time TEXT NOT NULL,
 			end_time TEXT NOT NULL
 		)`,
+		`ALTER TABLE events ADD COLUMN meeting_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE events ADD COLUMN meeting_url_type TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return fmt.Errorf("migrate sqlite: %w", err)
 		}
 	}
@@ -183,8 +191,8 @@ func (s *Store) replaceEvents(ctx context.Context, calendarID string, events []E
 		return fmt.Errorf("clear events: %w", err)
 	}
 	for _, event := range events {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO events (id, calendar_id, uid, name, description, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			event.ID, calendarID, event.UID, event.Name, event.Description, event.Start.UTC().Format(time.RFC3339Nano), event.End.UTC().Format(time.RFC3339Nano)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO events (id, calendar_id, uid, name, description, meeting_url, meeting_url_type, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			event.ID, calendarID, event.UID, event.Name, event.Description, event.MeetingURL, event.MeetingURLType, event.Start.UTC().Format(time.RFC3339Nano), event.End.UTC().Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 	}
@@ -195,7 +203,7 @@ func (s *Store) replaceEvents(ctx context.Context, calendarID string, events []E
 }
 
 func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarIDs []string, limit int) ([]EventInstance, error) {
-	query := `SELECT e.id, e.calendar_id, c.name, e.uid, e.name, e.description, e.start_time, e.end_time
+	query := `SELECT e.id, e.calendar_id, c.name, e.uid, e.name, e.description, e.meeting_url, e.meeting_url_type, e.start_time, e.end_time
 		FROM events e JOIN calendars c ON c.id = e.calendar_id
 		WHERE c.enabled = 1 AND e.end_time > ? AND e.start_time <= ?`
 	args := []any{now.UTC().Format(time.RFC3339Nano), until.UTC().Format(time.RFC3339Nano)}
@@ -217,7 +225,7 @@ func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarI
 	for rows.Next() {
 		var start, end string
 		var event EventInstance
-		if err := rows.Scan(&event.ID, &event.CalendarID, &event.CalendarName, &event.UID, &event.Name, &event.Description, &start, &end); err != nil {
+		if err := rows.Scan(&event.ID, &event.CalendarID, &event.CalendarName, &event.UID, &event.Name, &event.Description, &event.MeetingURL, &event.MeetingURLType, &start, &end); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
 		var err error

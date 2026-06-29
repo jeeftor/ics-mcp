@@ -78,6 +78,8 @@ After startup, SQLite is the runtime source of truth for display names, enabled 
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
+Meeting outputs include `meeting_url` and `meeting_url_type` when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
+
 ## Debug UI
 
 The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), status endpoint, calendar refresh state, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
@@ -103,7 +105,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow builds Linux, macOS, and Windows binaries, publishes checksums, and publishes Docker images for `linux/amd64` and `linux/arm64`.
+The release workflow runs tests, builds Linux, macOS, and Windows archives/checksums with GoReleaser, publishes plain raw binaries named `icsmcp_<os>_<arch>`, and publishes Docker images for `linux/amd64` and `linux/arm64`.
 
 ## Development
 
