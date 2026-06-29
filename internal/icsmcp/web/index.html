@@ -60,6 +60,9 @@
       <span>Admin UI <code id="admin-url">/</code></span>
       <span>MCP Server <code id="mcp-url">/mcp</code></span>
       <span>Status API <code id="status-url">/api/status</code></span>
+      <span>Health <code id="health-url">/healthz</code></span>
+      <span>Metrics <code id="metrics-url">/metrics</code></span>
+      <span>Version <code id="version-label">loading</code></span>
     </div>
   </header>
   <main>
@@ -143,7 +146,9 @@
 
     async function load() {
       renderEndpoints();
+      const status = await api('/api/status');
       const calendars = await api('/api/calendars');
+      renderVersion(status.version);
       tbody.replaceChildren(...calendars.map((calendar) => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -205,6 +210,13 @@
       document.querySelector('#admin-url').textContent = window.location.origin + '/';
       document.querySelector('#mcp-url').textContent = window.location.origin + '/mcp';
       document.querySelector('#status-url').textContent = window.location.origin + '/api/status';
+      document.querySelector('#health-url').textContent = window.location.origin + '/healthz';
+      document.querySelector('#metrics-url').textContent = window.location.origin + '/metrics';
+    }
+
+    function renderVersion(version) {
+      if (!version) return;
+      document.querySelector('#version-label').textContent = `${version.version} ${version.commit}`;
     }
 
     async function loadTools() {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -19,6 +20,37 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpServer
 	}, &mcp.StreamableHTTPOptions{JSONResponse: true}))
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true}, nil)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		if _, err := svc.Status(r.Context()); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true}, nil)
+	})
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		metrics, err := svc.MetricsText(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte(metrics))
+	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -96,6 +128,19 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/calendars/validate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in ValidateCalendarInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result, err := svc.ValidateCalendar(r.Context(), in)
+		writeJSON(w, result, err)
+	})
 	mux.HandleFunc("/api/calendars/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/calendars/")
 		id, action, _ := strings.Cut(path, "/")
@@ -154,7 +199,33 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 		query.LookaheadDays = lookahead
 	}
 	query.CalendarIDs = values["calendar_id"]
+	query.Query = values.Get("query")
+	query.OnlyOngoing = parseBoolQuery(values.Get("only_ongoing"))
+	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
+	if raw := values.Get("after"); raw != "" {
+		after, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.After = after
+	}
+	if raw := values.Get("before"); raw != "" {
+		before, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.Before = before
+	}
 	return query, nil
+}
+
+func parseBoolQuery(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, value any, err error) {

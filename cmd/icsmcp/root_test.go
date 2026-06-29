@@ -26,6 +26,31 @@ func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 	}
 }
 
+func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
+	oldVersion, oldCommit, oldDate := Version, Commit, Date
+	t.Cleanup(func() {
+		Version, Commit, Date = oldVersion, oldCommit, oldDate
+	})
+	Version = "v1.2.3"
+	Commit = "abc123"
+	Date = "2026-06-29"
+
+	cmd := NewRootCommand()
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"version"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(version) error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"version: v1.2.3", "commit: abc123", "date: 2026-06-29"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("version output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestParseLogLevel(t *testing.T) {
 	tests := map[string]slog.Level{
 		"":        slog.LevelInfo,

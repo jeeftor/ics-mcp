@@ -24,6 +24,7 @@ type ServiceOptions struct {
 	Lookahead       time.Duration
 	HTTPClient      *http.Client
 	Logger          *slog.Logger
+	BuildInfo       BuildInfo
 }
 
 // Service coordinates calendar config, refreshes, and meeting queries.
@@ -33,6 +34,7 @@ type Service struct {
 	lookahead       time.Duration
 	httpClient      *http.Client
 	logger          *slog.Logger
+	buildInfo       BuildInfo
 	clockMu         sync.RWMutex
 	clock           func() time.Time
 }
@@ -57,8 +59,27 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		lookahead:       opts.Lookahead,
 		httpClient:      opts.HTTPClient,
 		logger:          opts.Logger,
+		buildInfo:       normalizeBuildInfo(opts.BuildInfo),
 		clock:           time.Now,
 	}
+}
+
+func normalizeBuildInfo(in BuildInfo) BuildInfo {
+	if in.Version == "" {
+		in.Version = "dev"
+	}
+	if in.Commit == "" {
+		in.Commit = "unknown"
+	}
+	if in.Date == "" {
+		in.Date = "unknown"
+	}
+	return in
+}
+
+// SetBuildInfo replaces build metadata for tests.
+func (s *Service) SetBuildInfo(info BuildInfo) {
+	s.buildInfo = normalizeBuildInfo(info)
 }
 
 // SetClock replaces the service clock for tests.
@@ -271,14 +292,17 @@ func (s *Service) RunRefresher(ctx context.Context) {
 func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
 	limit := query.limit(10)
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, limit)
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000)
 	if err != nil {
 		return nil, err
 	}
-	meetings := meetingsFromEvents(events, now, query)
+	meetings := filterMeetings(meetingsFromEvents(events, now, query), query)
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})
+	if len(meetings) > limit {
+		meetings = meetings[:limit]
+	}
 	return meetings, nil
 }
 
@@ -289,7 +313,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	if err != nil {
 		return nil, err
 	}
-	meetings := meetingsFromEvents(events, now, query)
+	meetings := filterMeetings(meetingsFromEvents(events, now, query), query)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
 	var groups []CalendarMeetingGroup
@@ -349,6 +373,33 @@ func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQue
 	return meetings
 }
 
+func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
+	if query.Query == "" && !query.OnlyOngoing && !query.ExcludeAllDay && query.After.IsZero() && query.Before.IsZero() {
+		return meetings
+	}
+	search := strings.ToLower(strings.TrimSpace(query.Query))
+	filtered := make([]Meeting, 0, len(meetings))
+	for _, meeting := range meetings {
+		if search != "" && !strings.Contains(strings.ToLower(meeting.Name+" "+meeting.Description+" "+meeting.CalendarName), search) {
+			continue
+		}
+		if query.OnlyOngoing && !meeting.Ongoing {
+			continue
+		}
+		if query.ExcludeAllDay && meeting.DurationMinutes >= 23*60 {
+			continue
+		}
+		if !query.After.IsZero() && meeting.StartTime.Before(query.After) {
+			continue
+		}
+		if !query.Before.IsZero() && !meeting.StartTime.Before(query.Before) {
+			continue
+		}
+		filtered = append(filtered, meeting)
+	}
+	return filtered
+}
+
 func meetingDescription(description string, query UpcomingQuery) string {
 	if !query.IncludeDescription {
 		return ""
@@ -370,7 +421,80 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{Now: s.now(), Calendars: calendars}, nil
+	return Status{Now: s.now(), Version: s.buildInfo, Calendars: calendars}, nil
+}
+
+// ValidateCalendar fetches and parses an ICS feed without saving it.
+func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput) (ValidateCalendarResult, error) {
+	if strings.TrimSpace(in.URL) == "" {
+		return ValidateCalendarResult{OK: false, Error: "calendar URL is required"}, fmt.Errorf("calendar URL is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(in.URL), nil)
+	if err != nil {
+		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
+	}
+	defer resp.Body.Close()
+	result := ValidateCalendarResult{StatusCode: resp.StatusCode}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		err := fmt.Errorf("fetch %s: status %d", in.URL, resp.StatusCode)
+		result.Error = err.Error()
+		return result, err
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Error = err.Error()
+		return result, err
+	}
+	now := s.now()
+	lookahead := in.LookaheadDays
+	if lookahead <= 0 {
+		lookahead = 30
+	}
+	events, err := ParseICS(string(body), now, time.Duration(lookahead)*24*time.Hour)
+	if err != nil {
+		result.Error = err.Error()
+		return result, err
+	}
+	for i := range events {
+		events[i].CalendarName = "Preview"
+	}
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	meetings := meetingsFromEvents(events, now, UpcomingQuery{})
+	slices.SortFunc(meetings, func(a, b Meeting) int {
+		return a.StartTime.Compare(b.StartTime)
+	})
+	if len(meetings) > limit {
+		meetings = meetings[:limit]
+	}
+	result.OK = true
+	result.EventCount = len(events)
+	result.Meetings = meetings
+	return result, nil
+}
+
+// MetricsText returns Prometheus-compatible service gauges.
+func (s *Service) MetricsText(ctx context.Context) (string, error) {
+	statuses, err := s.ListCalendarStatus(ctx)
+	if err != nil {
+		return "", err
+	}
+	var out strings.Builder
+	out.WriteString("# HELP icsmcp_calendars_total Number of configured calendars.\n")
+	out.WriteString("# TYPE icsmcp_calendars_total gauge\n")
+	_, _ = fmt.Fprintf(&out, "icsmcp_calendars_total %d\n", len(statuses))
+	out.WriteString("# HELP icsmcp_calendar_events Cached event instances by calendar.\n")
+	out.WriteString("# TYPE icsmcp_calendar_events gauge\n")
+	for _, status := range statuses {
+		_, _ = fmt.Fprintf(&out, "icsmcp_calendar_events{calendar_id=%q,calendar_key=%q,calendar_name=%q} %d\n", status.ID, status.Key, status.Name, status.EventCount)
+	}
+	return out.String(), nil
 }
 
 func calendarsFromEnv(env map[string]string) []Calendar {

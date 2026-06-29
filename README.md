@@ -20,6 +20,12 @@ Defaults:
 - Refresh interval: `5m`
 - Log level: `info`
 
+Print build metadata:
+
+```bash
+go run main.go version
+```
+
 Useful flags:
 
 ```bash
@@ -69,12 +75,22 @@ The startup output prints the Admin UI, MCP endpoint, and status URL. The SQLite
 
 ## HTTP API
 
+- `GET /healthz`
+- `GET /readyz`
+- `GET /metrics`
 - `GET /api/status`
+- `GET /api/meetings`
+- `GET /api/meetings/by-calendar`
+- `GET /api/tools`
+- `POST /api/tools/{name}/call`
 - `GET /api/calendars`
 - `POST /api/calendars`
+- `POST /api/calendars/validate`
 - `PATCH /api/calendars/{id}`
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
+
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `only_ongoing`, `exclude_all_day`, `after`, and `before`. `after` and `before` use RFC3339 timestamps.
 
 ## MCP Tools
 
@@ -82,19 +98,22 @@ The startup output prints the Admin UI, MCP endpoint, and status URL. The SQLite
 - `upcoming_meetings_by_calendar`
 - `calendar_list`
 - `calendar_add`
+- `calendar_validate`
 - `calendar_update`
 - `calendar_remove`
 - `calendar_refresh`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `after`, and `before`.
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
+
+`calendar_validate` fetches and parses an ICS feed without saving it. It returns fetch status, event count, and a small upcoming-meeting preview so you can test a URL before adding it.
 
 Meeting outputs include `meeting_url` and `meeting_url_type` when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), status endpoint, calendar refresh state, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), status endpoint, health endpoint, metrics endpoint, build version, calendar refresh state, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 
@@ -149,6 +168,8 @@ Release artifacts:
 - Checksums: `checksums.txt`
 
 Update `CHANGELOG.md` before tagging a release.
+
+Release builds inject version, commit, and build date into `icsmcp version`, `/api/status`, the MCP implementation metadata, and the debug UI.
 
 ## Development
 

@@ -12,6 +12,11 @@ builds:
     binary: icsmcp
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/jeeftor/icsmcp/cmd/icsmcp.Version={{ .Version }}
+      - -X github.com/jeeftor/icsmcp/cmd/icsmcp.Commit={{ .Commit }}
+      - -X github.com/jeeftor/icsmcp/cmd/icsmcp.Date={{ .Date }}
     goos:
       - linux
       - darwin
@@ -94,4 +99,3 @@ docker_manifests:
     image_templates:
       - ghcr.io/jeeftor/ics-mcp:{{ .Version }}-amd64
       - ghcr.io/jeeftor/ics-mcp:{{ .Version }}-arm64
-

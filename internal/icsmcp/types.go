@@ -23,9 +23,17 @@ type CalendarStatus struct {
 	EventCount   int        `json:"event_count"`
 }
 
+// BuildInfo describes the running binary build.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
 // Status is the service status payload returned by /api/status.
 type Status struct {
 	Now       time.Time        `json:"now"`
+	Version   BuildInfo        `json:"version"`
 	Calendars []CalendarStatus `json:"calendars"`
 }
 
@@ -63,6 +71,11 @@ type UpcomingQuery struct {
 	Limit               int       `json:"limit,omitempty"`
 	CalendarIDs         []string  `json:"calendar_ids,omitempty"`
 	LookaheadDays       int       `json:"lookahead_days,omitempty"`
+	Query               string    `json:"query,omitempty"`
+	OnlyOngoing         bool      `json:"only_ongoing,omitempty"`
+	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
+	After               time.Time `json:"after,omitempty"`
+	Before              time.Time `json:"before,omitempty"`
 	IncludeDescription  bool      `json:"include_description,omitempty"`
 	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
 }
@@ -97,4 +110,20 @@ type CalendarMeetingGroup struct {
 	CalendarID   string    `json:"calendar_id"`
 	CalendarName string    `json:"calendar_name"`
 	Meetings     []Meeting `json:"meetings"`
+}
+
+// ValidateCalendarInput checks an ICS feed without saving it.
+type ValidateCalendarInput struct {
+	URL           string `json:"url"`
+	LookaheadDays int    `json:"lookahead_days,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
+}
+
+// ValidateCalendarResult summarizes a feed validation attempt.
+type ValidateCalendarResult struct {
+	OK         bool      `json:"ok"`
+	StatusCode int       `json:"status_code,omitempty"`
+	EventCount int       `json:"event_count"`
+	Meetings   []Meeting `json:"meetings,omitempty"`
+	Error      string    `json:"error,omitempty"`
 }
