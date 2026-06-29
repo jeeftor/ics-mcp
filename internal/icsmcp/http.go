@@ -40,6 +40,19 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		meetings, err := svc.UpcomingMeetings(r.Context(), query)
 		writeJSON(w, meetings, err)
 	})
+	mux.HandleFunc("/api/meetings/by-calendar", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		query, err := upcomingQueryFromRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		groups, err := svc.UpcomingMeetingsByCalendar(r.Context(), query)
+		writeJSON(w, groups, err)
+	})
 	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)

@@ -11,6 +11,10 @@ type meetingsOutput struct {
 	Meetings []Meeting `json:"meetings"`
 }
 
+type groupedMeetingsOutput struct {
+	Calendars []CalendarMeetingGroup `json:"calendars"`
+}
+
 type calendarsOutput struct {
 	Calendars []CalendarStatus `json:"calendars"`
 }
@@ -45,6 +49,11 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, groupedMeetingsOutput, error) {
+			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
+			return nil, groupedMeetingsOutput{Calendars: groups}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "calendar_list", Description: "List configured calendars and refresh state."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, calendarsOutput, error) {

@@ -77,3 +77,10 @@ type Meeting struct {
 	Ongoing         bool      `json:"ongoing"`
 	StartTime       time.Time `json:"-"`
 }
+
+// CalendarMeetingGroup groups upcoming meetings by calendar.
+type CalendarMeetingGroup struct {
+	CalendarID   string    `json:"calendar_id"`
+	CalendarName string    `json:"calendar_name"`
+	Meetings     []Meeting `json:"meetings"`
+}

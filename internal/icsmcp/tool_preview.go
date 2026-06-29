@@ -10,6 +10,10 @@ import (
 type ToolInfo struct {
 	Name             string         `json:"name"`
 	Description      string         `json:"description"`
+	Category         string         `json:"category"`
+	ReadOnly         bool           `json:"read_only"`
+	Destructive      bool           `json:"destructive"`
+	InputExample     string         `json:"input_example"`
 	DefaultArguments map[string]any `json:"default_arguments"`
 }
 
@@ -27,12 +31,13 @@ type ToolCallResponse struct {
 // ToolInfos returns the MCP tools exposed by this server.
 func ToolInfos() []ToolInfo {
 	return []ToolInfo{
-		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds.", DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
-		{Name: "calendar_list", Description: "List configured calendars and refresh state.", DefaultArguments: map[string]any{}},
-		{Name: "calendar_add", Description: "Add or upsert an ICS calendar.", DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
-		{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL.", DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
-		{Name: "calendar_remove", Description: "Remove a calendar and its cached events.", DefaultArguments: map[string]any{"id": ""}},
-		{Name: "calendar_refresh", Description: "Refresh a calendar feed now.", DefaultArguments: map[string]any{"id": ""}},
+		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
+		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
+		{Name: "calendar_list", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "calendar_add", Description: "Add or upsert an ICS calendar.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
+		{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed"}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
+		{Name: "calendar_remove", Description: "Remove a calendar and its cached events.", Category: "admin", Destructive: true, InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
+		{Name: "calendar_refresh", Description: "Refresh a calendar feed now.", Category: "admin", InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
 	}
 }
 
@@ -46,6 +51,13 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		meetings, err := svc.UpcomingMeetings(ctx, in)
 		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "upcoming_meetings_by_calendar":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
+		return ToolCallResponse{Tool: name, Result: groupedMeetingsOutput{Calendars: groups}}, err
 	case "calendar_list":
 		calendars, err := svc.ListCalendarStatus(ctx)
 		return ToolCallResponse{Tool: name, Result: calendarsOutput{Calendars: calendars}}, err

@@ -8,6 +8,8 @@
     body { margin: 0; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d252c; background: #f6f7f8; }
     header { padding: 20px 28px; background: #27343d; color: white; }
     h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    .endpoints { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #dce6eb; }
+    .endpoints code { color: #ffffff; }
     main { max-width: 1120px; margin: 0 auto; padding: 24px; }
     section { margin-top: 28px; }
     h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: 0; }
@@ -28,6 +30,11 @@
     .tool-button { text-align: left; background: #fff; }
     .tool-button.active { border-color: #28666e; box-shadow: inset 3px 0 0 #28666e; }
     .tool-output { margin: 12px 0 0; padding: 12px; min-height: 160px; overflow: auto; background: #101820; color: #e6edf3; border-radius: 6px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .json-key { color: #7dd3fc; }
+    .json-string { color: #86efac; }
+    .json-number { color: #fbbf24; }
+    .json-boolean { color: #f0abfc; }
+    .json-null { color: #cbd5e1; }
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     @media (max-width: 760px) {
       main { padding: 14px; }
@@ -42,7 +49,14 @@
   </style>
 </head>
 <body>
-  <header><h1>ICS MCP Admin</h1></header>
+  <header>
+    <h1>ICS MCP Debug</h1>
+    <div class="endpoints">
+      <span>Admin UI <code id="admin-url">/</code></span>
+      <span>MCP Server <code id="mcp-url">/mcp</code></span>
+      <span>Status API <code id="status-url">/api/status</code></span>
+    </div>
+  </header>
   <main>
     <form id="add-form">
       <input id="name" name="name" placeholder="Calendar name" required>
@@ -67,13 +81,13 @@
     </section>
 
     <section>
-      <h2>Next Meetings</h2>
+      <h2>Next Meetings By Calendar</h2>
       <table>
         <thead>
           <tr>
+            <th>Calendar</th>
             <th>When</th>
             <th>Meeting</th>
-            <th>Calendar</th>
             <th>Duration</th>
           </tr>
         </thead>
@@ -122,6 +136,7 @@
     }
 
     async function load() {
+      renderEndpoints();
       const calendars = await api('/api/calendars');
       tbody.replaceChildren(...calendars.map((calendar) => {
         const row = document.createElement('tr');
@@ -158,21 +173,31 @@
     }
 
     async function loadMeetings() {
-      const meetings = await api('/api/meetings?limit=10');
-      if (meetings.length === 0) {
+      const groups = await api('/api/meetings/by-calendar?limit=10');
+      if (groups.length === 0) {
         meetingsBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming meetings in the cache.</td></tr>';
         return;
       }
-      meetingsBody.replaceChildren(...meetings.map((meeting) => {
-        const row = document.createElement('tr');
-        const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
-        row.innerHTML = `
+      const rows = [];
+      for (const group of groups) {
+        for (const [index, meeting] of group.meetings.entries()) {
+          const row = document.createElement('tr');
+          const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
+          row.innerHTML = `
+          <td data-label="Calendar">${index === 0 ? escapeHTML(group.calendar_name) : ''}</td>
           <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)}</span></td>
           <td data-label="Meeting">${escapeHTML(meeting.name)}</td>
-          <td data-label="Calendar">${escapeHTML(meeting.calendar_name)}</td>
           <td data-label="Duration">${meeting.duration_minutes} min</td>`;
-        return row;
-      }));
+          rows.push(row);
+        }
+      }
+      meetingsBody.replaceChildren(...rows);
+    }
+
+    function renderEndpoints() {
+      document.querySelector('#admin-url').textContent = window.location.origin + '/';
+      document.querySelector('#mcp-url').textContent = window.location.origin + '/mcp';
+      document.querySelector('#status-url').textContent = window.location.origin + '/api/status';
     }
 
     async function loadTools() {
@@ -234,7 +259,7 @@
           method: 'POST',
           body: JSON.stringify({ arguments: parsedArgs })
         });
-        toolOutput.textContent = JSON.stringify(result, null, 2);
+        renderJSON(toolOutput, result);
         toolStatus.textContent = 'Complete';
         await loadMeetings();
       } catch (error) {
@@ -242,6 +267,24 @@
         toolStatus.textContent = 'Error';
       }
     });
+
+    function renderJSON(target, value) {
+      const json = JSON.stringify(value, null, 2);
+      target.innerHTML = syntaxHighlightJSON(json);
+    }
+
+    function syntaxHighlightJSON(json) {
+      return escapeHTML(json).replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+        if (match.startsWith('"')) {
+          return match.endsWith(':')
+            ? `<span class="json-key">${match}</span>`
+            : `<span class="json-string">${match}</span>`;
+        }
+        if (match === 'true' || match === 'false') return `<span class="json-boolean">${match}</span>`;
+        if (match === 'null') return `<span class="json-null">${match}</span>`;
+        return `<span class="json-number">${match}</span>`;
+      });
+    }
 
     load().catch((error) => {
       tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHTML(error.message)}</td></tr>`;

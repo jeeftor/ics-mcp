@@ -34,7 +34,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"Next Meetings", "Tool Preview"} {
+	for _, want := range []string{"ICS MCP Debug", "MCP Server", "Next Meetings By Calendar", "Tool Preview", "json-key", "syntaxHighlightJSON"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -75,9 +75,15 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("meetings preview = %#v", meetings)
 	}
 
+	var groups []CalendarMeetingGroup
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings/by-calendar?limit=10", nil, &groups)
+	if len(groups) != 1 || groups[0].CalendarName != "Renamed" || len(groups[0].Meetings) != 1 {
+		t.Fatalf("grouped meetings preview = %#v", groups)
+	}
+
 	var tools []ToolInfo
 	doJSON(t, http.MethodGet, server.URL+"/api/tools", nil, &tools)
-	if len(tools) == 0 || tools[0].Name != "upcoming_meetings" {
+	if len(tools) == 0 || tools[0].Name != "upcoming_meetings" || !containsTool(tools, "upcoming_meetings_by_calendar") {
 		t.Fatalf("tools preview = %#v", tools)
 	}
 
@@ -129,7 +135,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		}
 		toolNames = append(toolNames, tool.Name)
 	}
-	for _, want := range []string{"upcoming_meetings", "calendar_list", "calendar_add", "calendar_update", "calendar_remove", "calendar_refresh"} {
+	for _, want := range []string{"upcoming_meetings", "upcoming_meetings_by_calendar", "calendar_list", "calendar_add", "calendar_update", "calendar_remove", "calendar_refresh"} {
 		if !contains(toolNames, want) {
 			t.Fatalf("tool names = %#v, missing %s", toolNames, want)
 		}
@@ -194,6 +200,15 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(calendars) != 0 {
 		t.Fatalf("calendars after remove = %#v", calendars)
 	}
+}
+
+func containsTool(values []ToolInfo, want string) bool {
+	for _, value := range values {
+		if value.Name == want {
+			return true
+		}
+	}
+	return false
 }
 
 func newTestService(t *testing.T) *Service {
