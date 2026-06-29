@@ -9,8 +9,11 @@
     header { padding: 20px 28px; background: #27343d; color: white; }
     h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
     main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+    section { margin-top: 28px; }
+    h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: 0; }
     form { display: grid; grid-template-columns: minmax(160px, 240px) minmax(260px, 1fr) auto; gap: 10px; margin-bottom: 22px; }
-    input { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; font: inherit; }
+    input, select, textarea { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; font: inherit; }
+    textarea { width: 100%; min-height: 160px; resize: vertical; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     button { padding: 9px 12px; border: 1px solid #60717c; border-radius: 6px; background: #ffffff; color: #1d252c; font: inherit; cursor: pointer; }
     button.primary { background: #28666e; color: white; border-color: #28666e; }
     button.danger { border-color: #b55454; color: #8d2525; }
@@ -20,9 +23,16 @@
     td.actions { white-space: nowrap; }
     .muted { color: #687782; }
     .error { color: #9c2f2f; max-width: 360px; overflow-wrap: anywhere; }
+    .tool-runner { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .tool-list { display: grid; gap: 8px; }
+    .tool-button { text-align: left; background: #fff; }
+    .tool-button.active { border-color: #28666e; box-shadow: inset 3px 0 0 #28666e; }
+    .tool-output { margin: 12px 0 0; padding: 12px; min-height: 160px; overflow: auto; background: #101820; color: #e6edf3; border-radius: 6px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     @media (max-width: 760px) {
       main { padding: 14px; }
       form { grid-template-columns: 1fr; }
+      .tool-runner { grid-template-columns: 1fr; }
       table, thead, tbody, tr, th, td { display: block; }
       thead { display: none; }
       tr { border-bottom: 1px solid #d8dde1; }
@@ -39,23 +49,64 @@
       <input id="url" name="url" placeholder="ICS URL" required>
       <button class="primary" type="submit">Add Calendar</button>
     </form>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Enabled</th>
-          <th>Refresh</th>
-          <th>Events</th>
-          <th>Error</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="calendars"></tbody>
-    </table>
+    <section>
+      <h2>Calendars</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Enabled</th>
+            <th>Refresh</th>
+            <th>Events</th>
+            <th>Error</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="calendars"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Next Meetings</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Meeting</th>
+            <th>Calendar</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody id="meetings"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Tool Preview</h2>
+      <div class="tool-runner">
+        <div id="tools" class="tool-list"></div>
+        <div>
+          <textarea id="tool-args" spellcheck="false">{}</textarea>
+          <div class="tool-controls">
+            <button id="run-tool" class="primary" type="button">Run Tool</button>
+            <span id="tool-status" class="muted"></span>
+          </div>
+          <pre id="tool-output" class="tool-output">{}</pre>
+        </div>
+      </div>
+    </section>
   </main>
   <script>
     const tbody = document.querySelector('#calendars');
+    const meetingsBody = document.querySelector('#meetings');
+    const toolsEl = document.querySelector('#tools');
+    const toolArgs = document.querySelector('#tool-args');
+    const toolOutput = document.querySelector('#tool-output');
+    const toolStatus = document.querySelector('#tool-status');
+    const runTool = document.querySelector('#run-tool');
     const form = document.querySelector('#add-form');
+    let selectedTool = null;
+    let tools = [];
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -102,6 +153,55 @@
         });
         return row;
       }));
+      await loadMeetings();
+      await loadTools();
+    }
+
+    async function loadMeetings() {
+      const meetings = await api('/api/meetings?limit=10');
+      if (meetings.length === 0) {
+        meetingsBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming meetings in the cache.</td></tr>';
+        return;
+      }
+      meetingsBody.replaceChildren(...meetings.map((meeting) => {
+        const row = document.createElement('tr');
+        const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
+        row.innerHTML = `
+          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)}</span></td>
+          <td data-label="Meeting">${escapeHTML(meeting.name)}</td>
+          <td data-label="Calendar">${escapeHTML(meeting.calendar_name)}</td>
+          <td data-label="Duration">${meeting.duration_minutes} min</td>`;
+        return row;
+      }));
+    }
+
+    async function loadTools() {
+      if (tools.length === 0) {
+        tools = await api('/api/tools');
+        selectedTool = tools[0];
+        toolArgs.value = JSON.stringify(selectedTool.default_arguments || {}, null, 2);
+        renderTools();
+      }
+    }
+
+    function renderTools() {
+      toolsEl.replaceChildren(...tools.map((tool) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'tool-button' + (selectedTool && selectedTool.name === tool.name ? ' active' : '');
+        button.innerHTML = `${escapeHTML(tool.name)}<br><span class="muted">${escapeHTML(tool.description)}</span>`;
+        button.addEventListener('click', () => {
+          selectedTool = tool;
+          toolArgs.value = JSON.stringify(tool.default_arguments || {}, null, 2);
+          toolOutput.textContent = '{}';
+          toolStatus.textContent = '';
+          renderTools();
+        });
+        return button;
+      }));
+      if (selectedTool && toolArgs.value.trim() === '') {
+        toolArgs.value = JSON.stringify(selectedTool.default_arguments || {}, null, 2);
+      }
     }
 
     function escapeHTML(value) {
@@ -118,10 +218,34 @@
       await load();
     });
 
+    runTool.addEventListener('click', async () => {
+      if (!selectedTool) return;
+      let parsedArgs;
+      try {
+        parsedArgs = JSON.parse(toolArgs.value || '{}');
+      } catch (error) {
+        toolStatus.textContent = 'Invalid JSON';
+        toolOutput.textContent = error.message;
+        return;
+      }
+      toolStatus.textContent = 'Running...';
+      try {
+        const result = await api('/api/tools/' + selectedTool.name + '/call', {
+          method: 'POST',
+          body: JSON.stringify({ arguments: parsedArgs })
+        });
+        toolOutput.textContent = JSON.stringify(result, null, 2);
+        toolStatus.textContent = 'Complete';
+        await loadMeetings();
+      } catch (error) {
+        toolOutput.textContent = error.message;
+        toolStatus.textContent = 'Error';
+      }
+    });
+
     load().catch((error) => {
       tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHTML(error.message)}</td></tr>`;
     });
   </script>
 </body>
 </html>
-
