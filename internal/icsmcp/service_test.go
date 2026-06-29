@@ -208,6 +208,76 @@ func TestUpcomingMeetingsByCalendarDefaultsToTenPerCalendar(t *testing.T) {
 	}
 }
 
+func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Current Planning", Description: "roadmap", Start: now.Add(-10 * time.Minute), End: now.Add(20 * time.Minute)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Future Planning", Description: "roadmap", Start: now.Add(2 * time.Hour), End: now.Add(3 * time.Hour)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "All Day Planning", Start: now.Add(24 * time.Hour), End: now.Add(48 * time.Hour)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Unrelated Sync", Start: now.Add(4 * time.Hour), End: now.Add(5 * time.Hour)},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	got, err := svc.UpcomingMeetings(ctx, UpcomingQuery{
+		Now:           now,
+		Query:         "planning",
+		OnlyOngoing:   true,
+		ExcludeAllDay: true,
+	})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "Current Planning" {
+		t.Fatalf("filtered ongoing meetings = %#v", got)
+	}
+
+	windowed, err := svc.UpcomingMeetings(ctx, UpcomingQuery{
+		Now:    now,
+		After:  now.Add(90 * time.Minute),
+		Before: now.Add(210 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(windowed) error = %v", err)
+	}
+	if len(windowed) != 1 || windowed[0].Name != "Future Planning" {
+		t.Fatalf("windowed meetings = %#v", windowed)
+	}
+}
+
+func TestValidateCalendarFetchesAndParsesFeedWithoutSaving(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: feed.URL, Limit: 2})
+	if err != nil {
+		t.Fatalf("ValidateCalendar() error = %v", err)
+	}
+	if !result.OK || result.EventCount != 1 || len(result.Meetings) != 1 || result.Meetings[0].Name != "Planning" {
+		t.Fatalf("validation result = %#v", result)
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 0 {
+		t.Fatalf("ValidateCalendar saved calendars = %#v", calendars)
+	}
+}
+
 func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

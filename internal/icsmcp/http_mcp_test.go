@@ -17,6 +17,7 @@ import (
 func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
+	svc.SetBuildInfo(BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-29"})
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	svc.SetClock(func() time.Time { return now })
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
@@ -97,8 +98,34 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 
 	var status Status
 	doJSON(t, http.MethodGet, server.URL+"/api/status", nil, &status)
-	if len(status.Calendars) != 1 || status.Calendars[0].Name != "Renamed" {
+	if len(status.Calendars) != 1 || status.Calendars[0].Name != "Renamed" || status.Version.Version != "v9.9.9" {
 		t.Fatalf("status = %#v", status)
+	}
+
+	var health map[string]any
+	doJSON(t, http.MethodGet, server.URL+"/healthz", nil, &health)
+	if health["ok"] != true {
+		t.Fatalf("healthz = %#v", health)
+	}
+	var ready map[string]any
+	doJSON(t, http.MethodGet, server.URL+"/readyz", nil, &ready)
+	if ready["ok"] != true {
+		t.Fatalf("readyz = %#v", ready)
+	}
+
+	metricsResp, err := http.Get(server.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics error = %v", err)
+	}
+	metricsBody, err := io.ReadAll(metricsResp.Body)
+	_ = metricsResp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll(metrics) error = %v", err)
+	}
+	for _, want := range []string{"icsmcp_calendars_total", "icsmcp_calendar_events"} {
+		if !strings.Contains(string(metricsBody), want) {
+			t.Fatalf("metrics missing %q:\n%s", want, metricsBody)
+		}
 	}
 
 	doJSON(t, http.MethodDelete, server.URL+"/api/calendars/"+add.ID, nil, nil)
@@ -108,6 +135,24 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	}
 
 	_, _ = ctx, svc
+}
+
+func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var result ValidateCalendarResult
+	doJSON(t, http.MethodPost, server.URL+"/api/calendars/validate", ValidateCalendarInput{URL: feed.URL, Limit: 3}, &result)
+	if !result.OK || result.EventCount != 1 || len(result.Meetings) != 1 || result.Meetings[0].Name != "Planning" {
+		t.Fatalf("validation result = %#v", result)
+	}
 }
 
 func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
@@ -135,7 +180,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		}
 		toolNames = append(toolNames, tool.Name)
 	}
-	for _, want := range []string{"upcoming_meetings", "upcoming_meetings_by_calendar", "calendar_list", "calendar_add", "calendar_update", "calendar_remove", "calendar_refresh"} {
+	for _, want := range []string{"upcoming_meetings", "upcoming_meetings_by_calendar", "calendar_list", "calendar_add", "calendar_update", "calendar_remove", "calendar_refresh", "calendar_validate"} {
 		if !contains(toolNames, want) {
 			t.Fatalf("tool names = %#v, missing %s", toolNames, want)
 		}
@@ -176,6 +221,23 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	decodeStructured(t, upcomingResult.StructuredContent, &upcoming)
 	if len(upcoming.Meetings) != 1 || upcoming.Meetings[0].Name != "Planning" {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
+	}
+
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	validateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "calendar_validate",
+		Arguments: map[string]any{"url": feed.URL, "limit": 1},
+	})
+	if err != nil || validateResult.IsError {
+		t.Fatalf("calendar_validate result = %#v err = %v", validateResult, err)
+	}
+	var validation ValidateCalendarResult
+	decodeStructured(t, validateResult.StructuredContent, &validation)
+	if !validation.OK || validation.EventCount != 1 || len(validation.Meetings) != 1 {
+		t.Fatalf("calendar_validate output = %#v", validation)
 	}
 
 	updateResult, err := session.CallTool(ctx, &mcp.CallToolParams{

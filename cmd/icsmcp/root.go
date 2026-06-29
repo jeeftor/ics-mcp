@@ -20,6 +20,13 @@ import (
 	"github.com/subosito/gotenv"
 )
 
+// Build metadata injected by release builds.
+var (
+	Version = "dev"
+	Commit  = "unknown"
+	Date    = "unknown"
+)
+
 type calendarFlags []string
 
 func (c *calendarFlags) String() string {
@@ -42,6 +49,14 @@ func NewRootCommand() *cobra.Command {
 		Use:   "icsmcp",
 		Short: "ICS Calendar MCP server",
 	}
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print build version metadata",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "version: %s\ncommit: %s\ndate: %s\n", Version, Commit, Date)
+			return nil
+		},
+	}
 	serve := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the HTTP admin and MCP server",
@@ -56,7 +71,11 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 			logger := slog.New(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")))
-			return runServe(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger)
+			return runServe(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
+				Version: Version,
+				Commit:  Commit,
+				Date:    Date,
+			})
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
@@ -75,7 +94,7 @@ func NewRootCommand() *cobra.Command {
 	viper.SetEnvPrefix("ICSMCP")
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()
-	root.AddCommand(serve)
+	root.AddCommand(serve, versionCmd)
 	return root
 }
 
@@ -96,7 +115,7 @@ func resolveDBPath(configDir string, dbPath string) string {
 	return filepath.Join(configDir, "icsmcp.sqlite3")
 }
 
-func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger) error {
+func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
@@ -105,7 +124,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}

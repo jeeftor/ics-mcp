@@ -44,7 +44,7 @@ type updateInput struct {
 
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
 func NewMCPServer(svc *Service) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: "v0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: svc.buildInfo.Version}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
@@ -77,6 +77,11 @@ func NewMCPServer(svc *Service) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{Name: "calendar_refresh", Description: "Refresh a calendar feed now."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in refreshInput) (*mcp.CallToolResult, okOutput, error) {
 			return nil, okOutput{OK: true}, svc.RefreshCalendar(ctx, in.ID, time.Now().UTC())
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "calendar_validate", Description: "Fetch and parse an ICS feed without saving it."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in ValidateCalendarInput) (*mcp.CallToolResult, ValidateCalendarResult, error) {
+			result, err := svc.ValidateCalendar(ctx, in)
+			return nil, result, err
 		})
 	return server
 }
