@@ -147,7 +147,7 @@
     async function load() {
       renderEndpoints();
       const status = await api('/api/status');
-      const calendars = await api('/api/calendars');
+      const calendars = arrayOrEmpty(await api('/api/calendars'));
       renderVersion(status.version);
       tbody.replaceChildren(...calendars.map((calendar) => {
         const row = document.createElement('tr');
@@ -185,7 +185,7 @@
     }
 
     async function loadMeetings() {
-      const groups = await api('/api/meetings/by-calendar?limit=10');
+      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10'));
       if (groups.length === 0) {
         meetingsBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming meetings in the cache.</td></tr>';
         return;
@@ -221,11 +221,15 @@
 
     async function loadTools() {
       if (tools.length === 0) {
-        tools = await api('/api/tools');
+        tools = arrayOrEmpty(await api('/api/tools'));
         selectedTool = tools[0];
-        toolArgs.value = JSON.stringify(selectedTool.default_arguments || {}, null, 2);
+        toolArgs.value = JSON.stringify((selectedTool && selectedTool.default_arguments) || {}, null, 2);
         renderTools();
       }
+    }
+
+    function arrayOrEmpty(value) {
+      return Array.isArray(value) ? value : [];
     }
 
     function renderTools() {

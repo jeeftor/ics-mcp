@@ -135,7 +135,7 @@ func (s *Store) listCalendars(ctx context.Context) ([]Calendar, error) {
 		return nil, fmt.Errorf("list calendars: %w", err)
 	}
 	defer rows.Close()
-	var calendars []Calendar
+	calendars := []Calendar{}
 	for rows.Next() {
 		cal, err := scanCalendar(rows)
 		if err != nil {
@@ -221,7 +221,7 @@ func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarI
 		return nil, fmt.Errorf("query events: %w", err)
 	}
 	defer rows.Close()
-	var events []EventInstance
+	events := []EventInstance{}
 	for rows.Next() {
 		var start, end string
 		var event EventInstance
@@ -285,7 +285,7 @@ func (s *Store) listCalendarStatus(ctx context.Context) ([]CalendarStatus, error
 		return nil, fmt.Errorf("list calendar status: %w", err)
 	}
 	defer rows.Close()
-	var statuses []CalendarStatus
+	statuses := []CalendarStatus{}
 	for rows.Next() {
 		var status CalendarStatus
 		var enabled int

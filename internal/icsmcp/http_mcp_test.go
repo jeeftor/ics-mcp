@@ -155,6 +155,33 @@ func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIEmptyCollectionsEncodeAsArrays(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	for _, path := range []string{"/api/calendars", "/api/meetings", "/api/meetings/by-calendar"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("ReadAll(%s) error = %v", path, err)
+		}
+		if strings.TrimSpace(string(body)) != "[]" {
+			t.Fatalf("GET %s body = %s, want []", path, body)
+		}
+	}
+
+	var status Status
+	doJSON(t, http.MethodGet, server.URL+"/api/status", nil, &status)
+	if status.Calendars == nil {
+		t.Fatalf("status calendars = nil, want empty slice")
+	}
+}
+
 func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
