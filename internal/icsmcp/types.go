@@ -32,9 +32,11 @@ type BuildInfo struct {
 
 // Status is the service status payload returned by /api/status.
 type Status struct {
-	Now       time.Time        `json:"now"`
-	Version   BuildInfo        `json:"version"`
-	Calendars []CalendarStatus `json:"calendars"`
+	Now         time.Time        `json:"now"`
+	Version     BuildInfo        `json:"version"`
+	Timezone    string           `json:"timezone"`
+	ExternalURL string           `json:"external_url,omitempty"`
+	Calendars   []CalendarStatus `json:"calendars"`
 }
 
 // AddCalendarInput creates or upserts a calendar.
@@ -61,6 +63,8 @@ type EventInstance struct {
 	Description    string    `json:"description"`
 	MeetingURL     string    `json:"meeting_url"`
 	MeetingURLType string    `json:"meeting_url_type"`
+	Cancelled      bool      `json:"cancelled"`
+	AllDay         bool      `json:"all_day"`
 	Start          time.Time `json:"start_time"`
 	End            time.Time `json:"end_time"`
 }
@@ -74,6 +78,7 @@ type UpcomingQuery struct {
 	Query               string    `json:"query,omitempty"`
 	OnlyOngoing         bool      `json:"only_ongoing,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
+	ExcludeCancelled    bool      `json:"exclude_cancelled,omitempty"`
 	After               time.Time `json:"after,omitempty"`
 	Before              time.Time `json:"before,omitempty"`
 	IncludeDescription  bool      `json:"include_description,omitempty"`
@@ -94,6 +99,7 @@ type Meeting struct {
 	Date            string    `json:"date"`
 	Start           string    `json:"start"`
 	End             string    `json:"end"`
+	Timezone        string    `json:"timezone"`
 	DurationMinutes int       `json:"duration_minutes"`
 	Name            string    `json:"name"`
 	Description     string    `json:"description"`
@@ -102,6 +108,8 @@ type Meeting struct {
 	CalendarID      string    `json:"calendar_id"`
 	CalendarName    string    `json:"calendar_name"`
 	Ongoing         bool      `json:"ongoing"`
+	AllDay          bool      `json:"all_day"`
+	Cancelled       bool      `json:"cancelled"`
 	StartTime       time.Time `json:"-"`
 }
 
@@ -126,4 +134,13 @@ type ValidateCalendarResult struct {
 	EventCount int       `json:"event_count"`
 	Meetings   []Meeting `json:"meetings,omitempty"`
 	Error      string    `json:"error,omitempty"`
+}
+
+// RefreshCalendarResult summarizes a manual calendar refresh.
+type RefreshCalendarResult struct {
+	CalendarID   string `json:"calendar_id"`
+	CalendarName string `json:"calendar_name"`
+	OK           bool   `json:"ok"`
+	Skipped      bool   `json:"skipped,omitempty"`
+	Error        string `json:"error,omitempty"`
 }

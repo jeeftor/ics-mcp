@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2.0 - 2026-06-29
+
+### Added
+- Preferred verb-first admin tool aliases: `list_calendars`, `add_calendar`, `validate_calendar`, `update_calendar`, `remove_calendar`, and `refresh_calendar`.
+- New read/debug tools: `meeting_agenda`, `current_meetings`, `search_meetings`, and `server_status`.
+- `refresh_all_calendars` tool for manually refreshing every enabled feed.
+- Timezone-aware meeting presentation through `--timezone`, `ICSMCP_TIMEZONE`, or `TZ`.
+- Optional external endpoint display through `--external-url` / `ICSMCP_EXTERNAL_URL`.
+- `all_day` and `cancelled` meeting output flags, plus `exclude_cancelled` filters in API, MCP tools, and the debug UI.
+
+### Improved
+- Adding a calendar through the HTTP API, MCP `calendar_add` tool, or debug UI now attempts an immediate refresh so valid feeds show meetings right away.
+- MCP discovery now advertises the expanded tool set and filter options through the official tool schemas.
+- README and Docker Compose examples now document timezone, Docker config, and the current tool surface.
+- The debug UI now includes a setup panel with internal and external MCP endpoint snippets.
+
 ## v1.1.1 - 2026-06-29
 
 ### Fixed

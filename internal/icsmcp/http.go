@@ -122,7 +122,7 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			cal, err := svc.AddCalendar(r.Context(), in)
+			cal, err := svc.AddCalendarAndRefresh(r.Context(), in)
 			writeJSON(w, cal, err)
 		default:
 			methodNotAllowed(w)
@@ -202,6 +202,15 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	query.Query = values.Get("query")
 	query.OnlyOngoing = parseBoolQuery(values.Get("only_ongoing"))
 	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
+	query.ExcludeCancelled = parseBoolQuery(values.Get("exclude_cancelled"))
+	query.IncludeDescription = parseBoolQuery(values.Get("include_description"))
+	if raw := values.Get("description_max_chars"); raw != "" {
+		maxChars, err := strconv.Atoi(raw)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.DescriptionMaxChars = maxChars
+	}
 	if raw := values.Get("after"); raw != "" {
 		after, err := time.Parse(time.RFC3339, raw)
 		if err != nil {

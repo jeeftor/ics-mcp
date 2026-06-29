@@ -41,6 +41,10 @@
     .json-node > summary { cursor: pointer; color: #e6edf3; }
     .json-leaf { margin-left: 14px; white-space: pre-wrap; }
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+    .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .setup-block { background: white; border: 1px solid #d8dde1; border-radius: 6px; padding: 12px; }
+    .setup-block h3 { margin: 0 0 8px; font-size: 14px; }
+    .setup-block pre { margin: 8px 0 0; padding: 10px; overflow: auto; background: #101820; color: #e6edf3; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     @media (max-width: 760px) {
       main { padding: 14px; }
       form { grid-template-columns: 1fr; }
@@ -90,6 +94,25 @@
     </section>
 
     <section>
+      <h2>Set Me Up</h2>
+      <div class="setup-grid">
+        <div class="setup-block">
+          <h3>MCP Endpoint</h3>
+          <div><span class="muted">Internal:</span> <code id="setup-internal-mcp">/mcp</code></div>
+          <div id="setup-external-row"><span class="muted">External:</span> <code id="setup-external-mcp"></code></div>
+        </div>
+        <div class="setup-block">
+          <h3>HTTP Client Config</h3>
+          <pre id="setup-http-json">{}</pre>
+        </div>
+        <div class="setup-block">
+          <h3>Server Run Command</h3>
+          <pre id="setup-command">icsmcp serve</pre>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <h2>Next Meetings By Calendar</h2>
       <table>
         <thead>
@@ -130,6 +153,7 @@
     const form = document.querySelector('#add-form');
     let selectedTool = null;
     let tools = [];
+    let lastStatus = null;
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -147,8 +171,11 @@
     async function load() {
       renderEndpoints();
       const status = await api('/api/status');
+      lastStatus = status;
       const calendars = arrayOrEmpty(await api('/api/calendars'));
       renderVersion(status.version);
+      renderEndpoints(status);
+      renderSetup(status);
       tbody.replaceChildren(...calendars.map((calendar) => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -206,12 +233,50 @@
       meetingsBody.replaceChildren(...rows);
     }
 
-    function renderEndpoints() {
-      document.querySelector('#admin-url').textContent = window.location.origin + '/';
-      document.querySelector('#mcp-url').textContent = window.location.origin + '/mcp';
-      document.querySelector('#status-url').textContent = window.location.origin + '/api/status';
-      document.querySelector('#health-url').textContent = window.location.origin + '/healthz';
-      document.querySelector('#metrics-url').textContent = window.location.origin + '/metrics';
+    function renderEndpoints(status = lastStatus) {
+      const internal = window.location.origin;
+      const external = status && status.external_url;
+      document.querySelector('#admin-url').textContent = endpointLabel(internal, external, '/');
+      document.querySelector('#mcp-url').textContent = endpointLabel(internal, external, '/mcp');
+      document.querySelector('#status-url').textContent = endpointLabel(internal, external, '/api/status');
+      document.querySelector('#health-url').textContent = endpointLabel(internal, external, '/healthz');
+      document.querySelector('#metrics-url').textContent = endpointLabel(internal, external, '/metrics');
+    }
+
+    function endpointLabel(internal, external, path) {
+      const suffix = path === '/' ? '/' : path;
+      const internalURL = internal + suffix;
+      if (!external) return internalURL;
+      return `${internalURL} | external ${external + suffix}`;
+    }
+
+    function renderSetup(status) {
+      const internal = window.location.origin;
+      const external = status && status.external_url;
+      const preferredBase = external || internal;
+      const preferredMCP = preferredBase + '/mcp';
+      document.querySelector('#setup-internal-mcp').textContent = internal + '/mcp';
+      const externalRow = document.querySelector('#setup-external-row');
+      if (external) {
+        externalRow.style.display = '';
+        document.querySelector('#setup-external-mcp').textContent = preferredMCP;
+      } else {
+        externalRow.style.display = 'none';
+      }
+      document.querySelector('#setup-http-json').textContent = JSON.stringify({
+        mcpServers: {
+          icsmcp: {
+            type: 'streamable-http',
+            url: preferredMCP
+          }
+        }
+      }, null, 2);
+      document.querySelector('#setup-command').textContent = [
+        'icsmcp serve',
+        '  --http-addr 0.0.0.0:3333',
+        '  --config-dir ./config',
+        external ? `  --external-url ${external}` : '  --external-url http://192.168.1.112:3333'
+      ].join('\n');
     }
 
     function renderVersion(version) {

@@ -19,6 +19,7 @@ Defaults:
 - SQLite database: `./data/icsmcp.sqlite3`
 - Refresh interval: `5m`
 - Log level: `info`
+- Display timezone: `ICSMCP_TIMEZONE`, then `TZ`, then the host local timezone
 
 Print build metadata:
 
@@ -33,6 +34,8 @@ go run main.go serve \
   --http-addr 0.0.0.0:3333 \
   --config-dir ./data \
   --refresh-interval 5m \
+  --timezone America/Denver \
+  --external-url https://ics-mcp.vookie.net \
   --log-level debug \
   --calendar MITRE=https://example.invalid/calendar.ics
 ```
@@ -55,6 +58,8 @@ Startup calendars can be loaded from environment variables:
 ```dotenv
 ICSMCP_CALENDAR_MITRE=https://example.invalid/mitre.ics
 ICSMCP_CALENDAR_EMILY=https://example.invalid/emily.ics
+ICSMCP_TIMEZONE=America/Denver
+ICSMCP_EXTERNAL_URL=http://192.168.1.112:3333
 ICSMCP_LOG_LEVEL=info
 ICSMCP_LOG_COLOR=true
 ```
@@ -71,7 +76,7 @@ $EDITOR config/.env
 go run main.go serve --config-dir ./config --log-level debug
 ```
 
-The startup output prints the Admin UI, MCP endpoint, and status URL. The SQLite database should appear at `./config/icsmcp.sqlite3`.
+The startup output prints the Admin UI, MCP endpoint, status URL, display timezone, and external URL when configured. The SQLite database should appear at `./config/icsmcp.sqlite3`.
 
 ## HTTP API
 
@@ -90,12 +95,23 @@ The startup output prints the Admin UI, MCP endpoint, and status URL. The SQLite
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `only_ongoing`, `exclude_all_day`, `after`, and `before`. `after` and `before` use RFC3339 timestamps.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. `after` and `before` use RFC3339 timestamps.
 
 ## MCP Tools
 
 - `upcoming_meetings`
 - `upcoming_meetings_by_calendar`
+- `meeting_agenda`
+- `current_meetings`
+- `search_meetings`
+- `server_status`
+- `list_calendars`
+- `add_calendar`
+- `validate_calendar`
+- `update_calendar`
+- `remove_calendar`
+- `refresh_calendar`
+- `refresh_all_calendars`
 - `calendar_list`
 - `calendar_add`
 - `calendar_validate`
@@ -103,17 +119,29 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `calendar_remove`
 - `calendar_refresh`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `after`, and `before`.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`.
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
+`meeting_agenda` is the opinionated, token-conscious preset for normal meeting prep. It returns the same shape as `upcoming_meetings`, but always excludes all-day blocks and cancelled events.
+
+`current_meetings` returns only events that have already started and have not ended yet. Ongoing events are marked with `ongoing: true`.
+
+`search_meetings` uses the same cached event data and filters as `upcoming_meetings`; pass `query` to match title, description, or calendar name.
+
+`server_status` returns build metadata, timezone, optional external URL, and calendar refresh state.
+
+The verb-first admin tools (`list_calendars`, `add_calendar`, `validate_calendar`, `update_calendar`, `remove_calendar`, `refresh_calendar`) are the preferred names. The original `calendar_*` names remain supported for compatibility.
+
 `calendar_validate` fetches and parses an ICS feed without saving it. It returns fetch status, event count, and a small upcoming-meeting preview so you can test a URL before adding it.
 
-Meeting outputs include `meeting_url` and `meeting_url_type` when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
+Meeting outputs include `timezone`, `all_day`, `cancelled`, `meeting_url`, and `meeting_url_type`. `meeting_url` is set when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
+
+MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `meeting_agenda`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), status endpoint, health endpoint, metrics endpoint, build version, calendar refresh state, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, metrics endpoint, build version, calendar refresh state, setup snippets for MCP clients, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 
@@ -123,11 +151,13 @@ Tagged releases publish multi-architecture images to GitHub Container Registry:
 docker pull ghcr.io/jeeftor/ics-mcp:latest
 docker run --rm -p 3333:3333 \
   -v "$PWD/config:/config" \
+  -e ICSMCP_TIMEZONE=America/Denver \
+  -e ICSMCP_EXTERNAL_URL=http://192.168.1.112:3333 \
   ghcr.io/jeeftor/ics-mcp:latest \
   serve --http-addr 0.0.0.0:3333 --config-dir /config --log-level info
 ```
 
-Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
+Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. Put `ICSMCP_TIMEZONE` and `ICSMCP_EXTERNAL_URL` there too when the container is reached through a LAN IP, reverse proxy, or non-default port. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
 The repository also includes `compose.yaml`:
 

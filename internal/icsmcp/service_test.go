@@ -87,6 +87,23 @@ func TestParseICSExtractsOnlineMeetingURL(t *testing.T) {
 	}
 }
 
+func TestParseICSDetectsAllDayAndCancelledEvents(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleCancelledAllDayICS(), now, 72*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if !events[0].AllDay {
+		t.Fatalf("all day = false, want true")
+	}
+	if !events[0].Cancelled {
+		t.Fatalf("cancelled = false, want true")
+	}
+}
+
 func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -219,7 +236,8 @@ func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	events := []EventInstance{
 		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Current Planning", Description: "roadmap", Start: now.Add(-10 * time.Minute), End: now.Add(20 * time.Minute)},
 		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Future Planning", Description: "roadmap", Start: now.Add(2 * time.Hour), End: now.Add(3 * time.Hour)},
-		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "All Day Planning", Start: now.Add(24 * time.Hour), End: now.Add(48 * time.Hour)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "All Day Planning", AllDay: true, Start: now.Add(24 * time.Hour), End: now.Add(48 * time.Hour)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Canceled: Planning", Cancelled: true, Start: now.Add(5 * time.Hour), End: now.Add(6 * time.Hour)},
 		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Unrelated Sync", Start: now.Add(4 * time.Hour), End: now.Add(5 * time.Hour)},
 	}
 	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
@@ -227,10 +245,11 @@ func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	}
 
 	got, err := svc.UpcomingMeetings(ctx, UpcomingQuery{
-		Now:           now,
-		Query:         "planning",
-		OnlyOngoing:   true,
-		ExcludeAllDay: true,
+		Now:              now,
+		Query:            "planning",
+		OnlyOngoing:      true,
+		ExcludeAllDay:    true,
+		ExcludeCancelled: true,
 	})
 	if err != nil {
 		t.Fatalf("UpcomingMeetings() error = %v", err)
@@ -249,6 +268,59 @@ func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	}
 	if len(windowed) != 1 || windowed[0].Name != "Future Planning" {
 		t.Fatalf("windowed meetings = %#v", windowed)
+	}
+}
+
+func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "America/Denver"})
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		Name:         "Morning Planning",
+		Start:        time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC),
+		End:          time.Date(2026, 6, 29, 15, 30, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 1})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 {
+		t.Fatalf("meetings = %#v", meetings)
+	}
+	if meetings[0].Start != "09:00" || meetings[0].End != "09:30" || meetings[0].Timezone != "America/Denver" {
+		t.Fatalf("timezone-rendered meeting = %#v", meetings[0])
+	}
+}
+
+func TestStatusIncludesNormalizedExternalURL(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, ExternalURL: "https://ics-mcp.vookie.net/"})
+
+	status, err := svc.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.ExternalURL != "https://ics-mcp.vookie.net" {
+		t.Fatalf("external URL = %q, want trimmed vookie URL", status.ExternalURL)
 	}
 }
 

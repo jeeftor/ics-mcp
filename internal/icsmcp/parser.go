@@ -33,6 +33,7 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 			uid = uuid.NewString()
 		}
 		meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
+		cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
 		events = append(events, EventInstance{
 			ID:             uuid.NewString(),
 			UID:            uid,
@@ -40,6 +41,8 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 			Description:    parsed.Description,
 			MeetingURL:     meetingURL,
 			MeetingURLType: meetingURLType,
+			Cancelled:      cancelled,
+			AllDay:         parsed.End.Sub(*parsed.Start) >= 24*time.Hour,
 			Start:          parsed.Start.UTC(),
 			End:            parsed.End.UTC(),
 		})

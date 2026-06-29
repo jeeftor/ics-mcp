@@ -35,17 +35,22 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP Debug", "MCP Server", "Next Meetings By Calendar", "Tool Preview", "json-key", "json-node", "renderJSONNode"} {
+	for _, want := range []string{"ICS MCP Debug", "MCP Server", "Set Me Up", "HTTP Client Config", "Next Meetings By Calendar", "Tool Preview", "json-key", "json-node", "renderJSONNode"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
 	}
 
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
 	var add Calendar
 	doJSON(t, http.MethodPost, server.URL+"/api/calendars", AddCalendarInput{
 		Key:  "team",
 		Name: "Team",
-		URL:  "https://example.test/team.ics",
+		URL:  feed.URL,
 	}, &add)
 
 	var list []CalendarStatus
@@ -58,16 +63,6 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	doJSON(t, http.MethodPatch, server.URL+"/api/calendars/"+add.ID, UpdateCalendarInput{Name: "Renamed"}, &renamed)
 	if renamed.Name != "Renamed" {
 		t.Fatalf("renamed calendar = %#v", renamed)
-	}
-
-	if err := svc.ReplaceEvents(ctx, add.ID, []EventInstance{{
-		CalendarID:   add.ID,
-		CalendarName: "Renamed",
-		Name:         "Planning",
-		Start:        now.Add(1 * time.Hour),
-		End:          now.Add(2 * time.Hour),
-	}}); err != nil {
-		t.Fatalf("ReplaceEvents() error = %v", err)
 	}
 
 	var meetings []Meeting
@@ -139,7 +134,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 
 func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
 	svc := newTestService(t)
-	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 6, 29, 13, 30, 0, 0, time.UTC)
 	svc.SetClock(func() time.Time { return now })
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sampleOneTimeICS()))
@@ -152,6 +147,32 @@ func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
 	doJSON(t, http.MethodPost, server.URL+"/api/calendars/validate", ValidateCalendarInput{URL: feed.URL, Limit: 3}, &result)
 	if !result.OK || result.EventCount != 1 || len(result.Meetings) != 1 || result.Meetings[0].Name != "Planning" {
 		t.Fatalf("validation result = %#v", result)
+	}
+}
+
+func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var add Calendar
+	doJSON(t, http.MethodPost, server.URL+"/api/calendars", AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL}, &add)
+
+	var meetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	if len(meetings) != 1 || meetings[0].Name != "Planning" {
+		t.Fatalf("meetings after add = %#v", meetings)
+	}
+	var statuses []CalendarStatus
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &statuses)
+	if len(statuses) != 1 || statuses[0].EventCount != 1 || statuses[0].LastSuccess == nil {
+		t.Fatalf("status after add = %#v", statuses)
 	}
 }
 
@@ -185,7 +206,7 @@ func TestHTTPAPIEmptyCollectionsEncodeAsArrays(t *testing.T) {
 func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 6, 29, 13, 30, 0, 0, time.UTC)
 	svc.SetClock(func() time.Time { return now })
 
 	mcpServer := NewMCPServer(svc)
@@ -201,24 +222,62 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	defer session.Close()
 
 	var toolNames []string
+	var upcomingSchema any
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
 			t.Fatalf("Tools() error = %v", err)
 		}
 		toolNames = append(toolNames, tool.Name)
+		if tool.Name == "upcoming_meetings" {
+			upcomingSchema = tool.InputSchema
+		}
 	}
-	for _, want := range []string{"upcoming_meetings", "upcoming_meetings_by_calendar", "calendar_list", "calendar_add", "calendar_update", "calendar_remove", "calendar_refresh", "calendar_validate"} {
+	for _, want := range []string{
+		"upcoming_meetings",
+		"upcoming_meetings_by_calendar",
+		"meeting_agenda",
+		"current_meetings",
+		"search_meetings",
+		"server_status",
+		"calendar_list",
+		"list_calendars",
+		"calendar_add",
+		"add_calendar",
+		"calendar_update",
+		"update_calendar",
+		"calendar_remove",
+		"remove_calendar",
+		"calendar_refresh",
+		"refresh_calendar",
+		"refresh_all_calendars",
+		"calendar_validate",
+		"validate_calendar",
+	} {
 		if !contains(toolNames, want) {
 			t.Fatalf("tool names = %#v, missing %s", toolNames, want)
 		}
 	}
+	schemaData, err := json.Marshal(upcomingSchema)
+	if err != nil {
+		t.Fatalf("Marshal upcoming tool schema error = %v", err)
+	}
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "include_description", "exclude_all_day", "exclude_cancelled"} {
+		if !strings.Contains(string(schemaData), want) {
+			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
+		}
+	}
+
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
 
 	addResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "calendar_add",
 		Arguments: map[string]any{
 			"key":  "work",
 			"name": "Work",
-			"url":  "https://example.test/work.ics",
+			"url":  feed.URL,
 		},
 	})
 	if err != nil || addResult.IsError {
@@ -226,16 +285,6 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	}
 	var addOut calendarOutput
 	decodeStructured(t, addResult.StructuredContent, &addOut)
-
-	if err := svc.ReplaceEvents(ctx, addOut.Calendar.ID, []EventInstance{{
-		CalendarID:   addOut.Calendar.ID,
-		CalendarName: "Work",
-		Name:         "Planning",
-		Start:        now.Add(1 * time.Hour),
-		End:          now.Add(90 * time.Minute),
-	}}); err != nil {
-		t.Fatalf("ReplaceEvents() error = %v", err)
-	}
 
 	upcomingResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "upcoming_meetings",
@@ -250,13 +299,91 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
 
-	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	agendaResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "meeting_agenda",
+		Arguments: map[string]any{},
+	})
+	if err != nil || agendaResult.IsError {
+		t.Fatalf("meeting_agenda result = %#v err = %v", agendaResult, err)
+	}
+	var agenda meetingsOutput
+	decodeStructured(t, agendaResult.StructuredContent, &agenda)
+	if len(agenda.Meetings) != 1 || agenda.Meetings[0].AllDay || agenda.Meetings[0].Cancelled {
+		t.Fatalf("meeting agenda = %#v", agenda.Meetings)
+	}
+
+	currentResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "current_meetings",
+		Arguments: map[string]any{},
+	})
+	if err != nil || currentResult.IsError {
+		t.Fatalf("current_meetings result = %#v err = %v", currentResult, err)
+	}
+	var current meetingsOutput
+	decodeStructured(t, currentResult.StructuredContent, &current)
+	if len(current.Meetings) != 1 || !current.Meetings[0].Ongoing {
+		t.Fatalf("current meetings = %#v", current.Meetings)
+	}
+
+	searchResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "search_meetings",
+		Arguments: map[string]any{"query": "plan"},
+	})
+	if err != nil || searchResult.IsError {
+		t.Fatalf("search_meetings result = %#v err = %v", searchResult, err)
+	}
+	var search meetingsOutput
+	decodeStructured(t, searchResult.StructuredContent, &search)
+	if len(search.Meetings) != 1 || search.Meetings[0].Name != "Planning" {
+		t.Fatalf("search meetings = %#v", search.Meetings)
+	}
+
+	statusResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "server_status",
+		Arguments: map[string]any{},
+	})
+	if err != nil || statusResult.IsError {
+		t.Fatalf("server_status result = %#v err = %v", statusResult, err)
+	}
+	var statusOut statusOutput
+	decodeStructured(t, statusResult.StructuredContent, &statusOut)
+	if len(statusOut.Status.Calendars) != 1 {
+		t.Fatalf("server status = %#v", statusOut.Status)
+	}
+
+	listResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_calendars",
+		Arguments: map[string]any{},
+	})
+	if err != nil || listResult.IsError {
+		t.Fatalf("list_calendars result = %#v err = %v", listResult, err)
+	}
+	var listed calendarsOutput
+	decodeStructured(t, listResult.StructuredContent, &listed)
+	if len(listed.Calendars) != 1 {
+		t.Fatalf("list calendars = %#v", listed.Calendars)
+	}
+
+	refreshAllResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "refresh_all_calendars",
+		Arguments: map[string]any{},
+	})
+	if err != nil || refreshAllResult.IsError {
+		t.Fatalf("refresh_all_calendars result = %#v err = %v", refreshAllResult, err)
+	}
+	var refreshAll refreshAllOutput
+	decodeStructured(t, refreshAllResult.StructuredContent, &refreshAll)
+	if len(refreshAll.Results) != 1 || !refreshAll.Results[0].OK {
+		t.Fatalf("refresh all = %#v", refreshAll)
+	}
+
+	validateFeed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sampleOneTimeICS()))
 	}))
-	defer feed.Close()
+	defer validateFeed.Close()
 	validateResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "calendar_validate",
-		Arguments: map[string]any{"url": feed.URL, "limit": 1},
+		Arguments: map[string]any{"url": validateFeed.URL, "limit": 1},
 	})
 	if err != nil || validateResult.IsError {
 		t.Fatalf("calendar_validate result = %#v err = %v", validateResult, err)
@@ -307,7 +434,7 @@ func newTestService(t *testing.T) *Service {
 		t.Fatalf("OpenStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour})
+	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC"})
 }
 
 func doJSON(t *testing.T, method string, url string, in any, out any) {
@@ -400,6 +527,20 @@ func sampleTeamsICS() string {
 		"DTEND:20260629T140000Z\r\n" +
 		"SUMMARY:Teams Planning\r\n" +
 		"DESCRIPTION:Join: https://teams.microsoft.com/l/meetup-join/abc123\\nOther: https://example.invalid/noise\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func sampleCancelledAllDayICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:cancelled-all-day-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260630T000000Z\r\n" +
+		"DTEND:20260701T000000Z\r\n" +
+		"SUMMARY:Canceled: Focus Day\r\n" +
+		"STATUS:CANCELLED\r\n" +
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 }
