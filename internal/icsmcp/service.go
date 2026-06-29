@@ -275,7 +275,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	if err != nil {
 		return nil, err
 	}
-	meetings := meetingsFromEvents(events, now)
+	meetings := meetingsFromEvents(events, now, query)
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})
@@ -289,7 +289,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	if err != nil {
 		return nil, err
 	}
-	meetings := meetingsFromEvents(events, now)
+	meetings := meetingsFromEvents(events, now, query)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
 	var groups []CalendarMeetingGroup
@@ -326,18 +326,18 @@ func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
 	return now, lookaheadDays
 }
 
-func meetingsFromEvents(events []EventInstance, now time.Time) []Meeting {
+func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery) []Meeting {
 	meetings := make([]Meeting, 0, len(events))
 	for _, event := range events {
 		ongoing := event.Start.Before(now) && event.End.After(now)
 		meetings = append(meetings, Meeting{
-			Day:             event.Start.Format("Monday"),
+			Day:             event.Start.Format("Mon"),
 			Date:            event.Start.Format("2006-01-02"),
 			Start:           event.Start.Format("15:04"),
 			End:             event.End.Format("15:04"),
 			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
 			Name:            event.Name,
-			Description:     event.Description,
+			Description:     meetingDescription(event.Description, query),
 			CalendarID:      event.CalendarID,
 			CalendarName:    event.CalendarName,
 			Ongoing:         ongoing,
@@ -345,6 +345,21 @@ func meetingsFromEvents(events []EventInstance, now time.Time) []Meeting {
 		})
 	}
 	return meetings
+}
+
+func meetingDescription(description string, query UpcomingQuery) string {
+	if !query.IncludeDescription {
+		return ""
+	}
+	maxChars := query.DescriptionMaxChars
+	if maxChars <= 0 {
+		maxChars = 300
+	}
+	runes := []rune(description)
+	if len(runes) <= maxChars {
+		return description
+	}
+	return string(runes[:maxChars]) + "..."
 }
 
 // Status returns service state.

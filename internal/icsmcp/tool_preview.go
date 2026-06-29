@@ -31,8 +31,8 @@ type ToolCallResponse struct {
 // ToolInfos returns the MCP tools exposed by this server.
 func ToolInfos() []ToolInfo {
 	return []ToolInfo{
-		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
-		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30}},
+		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings by time. Returns compact rows by default; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "include_description": false}},
+		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "include_description": false}},
 		{Name: "calendar_list", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "calendar_add", Description: "Add or upsert an ICS calendar.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed"}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},

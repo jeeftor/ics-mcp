@@ -74,9 +74,9 @@ After startup, SQLite is the runtime source of truth for display names, enabled 
 - `calendar_remove`
 - `calendar_refresh`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), and descriptions are omitted by default. Use `include_description: true` and optional `description_max_chars` when details are needed.
 
-`upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view.
+`upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
 ## Debug UI
 
