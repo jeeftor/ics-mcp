@@ -15,6 +15,7 @@ Defaults:
 - HTTP listen address: `127.0.0.1:3333`
 - MCP endpoint: `http://127.0.0.1:3333/mcp`
 - Admin UI: `http://127.0.0.1:3333/`
+- Config directory: `./data`
 - SQLite database: `./data/icsmcp.sqlite3`
 - Refresh interval: `5m`
 - Log level: `info`
@@ -24,7 +25,7 @@ Useful flags:
 ```bash
 go run main.go serve \
   --http-addr 0.0.0.0:3333 \
-  --db-path ./data/icsmcp.sqlite3 \
+  --config-dir ./data \
   --refresh-interval 5m \
   --log-level debug \
   --calendar MITRE=https://example.invalid/calendar.ics
@@ -33,6 +34,13 @@ go run main.go serve \
 ## Calendar Config
 
 Keep `.env` private because ICS feed URLs often contain bearer-style access tokens.
+
+The server loads `.env` from the current directory and then from the config directory. For Docker, put persistent config in `/config`:
+
+```text
+/config/.env
+/config/icsmcp.sqlite3
+```
 
 Startup calendars can be loaded from environment variables:
 
@@ -81,10 +89,9 @@ Tagged releases publish multi-architecture images to GitHub Container Registry:
 ```bash
 docker pull ghcr.io/jeeftor/ics-mcp:latest
 docker run --rm -p 3333:3333 \
-  --env-file .env \
-  -v "$PWD/data:/data" \
+  -v "$PWD/config:/config" \
   ghcr.io/jeeftor/ics-mcp:latest \
-  serve --http-addr 0.0.0.0:3333 --db-path /data/icsmcp.sqlite3 --log-level info
+  serve --http-addr 0.0.0.0:3333 --config-dir /config --log-level info
 ```
 
 ## Releases

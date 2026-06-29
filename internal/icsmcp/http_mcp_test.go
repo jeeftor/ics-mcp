@@ -34,7 +34,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP Debug", "MCP Server", "Next Meetings By Calendar", "Tool Preview", "json-key", "syntaxHighlightJSON"} {
+	for _, want := range []string{"ICS MCP Debug", "MCP Server", "Next Meetings By Calendar", "Tool Preview", "json-key", "json-node", "renderJSONNode"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}

@@ -46,9 +46,10 @@ func NewRootCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Run the HTTP admin and MCP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = gotenv.Load()
+			configDir := viper.GetString("config-dir")
+			loadEnvFiles(configDir)
 			httpAddr := viper.GetString("http-addr")
-			dbPath := viper.GetString("db-path")
+			dbPath := resolveDBPath(configDir, viper.GetString("db-path"))
 			refreshInterval := viper.GetDuration("refresh-interval")
 			logLevel, err := parseLogLevel(viper.GetString("log-level"))
 			if err != nil {
@@ -59,12 +60,14 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
-	serve.Flags().String("db-path", "./data/icsmcp.sqlite3", "SQLite database path")
+	serve.Flags().String("config-dir", "./data", "Directory for persistent config, SQLite state, and optional .env")
+	serve.Flags().String("db-path", "", "SQLite database path override")
 	serve.Flags().Duration("refresh-interval", 5*time.Minute, "Feed refresh interval")
 	serve.Flags().String("log-level", "info", "Log level: debug, info, warn, or error")
 	serve.Flags().Bool("log-color", true, "Colorize slog output")
 	serve.Flags().Var(&calendars, "calendar", "Startup calendar in name=url form; repeatable")
 	_ = viper.BindPFlag("http-addr", serve.Flags().Lookup("http-addr"))
+	_ = viper.BindPFlag("config-dir", serve.Flags().Lookup("config-dir"))
 	_ = viper.BindPFlag("db-path", serve.Flags().Lookup("db-path"))
 	_ = viper.BindPFlag("refresh-interval", serve.Flags().Lookup("refresh-interval"))
 	_ = viper.BindPFlag("log-level", serve.Flags().Lookup("log-level"))
@@ -74,6 +77,23 @@ func NewRootCommand() *cobra.Command {
 	viper.AutomaticEnv()
 	root.AddCommand(serve)
 	return root
+}
+
+func loadEnvFiles(configDir string) {
+	_ = gotenv.Load(".env")
+	if configDir != "" {
+		_ = gotenv.Load(filepath.Join(configDir, ".env"))
+	}
+}
+
+func resolveDBPath(configDir string, dbPath string) string {
+	if strings.TrimSpace(dbPath) != "" {
+		return dbPath
+	}
+	if strings.TrimSpace(configDir) == "" {
+		configDir = "."
+	}
+	return filepath.Join(configDir, "icsmcp.sqlite3")
 }
 
 func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger) error {

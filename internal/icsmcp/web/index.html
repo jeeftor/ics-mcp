@@ -24,6 +24,7 @@
     th { background: #eef1f3; font-weight: 650; }
     td.actions { white-space: nowrap; }
     .muted { color: #687782; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .error { color: #9c2f2f; max-width: 360px; overflow-wrap: anywhere; }
     .tool-runner { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .tool-list { display: grid; gap: 8px; }
@@ -35,6 +36,10 @@
     .json-number { color: #fbbf24; }
     .json-boolean { color: #f0abfc; }
     .json-null { color: #cbd5e1; }
+    .json-tree { display: grid; gap: 2px; }
+    .json-node { margin-left: 14px; }
+    .json-node > summary { cursor: pointer; color: #e6edf3; }
+    .json-leaf { margin-left: 14px; white-space: pre-wrap; }
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     @media (max-width: 760px) {
       main { padding: 14px; }
@@ -69,6 +74,7 @@
         <thead>
           <tr>
             <th>Name</th>
+            <th>ID</th>
             <th>Enabled</th>
             <th>Refresh</th>
             <th>Events</th>
@@ -142,6 +148,7 @@
         const row = document.createElement('tr');
         row.innerHTML = `
           <td data-label="Name"><input value="${escapeHTML(calendar.name)}" data-field="name"></td>
+          <td data-label="ID" class="mono">${escapeHTML(calendar.id)}</td>
           <td data-label="Enabled">${calendar.enabled ? 'Yes' : 'No'}</td>
           <td data-label="Refresh"><span class="muted">Last:</span> ${fmt(calendar.last_success)}<br><span class="muted">Next:</span> ${fmt(calendar.next_refresh)}</td>
           <td data-label="Events">${calendar.event_count}</td>
@@ -184,7 +191,7 @@
           const row = document.createElement('tr');
           const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
           row.innerHTML = `
-          <td data-label="Calendar">${index === 0 ? escapeHTML(group.calendar_name) : ''}</td>
+          <td data-label="Calendar">${index === 0 ? `${escapeHTML(group.calendar_name)}<br><span class="muted mono">${escapeHTML(group.calendar_id)}</span>` : ''}</td>
           <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)}</span></td>
           <td data-label="Meeting">${escapeHTML(meeting.name)}</td>
           <td data-label="Duration">${meeting.duration_minutes} min</td>`;
@@ -214,7 +221,12 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'tool-button' + (selectedTool && selectedTool.name === tool.name ? ' active' : '');
-        button.innerHTML = `${escapeHTML(tool.name)}<br><span class="muted">${escapeHTML(tool.description)}</span>`;
+        const badges = [
+          tool.category,
+          tool.read_only ? 'read-only' : 'mutating',
+          tool.destructive ? 'destructive' : ''
+        ].filter(Boolean).join(' | ');
+        button.innerHTML = `${escapeHTML(tool.name)}<br><span class="muted">${escapeHTML(badges)}</span><br><span class="muted">${escapeHTML(tool.description)}</span>`;
         button.addEventListener('click', () => {
           selectedTool = tool;
           toolArgs.value = JSON.stringify(tool.default_arguments || {}, null, 2);
@@ -269,8 +281,28 @@
     });
 
     function renderJSON(target, value) {
-      const json = JSON.stringify(value, null, 2);
-      target.innerHTML = syntaxHighlightJSON(json);
+      target.innerHTML = '';
+      target.appendChild(renderJSONNode(value, 'result', 0));
+    }
+
+    function renderJSONNode(value, label, depth) {
+      if (value && typeof value === 'object') {
+        const details = document.createElement('details');
+        details.open = depth < 2;
+        details.className = 'json-node';
+        const summary = document.createElement('summary');
+        const size = Array.isArray(value) ? value.length : Object.keys(value).length;
+        summary.innerHTML = `${escapeHTML(label)} <span class="muted">${Array.isArray(value) ? '[' + size + ']' : '{' + size + '}'}</span>`;
+        details.appendChild(summary);
+        for (const [key, child] of Object.entries(value)) {
+          details.appendChild(renderJSONNode(child, key, depth + 1));
+        }
+        return details;
+      }
+      const line = document.createElement('div');
+      line.className = 'json-leaf';
+      line.innerHTML = `<span class="json-key">${escapeHTML(label)}</span>: ${syntaxHighlightJSON(JSON.stringify(value))}`;
+      return line;
     }
 
     function syntaxHighlightJSON(json) {

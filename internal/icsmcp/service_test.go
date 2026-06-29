@@ -118,6 +118,59 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	}
 }
 
+func TestUpcomingMeetingsByCalendarDefaultsToTenPerCalendar(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	home, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "home", Name: "Home", URL: "https://example.test/home.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(home) error = %v", err)
+	}
+
+	for _, cal := range []Calendar{work, home} {
+		var events []EventInstance
+		for i := range 12 {
+			start := now.Add(time.Duration(i+1) * time.Hour)
+			events = append(events, EventInstance{
+				CalendarID:   cal.ID,
+				CalendarName: cal.Name,
+				Name:         cal.Name + " Future",
+				Start:        start,
+				End:          start.Add(30 * time.Minute),
+			})
+		}
+		if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+			t.Fatalf("ReplaceEvents(%s) error = %v", cal.Name, err)
+		}
+	}
+
+	chronological, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(chronological) != 10 {
+		t.Fatalf("chronological meeting count = %d, want 10 total", len(chronological))
+	}
+
+	grouped, err := svc.UpcomingMeetingsByCalendar(ctx, UpcomingQuery{Now: now})
+	if err != nil {
+		t.Fatalf("UpcomingMeetingsByCalendar() error = %v", err)
+	}
+	if len(grouped) != 2 {
+		t.Fatalf("group count = %d, want 2", len(grouped))
+	}
+	for _, group := range grouped {
+		if len(group.Meetings) != 10 {
+			t.Fatalf("group %s meeting count = %d, want 10 per calendar", group.CalendarName, len(group.Meetings))
+		}
+	}
+}
+
 func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
