@@ -80,10 +80,10 @@ func NewRootCommand() *cobra.Command {
 }
 
 func loadEnvFiles(configDir string) {
-	_ = gotenv.Load(".env")
 	if configDir != "" {
 		_ = gotenv.Load(filepath.Join(configDir, ".env"))
 	}
+	_ = gotenv.Load(".env")
 }
 
 func resolveDBPath(configDir string, dbPath string) string {
