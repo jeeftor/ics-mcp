@@ -316,7 +316,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	meetings := filterMeetings(meetingsFromEvents(events, now, query), query)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
-	var groups []CalendarMeetingGroup
+	groups := []CalendarMeetingGroup{}
 	for _, meeting := range meetings {
 		index, ok := groupIndex[meeting.CalendarID]
 		if !ok {
@@ -498,7 +498,7 @@ func (s *Service) MetricsText(ctx context.Context) (string, error) {
 }
 
 func calendarsFromEnv(env map[string]string) []Calendar {
-	var calendars []Calendar
+	calendars := []Calendar{}
 	for key, value := range env {
 		if !strings.HasPrefix(key, "ICSMCP_CALENDAR_") || value == "" {
 			continue

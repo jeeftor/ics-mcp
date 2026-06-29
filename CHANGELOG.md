@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1 - 2026-06-29
+
+### Fixed
+- Empty calendar and meeting collections now encode as `[]` instead of `null`, preventing the debug UI from failing on `groups.length` when no calendars or cached meetings exist.
+- The debug UI now defensively treats unexpected `null` list responses as empty arrays.
+
 ## v1.1.0 - 2026-06-29
 
 ### Added
