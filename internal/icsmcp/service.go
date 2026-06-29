@@ -308,6 +308,32 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	return meetings, nil
 }
 
+// UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
+func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
+	meetings, err := s.UpcomingMeetings(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	groupIndex := map[string]int{}
+	var groups []CalendarMeetingGroup
+	for _, meeting := range meetings {
+		index, ok := groupIndex[meeting.CalendarID]
+		if !ok {
+			index = len(groups)
+			groupIndex[meeting.CalendarID] = index
+			groups = append(groups, CalendarMeetingGroup{
+				CalendarID:   meeting.CalendarID,
+				CalendarName: meeting.CalendarName,
+			})
+		}
+		groups[index].Meetings = append(groups[index].Meetings, meeting)
+	}
+	slices.SortFunc(groups, func(a, b CalendarMeetingGroup) int {
+		return strings.Compare(a.CalendarName, b.CalendarName)
+	})
+	return groups, nil
+}
+
 // Status returns service state.
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	calendars, err := s.ListCalendarStatus(ctx)

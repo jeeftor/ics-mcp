@@ -7,15 +7,33 @@ import (
 	"testing"
 )
 
-func TestColorSlogHandlerColorsLevelAndKeepsAttributes(t *testing.T) {
+func TestColorSlogHandlerColorsLevelMessageKeysAndValues(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(newColorSlogHandler(&out, slog.LevelInfo))
 
 	logger.Info("server starting", "http_addr", "127.0.0.1:3333")
 
 	got := out.String()
-	if !strings.Contains(got, "\x1b[") {
-		t.Fatalf("log output does not contain ANSI color escape:\n%s", got)
+	if count := strings.Count(got, "\x1b["); count < 4 {
+		t.Fatalf("log output has %d ANSI color escapes, want at least 4:\n%s", count, got)
+	}
+	stripped := stripANSI(got)
+	for _, want := range []string{"INFO", `msg="server starting"`, "http_addr=127.0.0.1:3333"} {
+		if !strings.Contains(stripped, want) {
+			t.Fatalf("log output missing %q:\n%s", want, stripped)
+		}
+	}
+}
+
+func TestColorSlogHandlerCanDisableColor(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(newPlainSlogHandler(&out, slog.LevelInfo))
+
+	logger.Info("server starting", "http_addr", "127.0.0.1:3333")
+
+	got := out.String()
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("log output contains ANSI color escape:\n%s", got)
 	}
 	for _, want := range []string{"INFO", `msg="server starting"`, "http_addr=127.0.0.1:3333"} {
 		if !strings.Contains(got, want) {
@@ -38,4 +56,24 @@ func TestColorSlogHandlerFiltersBelowConfiguredLevel(t *testing.T) {
 	if !strings.Contains(got, "visible") {
 		t.Fatalf("log output missing warning record:\n%s", got)
 	}
+}
+
+func stripANSI(value string) string {
+	var out strings.Builder
+	inEscape := false
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if inEscape {
+			if ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' {
+				inEscape = false
+			}
+			continue
+		}
+		if ch == 0x1b {
+			inEscape = true
+			continue
+		}
+		out.WriteByte(ch)
+	}
+	return out.String()
 }

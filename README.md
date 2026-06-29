@@ -40,6 +40,7 @@ Startup calendars can be loaded from environment variables:
 ICSMCP_CALENDAR_MITRE=https://example.invalid/mitre.ics
 ICSMCP_CALENDAR_EMILY=https://example.invalid/emily.ics
 ICSMCP_LOG_LEVEL=info
+ICSMCP_LOG_COLOR=true
 ```
 
 The suffix after `ICSMCP_CALENDAR_` is the stable key. Underscores are shown as spaces by default. Calendars from `.env` and `--calendar name=url` are upserted on startup; calendars added in the UI, API, or MCP tools are not deleted just because they are absent from startup config.
@@ -58,6 +59,7 @@ After startup, SQLite is the runtime source of truth for display names, enabled 
 ## MCP Tools
 
 - `upcoming_meetings`
+- `upcoming_meetings_by_calendar`
 - `calendar_list`
 - `calendar_add`
 - `calendar_update`
@@ -65,6 +67,12 @@ After startup, SQLite is the runtime source of truth for display names, enabled 
 - `calendar_refresh`
 
 `upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead.
+
+`upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view.
+
+## Debug UI
+
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), status endpoint, calendar refresh state, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 

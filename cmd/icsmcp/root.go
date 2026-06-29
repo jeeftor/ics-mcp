@@ -54,7 +54,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logger := slog.New(newColorSlogHandler(os.Stderr, logLevel))
+			logger := slog.New(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")))
 			return runServe(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger)
 		},
 	}
@@ -62,11 +62,13 @@ func NewRootCommand() *cobra.Command {
 	serve.Flags().String("db-path", "./data/icsmcp.sqlite3", "SQLite database path")
 	serve.Flags().Duration("refresh-interval", 5*time.Minute, "Feed refresh interval")
 	serve.Flags().String("log-level", "info", "Log level: debug, info, warn, or error")
+	serve.Flags().Bool("log-color", true, "Colorize slog output")
 	serve.Flags().Var(&calendars, "calendar", "Startup calendar in name=url form; repeatable")
 	_ = viper.BindPFlag("http-addr", serve.Flags().Lookup("http-addr"))
 	_ = viper.BindPFlag("db-path", serve.Flags().Lookup("db-path"))
 	_ = viper.BindPFlag("refresh-interval", serve.Flags().Lookup("refresh-interval"))
 	_ = viper.BindPFlag("log-level", serve.Flags().Lookup("log-level"))
+	_ = viper.BindPFlag("log-color", serve.Flags().Lookup("log-color"))
 	viper.SetEnvPrefix("ICSMCP")
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()

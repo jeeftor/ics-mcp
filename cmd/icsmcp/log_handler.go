@@ -20,16 +20,26 @@ type colorSlogHandler struct {
 	attrs    []slog.Attr
 	groups   []string
 	renderer *lipgloss.Renderer
+	color    bool
 	mu       *sync.Mutex
 }
 
 func newColorSlogHandler(w io.Writer, level slog.Level) slog.Handler {
+	return newSlogHandler(w, level, true)
+}
+
+func newPlainSlogHandler(w io.Writer, level slog.Level) slog.Handler {
+	return newSlogHandler(w, level, false)
+}
+
+func newSlogHandler(w io.Writer, level slog.Level, color bool) slog.Handler {
 	renderer := lipgloss.NewRenderer(w)
 	renderer.SetColorProfile(termenv.ANSI256)
 	return &colorSlogHandler{
 		w:        w,
 		level:    level,
 		renderer: renderer,
+		color:    color,
 		mu:       &sync.Mutex{},
 	}
 }
@@ -44,12 +54,13 @@ func (h *colorSlogHandler) Handle(_ context.Context, record slog.Record) error {
 	if timestamp.IsZero() {
 		timestamp = time.Now()
 	}
-	b.WriteString("time=")
-	b.WriteString(timestamp.Format(time.RFC3339))
-	b.WriteString(" level=")
+	h.writeKeyValue(&b, "time", timestamp.Format(time.RFC3339), logValueTimestamp)
+	b.WriteByte(' ')
+	b.WriteString(h.styleKey("level"))
+	b.WriteByte('=')
 	b.WriteString(h.colorLevel(record.Level))
-	b.WriteString(" msg=")
-	b.WriteString(strconv.Quote(record.Message))
+	b.WriteByte(' ')
+	h.writeKeyValue(&b, "msg", strconv.Quote(record.Message), logValueMessage)
 	h.writeAttrs(&b, h.attrs)
 	record.Attrs(func(attr slog.Attr) bool {
 		h.writeAttr(&b, attr)
@@ -90,16 +101,17 @@ func (h *colorSlogHandler) writeAttr(b *strings.Builder, attr slog.Attr) {
 	}
 	b.WriteByte(' ')
 	if len(h.groups) > 0 {
-		b.WriteString(strings.Join(h.groups, "."))
+		b.WriteString(h.styleKey(strings.Join(h.groups, ".")))
 		b.WriteByte('.')
 	}
-	b.WriteString(attr.Key)
-	b.WriteByte('=')
-	b.WriteString(formatLogValue(attr.Value))
+	h.writeKeyValue(b, attr.Key, formatLogValue(attr.Value), logValueDefault)
 }
 
 func (h *colorSlogHandler) colorLevel(level slog.Level) string {
 	label := level.String()
+	if !h.color {
+		return label
+	}
 	switch {
 	case level <= slog.LevelDebug:
 		return h.renderer.NewStyle().Foreground(lipgloss.Color("63")).Render(label)
@@ -111,6 +123,41 @@ func (h *colorSlogHandler) colorLevel(level slog.Level) string {
 		return h.renderer.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render(label)
 	}
 }
+
+func (h *colorSlogHandler) writeKeyValue(b *strings.Builder, key string, value string, kind logValueKind) {
+	b.WriteString(h.styleKey(key))
+	b.WriteByte('=')
+	b.WriteString(h.styleValue(value, kind))
+}
+
+func (h *colorSlogHandler) styleKey(key string) string {
+	if !h.color {
+		return key
+	}
+	return h.renderer.NewStyle().Foreground(lipgloss.Color("75")).Render(key)
+}
+
+func (h *colorSlogHandler) styleValue(value string, kind logValueKind) string {
+	if !h.color {
+		return value
+	}
+	switch kind {
+	case logValueTimestamp:
+		return h.renderer.NewStyle().Foreground(lipgloss.Color("244")).Render(value)
+	case logValueMessage:
+		return h.renderer.NewStyle().Foreground(lipgloss.Color("229")).Bold(true).Render(value)
+	default:
+		return h.renderer.NewStyle().Foreground(lipgloss.Color("159")).Render(value)
+	}
+}
+
+type logValueKind int
+
+const (
+	logValueDefault logValueKind = iota
+	logValueTimestamp
+	logValueMessage
+)
 
 func formatLogValue(value slog.Value) string {
 	switch value.Kind() {
