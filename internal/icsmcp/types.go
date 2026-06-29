@@ -45,14 +45,16 @@ type UpdateCalendarInput struct {
 
 // EventInstance is a normalized event occurrence stored in SQLite.
 type EventInstance struct {
-	ID           string    `json:"id"`
-	CalendarID   string    `json:"calendar_id"`
-	CalendarName string    `json:"calendar_name"`
-	UID          string    `json:"uid"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Start        time.Time `json:"start_time"`
-	End          time.Time `json:"end_time"`
+	ID             string    `json:"id"`
+	CalendarID     string    `json:"calendar_id"`
+	CalendarName   string    `json:"calendar_name"`
+	UID            string    `json:"uid"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	MeetingURL     string    `json:"meeting_url"`
+	MeetingURLType string    `json:"meeting_url_type"`
+	Start          time.Time `json:"start_time"`
+	End            time.Time `json:"end_time"`
 }
 
 // UpcomingQuery controls upcoming meeting lookup.
@@ -82,6 +84,8 @@ type Meeting struct {
 	DurationMinutes int       `json:"duration_minutes"`
 	Name            string    `json:"name"`
 	Description     string    `json:"description"`
+	MeetingURL      string    `json:"meeting_url,omitempty"`
+	MeetingURLType  string    `json:"meeting_url_type,omitempty"`
 	CalendarID      string    `json:"calendar_id"`
 	CalendarName    string    `json:"calendar_name"`
 	Ongoing         bool      `json:"ongoing"`

@@ -70,6 +70,23 @@ func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	}
 }
 
+func TestParseICSExtractsOnlineMeetingURL(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleTeamsICS(), now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].MeetingURL != "https://teams.microsoft.com/l/meetup-join/abc123" {
+		t.Fatalf("meeting URL = %q", events[0].MeetingURL)
+	}
+	if events[0].MeetingURLType != "teams" {
+		t.Fatalf("meeting URL type = %q", events[0].MeetingURLType)
+	}
+}
+
 func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -91,12 +108,14 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 		})
 	}
 	events = append(events, EventInstance{
-		CalendarID:   cal.ID,
-		CalendarName: cal.Name,
-		Name:         "In Progress",
-		Description:  "A long meeting description that should not be returned by default.",
-		Start:        now.Add(-15 * time.Minute),
-		End:          now.Add(15 * time.Minute),
+		CalendarID:     cal.ID,
+		CalendarName:   cal.Name,
+		Name:           "In Progress",
+		Description:    "A long meeting description that should not be returned by default.",
+		MeetingURL:     "https://teams.microsoft.com/l/meetup-join/abc123",
+		MeetingURLType: "teams",
+		Start:          now.Add(-15 * time.Minute),
+		End:            now.Add(15 * time.Minute),
 	})
 	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
 		t.Fatalf("ReplaceEvents() error = %v", err)
@@ -117,6 +136,9 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	}
 	if got[0].Description != "" {
 		t.Fatalf("default description = %q, want empty", got[0].Description)
+	}
+	if got[0].MeetingURL != "https://teams.microsoft.com/l/meetup-join/abc123" || got[0].MeetingURLType != "teams" {
+		t.Fatalf("meeting URL fields = %q %q", got[0].MeetingURL, got[0].MeetingURLType)
 	}
 	if !slices.IsSortedFunc(got, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)

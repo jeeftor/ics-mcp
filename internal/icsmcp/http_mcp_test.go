@@ -300,3 +300,17 @@ func sampleRecurringICS() string {
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 }
+
+func sampleTeamsICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:teams-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260629T130000Z\r\n" +
+		"DTEND:20260629T140000Z\r\n" +
+		"SUMMARY:Teams Planning\r\n" +
+		"DESCRIPTION:Join: https://teams.microsoft.com/l/meetup-join/abc123\\nOther: https://example.invalid/noise\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}

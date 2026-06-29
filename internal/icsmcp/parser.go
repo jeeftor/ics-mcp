@@ -32,13 +32,16 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 		if uid == "" {
 			uid = uuid.NewString()
 		}
+		meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
 		events = append(events, EventInstance{
-			ID:          uuid.NewString(),
-			UID:         uid,
-			Name:        name,
-			Description: parsed.Description,
-			Start:       parsed.Start.UTC(),
-			End:         parsed.End.UTC(),
+			ID:             uuid.NewString(),
+			UID:            uid,
+			Name:           name,
+			Description:    parsed.Description,
+			MeetingURL:     meetingURL,
+			MeetingURLType: meetingURLType,
+			Start:          parsed.Start.UTC(),
+			End:            parsed.End.UTC(),
 		})
 	}
 	return events, nil
