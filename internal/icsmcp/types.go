@@ -57,10 +57,12 @@ type EventInstance struct {
 
 // UpcomingQuery controls upcoming meeting lookup.
 type UpcomingQuery struct {
-	Now           time.Time `json:"-"`
-	Limit         int       `json:"limit,omitempty"`
-	CalendarIDs   []string  `json:"calendar_ids,omitempty"`
-	LookaheadDays int       `json:"lookahead_days,omitempty"`
+	Now                 time.Time `json:"-"`
+	Limit               int       `json:"limit,omitempty"`
+	CalendarIDs         []string  `json:"calendar_ids,omitempty"`
+	LookaheadDays       int       `json:"lookahead_days,omitempty"`
+	IncludeDescription  bool      `json:"include_description,omitempty"`
+	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
 }
 
 // upcomingDefaults resolves default query limits.

@@ -94,6 +94,7 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 		CalendarID:   cal.ID,
 		CalendarName: cal.Name,
 		Name:         "In Progress",
+		Description:  "A long meeting description that should not be returned by default.",
 		Start:        now.Add(-15 * time.Minute),
 		End:          now.Add(15 * time.Minute),
 	})
@@ -111,10 +112,24 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	if got[0].Name != "In Progress" || !got[0].Ongoing {
 		t.Fatalf("first meeting = %#v, want ongoing meeting first", got[0])
 	}
+	if got[0].Day != "Mon" {
+		t.Fatalf("day label = %q, want Mon", got[0].Day)
+	}
+	if got[0].Description != "" {
+		t.Fatalf("default description = %q, want empty", got[0].Description)
+	}
 	if !slices.IsSortedFunc(got, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	}) {
 		t.Fatalf("meetings are not sorted by start time: %#v", got)
+	}
+
+	withDescription, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 1, IncludeDescription: true, DescriptionMaxChars: 12})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(include description) error = %v", err)
+	}
+	if withDescription[0].Description != "A long meeti..." {
+		t.Fatalf("opt-in description = %q, want truncated description", withDescription[0].Description)
 	}
 }
 
