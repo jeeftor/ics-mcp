@@ -1,16 +1,18 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 - 2026-06-29
 
 ### Added
 - `icsmcp version` command and build metadata in `/api/status`, MCP server metadata, and the debug UI.
 - Health, readiness, and Prometheus-compatible metrics endpoints at `/healthz`, `/readyz`, and `/metrics`.
 - Calendar feed validation through `POST /api/calendars/validate`, the `calendar_validate` MCP tool, and the debug tool runner.
 - Meeting filters for `query`, `only_ongoing`, `exclude_all_day`, `after`, and `before`.
+- Docker Compose example and clearer Docker deployment notes.
 
 ### Improved
 - Release builds now inject version, commit, and build date into GoReleaser archives/images and raw binaries.
 - The debug UI links the health and metrics endpoints and displays the running version.
+- GitHub Actions release workflow pins current action and GoReleaser versions to avoid deprecation and floating-version warnings.
 
 ## v1.0.0 - 2026-06-29
 
