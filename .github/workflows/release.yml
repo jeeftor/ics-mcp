@@ -111,3 +111,49 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${GITHUB_REF_NAME}" dist/raw/* --clobber
+
+  release-notes:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: raw-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Build release notes from changelog
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          notes="dist/release-notes.md"
+          section="dist/changelog-section.md"
+          mkdir -p dist
+          awk -v tag="${tag}" '
+            $0 == "## " tag || index($0, "## " tag " - ") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "${section}"
+          if [ -s "${section}" ]; then
+            {
+              echo "## ${tag}"
+              cat "${section}"
+            } > "${notes}"
+          else
+            {
+              echo "## ${tag}"
+              echo
+              echo "See CHANGELOG.md for release details."
+            } > "${notes}"
+          fi
+          {
+            echo
+            echo "### Artifacts"
+            echo "- Docker images: \`ghcr.io/jeeftor/ics-mcp:${version}\` and \`ghcr.io/jeeftor/ics-mcp:latest\`"
+            echo "- Multi-arch Docker platforms: \`linux/amd64\`, \`linux/arm64\`"
+            echo "- Raw binaries and archives are attached for Linux, macOS, and Windows on amd64/arm64."
+          } >> "${notes}"
+
+      - name: Update GitHub release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --notes-file dist/release-notes.md
