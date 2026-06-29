@@ -11,14 +11,17 @@ import (
 func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 	var out strings.Builder
 
-	printStartupInfo(&out, "127.0.0.1:3333")
+	printStartupInfo(&out, "127.0.0.1:3333", "America/Denver", "https://ics-mcp.example.net")
 
 	got := out.String()
 	for _, want := range []string{
 		"ICS MCP server listening on 127.0.0.1:3333",
+		"Display timezone: America/Denver",
 		"Admin UI: http://127.0.0.1:3333/",
 		"MCP endpoint: http://127.0.0.1:3333/mcp",
 		"Status API: http://127.0.0.1:3333/api/status",
+		"External URL: https://ics-mcp.example.net",
+		"External MCP endpoint: https://ics-mcp.example.net/mcp",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("startup output missing %q:\n%s", want, got)

@@ -25,6 +25,8 @@ type ServiceOptions struct {
 	HTTPClient      *http.Client
 	Logger          *slog.Logger
 	BuildInfo       BuildInfo
+	Timezone        string
+	ExternalURL     string
 }
 
 // Service coordinates calendar config, refreshes, and meeting queries.
@@ -35,6 +37,9 @@ type Service struct {
 	httpClient      *http.Client
 	logger          *slog.Logger
 	buildInfo       BuildInfo
+	location        *time.Location
+	timezone        string
+	externalURL     string
 	clockMu         sync.RWMutex
 	clock           func() time.Time
 }
@@ -53,6 +58,7 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	location, timezone := resolveLocation(opts.Timezone)
 	return &Service{
 		store:           store,
 		refreshInterval: opts.RefreshInterval,
@@ -60,8 +66,30 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		httpClient:      opts.HTTPClient,
 		logger:          opts.Logger,
 		buildInfo:       normalizeBuildInfo(opts.BuildInfo),
+		location:        location,
+		timezone:        timezone,
+		externalURL:     normalizeExternalURL(opts.ExternalURL),
 		clock:           time.Now,
 	}
+}
+
+func normalizeExternalURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
+func resolveLocation(value string) (*time.Location, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = strings.TrimSpace(os.Getenv("TZ"))
+	}
+	if value == "" {
+		return time.Local, time.Local.String()
+	}
+	location, err := time.LoadLocation(value)
+	if err != nil {
+		return time.Local, time.Local.String()
+	}
+	return location, value
 }
 
 func normalizeBuildInfo(in BuildInfo) BuildInfo {
@@ -128,6 +156,18 @@ func (s *Service) AddCalendar(ctx context.Context, in AddCalendarInput) (Calenda
 	}
 	s.logger.Info("calendar saved", "calendar_id", saved.ID, "key", saved.Key, "name", saved.Name, "enabled", saved.Enabled)
 	return saved, nil
+}
+
+// AddCalendarAndRefresh creates or updates a calendar and attempts an immediate refresh.
+func (s *Service) AddCalendarAndRefresh(ctx context.Context, in AddCalendarInput) (Calendar, error) {
+	cal, err := s.AddCalendar(ctx, in)
+	if err != nil {
+		return Calendar{}, err
+	}
+	if err := s.RefreshCalendar(ctx, cal.ID, s.now()); err != nil {
+		s.logger.Warn("calendar add refresh failed", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name, "error", err)
+	}
+	return cal, nil
 }
 
 // ListCalendars returns configured calendars.
@@ -271,6 +311,30 @@ func (s *Service) RefreshDueCalendars(ctx context.Context) {
 	}
 }
 
+// RefreshAllCalendars refreshes every enabled calendar and returns a per-calendar summary.
+func (s *Service) RefreshAllCalendars(ctx context.Context) ([]RefreshCalendarResult, error) {
+	statuses, err := s.ListCalendarStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]RefreshCalendarResult, 0, len(statuses))
+	now := s.now()
+	for _, status := range statuses {
+		if !status.Enabled {
+			results = append(results, RefreshCalendarResult{CalendarID: status.ID, CalendarName: status.Name, OK: true, Skipped: true})
+			continue
+		}
+		result := RefreshCalendarResult{CalendarID: status.ID, CalendarName: status.Name}
+		if err := s.RefreshCalendar(ctx, status.ID, now); err != nil {
+			result.Error = err.Error()
+		} else {
+			result.OK = true
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
 // RunRefresher refreshes due calendars until the context is canceled.
 func (s *Service) RunRefresher(ctx context.Context) {
 	s.logger.Info("calendar refresher started", "refresh_interval", s.refreshInterval.String())
@@ -296,7 +360,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	if err != nil {
 		return nil, err
 	}
-	meetings := filterMeetings(meetingsFromEvents(events, now, query), query)
+	meetings := filterMeetings(s.meetingsFromEvents(events, now, query), query)
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})
@@ -313,7 +377,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	if err != nil {
 		return nil, err
 	}
-	meetings := filterMeetings(meetingsFromEvents(events, now, query), query)
+	meetings := filterMeetings(s.meetingsFromEvents(events, now, query), query)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
 	groups := []CalendarMeetingGroup{}
@@ -350,15 +414,18 @@ func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
 	return now, lookaheadDays
 }
 
-func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery) []Meeting {
+func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery) []Meeting {
 	meetings := make([]Meeting, 0, len(events))
 	for _, event := range events {
 		ongoing := event.Start.Before(now) && event.End.After(now)
+		localStart := event.Start.In(s.location)
+		localEnd := event.End.In(s.location)
 		meetings = append(meetings, Meeting{
-			Day:             event.Start.Format("Mon"),
-			Date:            event.Start.Format("2006-01-02"),
-			Start:           event.Start.Format("15:04"),
-			End:             event.End.Format("15:04"),
+			Day:             localStart.Format("Mon"),
+			Date:            localStart.Format("2006-01-02"),
+			Start:           localStart.Format("15:04"),
+			End:             localEnd.Format("15:04"),
+			Timezone:        s.timezone,
 			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
 			Name:            event.Name,
 			Description:     meetingDescription(event.Description, query),
@@ -367,6 +434,8 @@ func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQue
 			CalendarID:      event.CalendarID,
 			CalendarName:    event.CalendarName,
 			Ongoing:         ongoing,
+			AllDay:          event.AllDay,
+			Cancelled:       event.Cancelled,
 			StartTime:       event.Start,
 		})
 	}
@@ -374,7 +443,7 @@ func meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQue
 }
 
 func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
-	if query.Query == "" && !query.OnlyOngoing && !query.ExcludeAllDay && query.After.IsZero() && query.Before.IsZero() {
+	if query.Query == "" && !query.OnlyOngoing && !query.ExcludeAllDay && !query.ExcludeCancelled && query.After.IsZero() && query.Before.IsZero() {
 		return meetings
 	}
 	search := strings.ToLower(strings.TrimSpace(query.Query))
@@ -386,7 +455,10 @@ func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
 		if query.OnlyOngoing && !meeting.Ongoing {
 			continue
 		}
-		if query.ExcludeAllDay && meeting.DurationMinutes >= 23*60 {
+		if query.ExcludeAllDay && meeting.AllDay {
+			continue
+		}
+		if query.ExcludeCancelled && meeting.Cancelled {
 			continue
 		}
 		if !query.After.IsZero() && meeting.StartTime.Before(query.After) {
@@ -421,7 +493,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{Now: s.now(), Version: s.buildInfo, Calendars: calendars}, nil
+	return Status{Now: s.now(), Version: s.buildInfo, Timezone: s.timezone, ExternalURL: s.externalURL, Calendars: calendars}, nil
 }
 
 // ValidateCalendar fetches and parses an ICS feed without saving it.
@@ -466,7 +538,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if limit <= 0 {
 		limit = 10
 	}
-	meetings := meetingsFromEvents(events, now, UpcomingQuery{})
+	meetings := s.meetingsFromEvents(events, now, UpcomingQuery{})
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})

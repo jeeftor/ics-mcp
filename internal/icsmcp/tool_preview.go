@@ -31,14 +31,25 @@ type ToolCallResponse struct {
 // ToolInfos returns the MCP tools exposed by this server.
 func ToolInfos() []ToolInfo {
 	return []ToolInfo{
-		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings by time. Supports query, time, ongoing, and all-day filters; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"query":"","only_ongoing":false,"exclude_all_day":false,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "query": "", "only_ongoing": false, "exclude_all_day": false, "include_description": false}},
-		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"query":"","include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "query": "", "include_description": false}},
+		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings by time. Supports query, time, ongoing, all-day, and cancelled filters; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"query":"","only_ongoing":false,"exclude_all_day":false,"exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "query": "", "only_ongoing": false, "exclude_all_day": false, "exclude_cancelled": true, "include_description": false}},
+		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"query":"","exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "query": "", "exclude_cancelled": true, "include_description": false}},
+		{Name: "meeting_agenda", Description: "List upcoming meeting-focused items, excluding all-day and cancelled events.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "include_description": false}},
+		{Name: "current_meetings", Description: "List meetings currently in progress.", Category: "read", ReadOnly: true, InputExample: `{"exclude_all_day":true,"exclude_cancelled":true}`, DefaultArguments: map[string]any{"exclude_all_day": true, "exclude_cancelled": true}},
+		{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings.", Category: "read", ReadOnly: true, InputExample: `{"query":"planning","limit":10,"exclude_cancelled":true}`, DefaultArguments: map[string]any{"query": "", "limit": 10, "exclude_cancelled": true}},
+		{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "calendar_list", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "calendar_add", Description: "Add or upsert an ICS calendar.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
+		{Name: "validate_calendar", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
 		{Name: "calendar_validate", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
+		{Name: "update_calendar", Description: "Rename, enable, disable, or update a calendar URL.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed"}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
 		{Name: "calendar_update", Description: "Rename, enable, disable, or update a calendar URL.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed"}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
+		{Name: "remove_calendar", Description: "Remove a calendar and its cached events.", Category: "admin", Destructive: true, InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
 		{Name: "calendar_remove", Description: "Remove a calendar and its cached events.", Category: "admin", Destructive: true, InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
+		{Name: "refresh_calendar", Description: "Refresh a calendar feed now.", Category: "admin", InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
 		{Name: "calendar_refresh", Description: "Refresh a calendar feed now.", Category: "admin", InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
+		{Name: "refresh_all_calendars", Description: "Refresh all enabled calendar feeds now.", Category: "admin", InputExample: `{}`, DefaultArguments: map[string]any{}},
 	}
 }
 
@@ -59,42 +70,72 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 		return ToolCallResponse{Tool: name, Result: groupedMeetingsOutput{Calendars: groups}}, err
-	case "calendar_list":
+	case "meeting_agenda":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		in.ExcludeAllDay = true
+		in.ExcludeCancelled = true
+		meetings, err := svc.UpcomingMeetings(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "current_meetings":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		in.OnlyOngoing = true
+		meetings, err := svc.UpcomingMeetings(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "search_meetings":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		meetings, err := svc.UpcomingMeetings(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "server_status":
+		status, err := svc.Status(ctx)
+		return ToolCallResponse{Tool: name, Result: statusOutput{Status: status}}, err
+	case "calendar_list", "list_calendars":
 		calendars, err := svc.ListCalendarStatus(ctx)
 		return ToolCallResponse{Tool: name, Result: calendarsOutput{Calendars: calendars}}, err
-	case "calendar_add":
+	case "calendar_add", "add_calendar":
 		var in AddCalendarInput
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
-		cal, err := svc.AddCalendar(ctx, in)
+		cal, err := svc.AddCalendarAndRefresh(ctx, in)
 		return ToolCallResponse{Tool: name, Result: calendarOutput{Calendar: cal}}, err
-	case "calendar_validate":
+	case "calendar_validate", "validate_calendar":
 		var in ValidateCalendarInput
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
 		result, err := svc.ValidateCalendar(ctx, in)
 		return ToolCallResponse{Tool: name, Result: result}, err
-	case "calendar_update":
+	case "calendar_update", "update_calendar":
 		var in updateInput
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
 		cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled})
 		return ToolCallResponse{Tool: name, Result: calendarOutput{Calendar: cal}}, err
-	case "calendar_remove":
+	case "calendar_remove", "remove_calendar":
 		var in removeInput
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
 		return ToolCallResponse{Tool: name, Result: okOutput{OK: true}}, svc.RemoveCalendar(ctx, in.ID)
-	case "calendar_refresh":
+	case "calendar_refresh", "refresh_calendar":
 		var in refreshInput
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
 		return ToolCallResponse{Tool: name, Result: okOutput{OK: true}}, svc.RefreshCalendar(ctx, in.ID, svc.now())
+	case "refresh_all_calendars":
+		results, err := svc.RefreshAllCalendars(ctx)
+		return ToolCallResponse{Tool: name, Result: refreshAllOutput{Results: results}}, err
 	default:
 		return ToolCallResponse{}, fmt.Errorf("unknown tool %q", name)
 	}

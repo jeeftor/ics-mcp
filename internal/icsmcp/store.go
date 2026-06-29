@@ -65,11 +65,15 @@ func (s *Store) migrate(ctx context.Context) error {
 			description TEXT NOT NULL,
 			meeting_url TEXT NOT NULL DEFAULT '',
 			meeting_url_type TEXT NOT NULL DEFAULT '',
+			cancelled INTEGER NOT NULL DEFAULT 0,
+			all_day INTEGER NOT NULL DEFAULT 0,
 			start_time TEXT NOT NULL,
 			end_time TEXT NOT NULL
 		)`,
 		`ALTER TABLE events ADD COLUMN meeting_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE events ADD COLUMN meeting_url_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE events ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE events ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time)`,
 	}
 	for _, stmt := range stmts {
@@ -191,8 +195,8 @@ func (s *Store) replaceEvents(ctx context.Context, calendarID string, events []E
 		return fmt.Errorf("clear events: %w", err)
 	}
 	for _, event := range events {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO events (id, calendar_id, uid, name, description, meeting_url, meeting_url_type, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			event.ID, calendarID, event.UID, event.Name, event.Description, event.MeetingURL, event.MeetingURLType, event.Start.UTC().Format(time.RFC3339Nano), event.End.UTC().Format(time.RFC3339Nano)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO events (id, calendar_id, uid, name, description, meeting_url, meeting_url_type, cancelled, all_day, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			event.ID, calendarID, event.UID, event.Name, event.Description, event.MeetingURL, event.MeetingURLType, boolInt(event.Cancelled), boolInt(event.AllDay), event.Start.UTC().Format(time.RFC3339Nano), event.End.UTC().Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 	}
@@ -203,7 +207,7 @@ func (s *Store) replaceEvents(ctx context.Context, calendarID string, events []E
 }
 
 func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarIDs []string, limit int) ([]EventInstance, error) {
-	query := `SELECT e.id, e.calendar_id, c.name, e.uid, e.name, e.description, e.meeting_url, e.meeting_url_type, e.start_time, e.end_time
+	query := `SELECT e.id, e.calendar_id, c.name, e.uid, e.name, e.description, e.meeting_url, e.meeting_url_type, e.cancelled, e.all_day, e.start_time, e.end_time
 		FROM events e JOIN calendars c ON c.id = e.calendar_id
 		WHERE c.enabled = 1 AND e.end_time > ? AND e.start_time <= ?`
 	args := []any{now.UTC().Format(time.RFC3339Nano), until.UTC().Format(time.RFC3339Nano)}
@@ -225,9 +229,12 @@ func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarI
 	for rows.Next() {
 		var start, end string
 		var event EventInstance
-		if err := rows.Scan(&event.ID, &event.CalendarID, &event.CalendarName, &event.UID, &event.Name, &event.Description, &event.MeetingURL, &event.MeetingURLType, &start, &end); err != nil {
+		var cancelled, allDay int
+		if err := rows.Scan(&event.ID, &event.CalendarID, &event.CalendarName, &event.UID, &event.Name, &event.Description, &event.MeetingURL, &event.MeetingURLType, &cancelled, &allDay, &start, &end); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
+		event.Cancelled = cancelled == 1
+		event.AllDay = allDay == 1
 		var err error
 		event.Start, err = time.Parse(time.RFC3339Nano, start)
 		if err != nil {

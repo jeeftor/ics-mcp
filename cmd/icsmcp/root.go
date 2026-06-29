@@ -66,6 +66,8 @@ func NewRootCommand() *cobra.Command {
 			httpAddr := viper.GetString("http-addr")
 			dbPath := resolveDBPath(configDir, viper.GetString("db-path"))
 			refreshInterval := viper.GetDuration("refresh-interval")
+			timezone := viper.GetString("timezone")
+			externalURL := viper.GetString("external-url")
 			logLevel, err := parseLogLevel(viper.GetString("log-level"))
 			if err != nil {
 				return err
@@ -75,13 +77,15 @@ func NewRootCommand() *cobra.Command {
 				Version: Version,
 				Commit:  Commit,
 				Date:    Date,
-			})
+			}, timezone, externalURL)
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
 	serve.Flags().String("config-dir", "./data", "Directory for persistent config, SQLite state, and optional .env")
 	serve.Flags().String("db-path", "", "SQLite database path override")
 	serve.Flags().Duration("refresh-interval", 5*time.Minute, "Feed refresh interval")
+	serve.Flags().String("timezone", "", "Display timezone for meeting output, for example America/Denver; defaults to ICSMCP_TIMEZONE, TZ, or local time")
+	serve.Flags().String("external-url", "", "External base URL shown in the admin setup UI, for example https://ics-mcp.example.net")
 	serve.Flags().String("log-level", "info", "Log level: debug, info, warn, or error")
 	serve.Flags().Bool("log-color", true, "Colorize slog output")
 	serve.Flags().Var(&calendars, "calendar", "Startup calendar in name=url form; repeatable")
@@ -89,6 +93,8 @@ func NewRootCommand() *cobra.Command {
 	_ = viper.BindPFlag("config-dir", serve.Flags().Lookup("config-dir"))
 	_ = viper.BindPFlag("db-path", serve.Flags().Lookup("db-path"))
 	_ = viper.BindPFlag("refresh-interval", serve.Flags().Lookup("refresh-interval"))
+	_ = viper.BindPFlag("timezone", serve.Flags().Lookup("timezone"))
+	_ = viper.BindPFlag("external-url", serve.Flags().Lookup("external-url"))
 	_ = viper.BindPFlag("log-level", serve.Flags().Lookup("log-level"))
 	_ = viper.BindPFlag("log-color", serve.Flags().Lookup("log-color"))
 	viper.SetEnvPrefix("ICSMCP")
@@ -115,7 +121,7 @@ func resolveDBPath(configDir string, dbPath string) string {
 	return filepath.Join(configDir, "icsmcp.sqlite3")
 }
 
-func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo) error {
+func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
@@ -124,7 +130,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}
@@ -138,8 +144,12 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		Handler:           app.NewHTTPHandler(svc, app.NewMCPServer(svc)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	printStartupInfo(os.Stdout, httpAddr)
-	logger.Info("server starting", "http_addr", httpAddr, "db_path", dbPath, "refresh_interval", refreshInterval.String())
+	status, err := svc.Status(ctx)
+	if err != nil {
+		return err
+	}
+	printStartupInfo(os.Stdout, httpAddr, status.Timezone, status.ExternalURL)
+	logger.Info("server starting", "http_addr", httpAddr, "db_path", dbPath, "refresh_interval", refreshInterval.String(), "timezone", status.Timezone, "external_url", status.ExternalURL)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -167,12 +177,17 @@ func parseLogLevel(value string) (slog.Level, error) {
 	}
 }
 
-func printStartupInfo(w io.Writer, httpAddr string) {
+func printStartupInfo(w io.Writer, httpAddr string, timezone string, externalURL string) {
 	baseURL := "http://" + httpAddr
 	if _, err := fmt.Fprintf(w, "ICS MCP server listening on %s\n", httpAddr); err != nil {
 		return
 	}
+	_, _ = fmt.Fprintf(w, "Display timezone: %s\n", timezone)
 	_, _ = fmt.Fprintf(w, "Admin UI: %s/\n", baseURL)
 	_, _ = fmt.Fprintf(w, "MCP endpoint: %s/mcp\n", baseURL)
 	_, _ = fmt.Fprintf(w, "Status API: %s/api/status\n", baseURL)
+	if externalURL != "" {
+		_, _ = fmt.Fprintf(w, "External URL: %s\n", externalURL)
+		_, _ = fmt.Fprintf(w, "External MCP endpoint: %s/mcp\n", externalURL)
+	}
 }
