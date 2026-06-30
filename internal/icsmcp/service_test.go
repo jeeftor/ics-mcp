@@ -1598,7 +1598,7 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 				t.Fatalf("insert corrupt event error = %v", err)
 			}
 
-			_, err = svc.store.queryEvents(ctx, time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC), time.Date(2026, 6, 29, 17, 0, 0, 0, time.UTC), nil, 10, false)
+			_, err = svc.store.queryEvents(ctx, time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC), time.Date(2026, 6, 29, 17, 0, 0, 0, time.UTC), nil, 10, false, false)
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 				t.Fatalf("queryEvents() error = %v, want %q", err, tc.wantError)
 			}
@@ -1622,7 +1622,7 @@ func TestStoreQueryEventsReportsScanFailuresWithContext(t *testing.T) {
 		t.Fatalf("insert corrupt event error = %v", err)
 	}
 
-	_, err = svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), nil, 10, false)
+	_, err = svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), nil, 10, false, false)
 	if err == nil || !strings.Contains(err.Error(), "scan event") {
 		t.Fatalf("queryEvents() error = %v, want scan event context", err)
 	}
@@ -1890,7 +1890,7 @@ func TestStoreReplaceEventsRollsBackPartialInsertFailure(t *testing.T) {
 	if err := svc.store.replaceEvents(ctx, cal.ID, events); err == nil {
 		t.Fatalf("replaceEvents() error = nil, want duplicate insert error")
 	}
-	cached, err := svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), []string{cal.ID}, 10, true)
+	cached, err := svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), []string{cal.ID}, 10, true, false)
 	if err != nil {
 		t.Fatalf("queryEvents() error = %v", err)
 	}
@@ -2526,6 +2526,14 @@ func TestDisabledCalendarsDoNotReturnCachedMeetings(t *testing.T) {
 	}
 	if len(meetings) != 0 {
 		t.Fatalf("disabled calendar meetings = %#v, want none", meetings)
+	}
+
+	explicitMeetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, CalendarIDs: []string{cal.ID}, IncludeDisabled: true})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(include disabled) error = %v", err)
+	}
+	if len(explicitMeetings) != 1 || explicitMeetings[0].Name != "Hidden Meeting" {
+		t.Fatalf("explicit disabled calendar meetings = %#v", explicitMeetings)
 	}
 }
 

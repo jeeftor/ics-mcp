@@ -36,7 +36,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -223,6 +223,143 @@ func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
 	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &defaultMeetings)
 	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
 		t.Fatalf("default meeting names after bulk selection = %#v", got)
+	}
+}
+
+func TestHTTPAndMCPCanExplicitlyQueryDisabledCalendars(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "disabled", Name: "Disabled", URL: "https://example.test/disabled.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		ID:    "disabled-1",
+		UID:   "disabled-uid",
+		Name:  "Disabled Planning",
+		Start: now.Add(time.Hour),
+		End:   now.Add(2 * time.Hour),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	if _, err := svc.UpdateCalendar(ctx, cal.ID, UpdateCalendarInput{Enabled: ptr(false)}); err != nil {
+		t.Fatalf("UpdateCalendar(disable) error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var hidden []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/events?calendar_id="+cal.ID+"&detail=full", nil, &hidden)
+	if len(hidden) != 0 {
+		t.Fatalf("disabled calendar without opt-in = %#v, want none", hidden)
+	}
+
+	var events []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/events?calendar_id="+cal.ID+"&include_disabled=true&detail=full", nil, &events)
+	if len(events) != 1 || events[0].Name != "Disabled Planning" {
+		t.Fatalf("disabled calendar with opt-in = %#v", events)
+	}
+
+	resp, err := PreviewToolCall(ctx, svc, "upcoming_meetings", rawJSON(t, UpcomingQuery{Now: now, CalendarIDs: []string{cal.ID}, IncludeDisabled: true, Detail: "full"}))
+	if err != nil {
+		t.Fatalf("PreviewToolCall(include disabled) error = %v", err)
+	}
+	out, ok := resp.Result.(meetingsOutput)
+	if !ok || len(out.Meetings) != 1 || out.Meetings[0].Name != "Disabled Planning" {
+		t.Fatalf("MCP-style disabled calendar query = %#v", resp)
+	}
+}
+
+func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		ID:         "planning",
+		UID:        "planning",
+		Name:       "Planning",
+		Start:      now.Add(time.Hour),
+		End:        now.Add(2 * time.Hour),
+		MeetingURL: "https://meet.example.test/planning",
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var rest meetingsOutput
+	doJSON(t, http.MethodGet, server.URL+"/api/rest/upcoming_meetings?limit=10&detail=full", nil, &rest)
+	if len(rest.Meetings) != 1 || rest.Meetings[0].Name != "Planning" {
+		t.Fatalf("rest upcoming meetings = %#v", rest)
+	}
+
+	var search meetingsOutput
+	doJSON(t, http.MethodGet, server.URL+"/api/rest/search_meetings?query=plan", nil, &search)
+	if len(search.Meetings) != 1 || search.Meetings[0].Name != "Planning" {
+		t.Fatalf("rest search meetings = %#v", search)
+	}
+
+	var updated calendarOutput
+	doJSON(t, http.MethodPost, server.URL+"/api/rest/update_calendar", updateInput{ID: cal.ID, Name: "Updated Work"}, &updated)
+	if updated.Calendar.Name != "Updated Work" {
+		t.Fatalf("rest update = %#v, want renamed calendar", updated)
+	}
+
+	var events []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/events?limit=10&detail=full", nil, &events)
+	if len(events) != 1 || events[0].Name != "Planning" {
+		t.Fatalf("events alias = %#v", events)
+	}
+
+	var calendarEvents []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars/"+cal.ID+"/events?limit=10&detail=full", nil, &calendarEvents)
+	if len(calendarEvents) != 1 || calendarEvents[0].CalendarID != cal.ID {
+		t.Fatalf("calendar events alias = %#v", calendarEvents)
+	}
+
+	var today []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars/"+cal.ID+"/today?detail=full", nil, &today)
+	if len(today) != 1 || today[0].Name != "Planning" {
+		t.Fatalf("calendar today alias = %#v", today)
+	}
+
+	mdBody, mdContentType := doText(t, http.MethodGet, server.URL+"/api/events/today.md", nil, "")
+	if !strings.Contains(mdContentType, "text/markdown") || !strings.Contains(mdBody, "# Meetings") || !strings.Contains(mdBody, "Planning") {
+		t.Fatalf("markdown response content-type=%q body=%s", mdContentType, mdBody)
+	}
+
+	txtBody, txtContentType := doText(t, http.MethodGet, server.URL+"/api/events/next?format=txt", nil, "")
+	if !strings.Contains(txtContentType, "text/plain") || !strings.Contains(txtBody, "Planning") {
+		t.Fatalf("text response content-type=%q body=%s", txtContentType, txtBody)
+	}
+
+	htmlBody, htmlContentType := doText(t, http.MethodGet, server.URL+"/api/events/by-calendar", nil, "text/html")
+	if !strings.Contains(htmlContentType, "text/html") || !strings.Contains(htmlBody, "<html") || !strings.Contains(htmlBody, "Planning") {
+		t.Fatalf("html response content-type=%q body=%s", htmlContentType, htmlBody)
+	}
+
+	asciiBody, asciiContentType := doText(t, http.MethodGet, server.URL+"/api/free-busy.ascii", nil, "")
+	if !strings.Contains(asciiContentType, "text/plain") || !strings.Contains(asciiBody, "Work") {
+		t.Fatalf("ascii response content-type=%q body=%s", asciiContentType, asciiBody)
+	}
+
+	var spec map[string]any
+	doJSON(t, http.MethodGet, server.URL+"/openapi.json", nil, &spec)
+	paths, ok := spec["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("openapi paths = %#v", spec["paths"])
+	}
+	for _, want := range []string{"/api/rest/{tool_name}", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events"} {
+		if _, ok := paths[want]; !ok {
+			t.Fatalf("openapi paths missing %q: %#v", want, paths)
+		}
 	}
 }
 
@@ -429,7 +566,7 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&window=today_tomorrow&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&include_links=false&links_only=true&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&calendar=side&query=plan&range=today_tomorrow&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&include_links=false&links_only=true&include_disabled=true&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
@@ -438,10 +575,10 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Window != "today_tomorrow" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Sort != "agenda" {
 		t.Fatalf("basic query fields = %#v", query)
 	}
-	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
+	if !slices.Equal(query.CalendarIDs, []string{"work", "home", "side"}) {
 		t.Fatalf("calendar ids = %#v", query.CalendarIDs)
 	}
-	if !query.InProgressOnly || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription {
+	if !query.InProgressOnly || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription || !query.IncludeDisabled {
 		t.Fatalf("boolean filters = %#v", query)
 	}
 	if query.IncludeLinks == nil || *query.IncludeLinks || !query.LinksOnly {
@@ -1021,7 +1158,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "sort", "include_description", "include_links", "links_only", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "sort", "include_description", "include_links", "links_only", "include_disabled", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}
@@ -1308,6 +1445,41 @@ func doJSON(t *testing.T, method string, url string, in any, out any) {
 			t.Fatalf("Decode() error = %v", err)
 		}
 	}
+}
+
+func doText(t *testing.T, method string, url string, in any, accept string) (string, string) {
+	t.Helper()
+	var body *bytes.Reader
+	if in == nil {
+		body = bytes.NewReader(nil)
+	} else {
+		data, err := json.Marshal(in)
+		if err != nil {
+			t.Fatalf("Marshal() error = %v", err)
+		}
+		body = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s error = %v", method, url, err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		t.Fatalf("%s %s status=%d body=%s", method, url, resp.StatusCode, data)
+	}
+	return string(data), resp.Header.Get("Content-Type")
 }
 
 func decodeStructured(t *testing.T, in any, out any) {

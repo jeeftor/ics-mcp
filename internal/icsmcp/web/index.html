@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ICS MCP Admin</title>
+  <link rel="icon" href="data:,">
   <style>
     :root {
       color-scheme: light;
@@ -88,6 +89,15 @@
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     .selection-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
     .selection-bar .spacer { flex: 1 1 auto; }
+    .rest-layout { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .rest-controls { display: grid; gap: 10px; }
+    .rest-control-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; align-items: center; }
+    .rest-checkboxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+    .rest-checkboxes label { display: flex; gap: 6px; align-items: center; }
+    .rest-url-stack { display: grid; gap: 8px; }
+    .rest-preview-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+    .rest-preview-grid .tool-output { min-height: 180px; }
+    .example-list { display: grid; gap: 8px; }
     .json-key { color: #7dd3fc; }
     .json-string { color: #86efac; }
     .json-number { color: #fbbf24; }
@@ -101,7 +111,8 @@
       .status-pills { justify-content: flex-start; }
       .tabs { padding: 0 14px; overflow-x: auto; }
       main { padding: 14px; }
-      form, .tool-runner { grid-template-columns: 1fr; }
+      form, .tool-runner, .rest-layout { grid-template-columns: 1fr; }
+      .rest-control-row { grid-template-columns: 1fr; gap: 3px; }
       .kv-row { grid-template-columns: 1fr; gap: 3px; }
       .endpoint-cell { grid-template-columns: 1fr; justify-items: start; }
       table, thead, tbody, tr, th, td { display: block; }
@@ -128,7 +139,9 @@
     </div>
     <nav class="tabs" aria-label="Debug pages">
       <button class="tab active" type="button" data-tab="info">Info</button>
+      <button class="tab" type="button" data-tab="rest">REST</button>
       <button class="tab" type="button" data-tab="calendars">Calendars</button>
+      <button class="tab" type="button" data-tab="meetings">Meetings</button>
       <button class="tab" type="button" data-tab="tools">Tools</button>
     </nav>
   </header>
@@ -203,6 +216,98 @@
       </section>
     </div>
 
+    <div id="panel-rest" class="panel">
+      <section>
+        <h2>REST API</h2>
+        <div class="rest-layout">
+          <div class="block rest-controls">
+            <div class="rest-control-row">
+              <label for="rest-endpoint-picker">Endpoint</label>
+              <select id="rest-endpoint-picker">
+                <optgroup label="Common Views">
+                  <option value="/api/events">Events</option>
+                  <option value="/api/events/by-calendar">Events by calendar</option>
+                  <option value="/api/events/today">Today</option>
+                  <option value="/api/events/tomorrow">Tomorrow</option>
+                  <option value="/api/events/today-tomorrow">Today and tomorrow</option>
+                  <option value="/api/events/current">Current</option>
+                  <option value="/api/events/next">Next</option>
+                  <option value="/api/events/search">Search</option>
+                  <option value="/api/free-busy">Free busy</option>
+                </optgroup>
+                <optgroup label="Read Tools">
+                  <option value="/api/rest/upcoming_meetings">upcoming_meetings</option>
+                  <option value="/api/rest/upcoming_meetings_by_calendar">upcoming_meetings_by_calendar</option>
+                  <option value="/api/rest/today_meetings">today_meetings</option>
+                  <option value="/api/rest/next_meetings">next_meetings</option>
+                  <option value="/api/rest/search_meetings">search_meetings</option>
+                  <option value="/api/rest/free_busy">free_busy</option>
+                  <option value="/api/rest/list_calendars">list_calendars</option>
+                  <option value="/api/rest/server_status">server_status</option>
+                </optgroup>
+                <optgroup label="Admin Tools">
+                  <option value="/api/rest/update_calendar">update_calendar</option>
+                  <option value="/api/rest/refresh_calendar">refresh_calendar</option>
+                  <option value="/api/rest/refresh_all_calendars">refresh_all_calendars</option>
+                  <option value="/api/rest/validate_calendar">validate_calendar</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="rest-control-row">
+              <label for="rest-calendar">Calendar</label>
+              <select id="rest-calendar"></select>
+            </div>
+            <div class="rest-control-row">
+              <label for="rest-format">Format</label>
+              <select id="rest-format">
+                <option value="json">json</option>
+                <option value="html">html</option>
+                <option value="md">md</option>
+                <option value="txt">txt</option>
+                <option value="ascii">ascii</option>
+              </select>
+            </div>
+            <div class="rest-control-row"><label for="rest-limit">Limit</label><input id="rest-limit" type="number" min="1" value="10"></div>
+            <div class="rest-control-row"><label for="rest-window">Window</label><select id="rest-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></div>
+            <div class="rest-control-row"><label for="rest-day">Day</label><input id="rest-day" placeholder="today or tomorrow"></div>
+            <div class="rest-control-row"><label for="rest-range">Range</label><input id="rest-range" placeholder="today_tomorrow"></div>
+            <div class="rest-control-row"><label for="rest-timezone">Timezone</label><input id="rest-timezone" placeholder="America/Denver"></div>
+            <div class="rest-control-row"><label for="rest-sort">Sort</label><select id="rest-sort"><option value="">Default</option><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></div>
+            <div class="rest-control-row"><label for="rest-query">Query</label><input id="rest-query" placeholder="planning"></div>
+            <div class="rest-checkboxes">
+              <label><input id="rest-include-description" type="checkbox"> descriptions</label>
+              <label><input id="rest-include-links" type="checkbox" checked> links</label>
+              <label><input id="rest-links-only" type="checkbox"> links only</label>
+              <label><input id="rest-in-progress" type="checkbox"> current only</label>
+              <label><input id="rest-exclude-all-day" type="checkbox"> exclude all-day</label>
+              <label><input id="rest-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
+              <label><input id="rest-include-disabled" type="checkbox"> disabled calendars</label>
+            </div>
+          </div>
+          <div class="block">
+            <h3>Generated URLs</h3>
+            <div class="rest-url-stack">
+              <div class="endpoint-cell"><code id="rest-generated-internal" data-copy-value=""></code><button class="copy-button" type="button" data-copy-target="rest-generated-internal">Copy</button></div>
+              <div class="endpoint-cell"><code id="rest-generated-external" data-copy-value=""></code><button class="copy-button" type="button" data-copy-target="rest-generated-external">Copy</button></div>
+            </div>
+            <div class="tool-controls">
+              <button id="run-rest" class="primary" type="button">Fetch Preview</button>
+              <button id="open-rest" type="button">Open</button>
+              <span id="rest-status" class="muted"></span>
+            </div>
+            <div class="rest-preview-grid">
+              <pre id="rest-json-preview" class="tool-output">{}</pre>
+              <pre id="rest-text-preview" class="tool-output"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2>Example URLs</h2>
+        <div id="rest-examples" class="example-list"></div>
+      </section>
+    </div>
+
     <div id="panel-calendars" class="panel">
       <section>
         <h2>Calendars</h2>
@@ -235,7 +340,9 @@
           <tbody id="calendars"></tbody>
         </table>
       </section>
+    </div>
 
+    <div id="panel-meetings" class="panel">
       <section>
         <h2>Next Meetings By Calendar</h2>
         <div id="meetings" class="meeting-groups"></div>
@@ -273,13 +380,25 @@
     const selectAllCalendarsButton = document.querySelector('#select-all-calendars');
     const selectNoCalendarsButton = document.querySelector('#select-no-calendars');
     const selectionStatus = document.querySelector('#selection-status');
+    const restEndpointPicker = document.querySelector('#rest-endpoint-picker');
+    const restCalendar = document.querySelector('#rest-calendar');
+    const restFormat = document.querySelector('#rest-format');
+    const runREST = document.querySelector('#run-rest');
+    const openREST = document.querySelector('#open-rest');
+    const restStatus = document.querySelector('#rest-status');
+    const restJSONPreview = document.querySelector('#rest-json-preview');
+    const restTextPreview = document.querySelector('#rest-text-preview');
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
+    let currentCalendars = [];
     const tabStorageKey = 'icsmcp.activeTab';
     const endpoints = [
       ['Admin UI', '/'],
       ['MCP Server', '/mcp'],
+      ['REST Events', '/api/events'],
+      ['REST OpenAPI', '/openapi.json'],
+      ['REST Docs', '/docs'],
       ['Status API', '/api/status'],
       ['Default Calendar Selection', '/api/calendars/general-query-selection'],
       ['Health', '/healthz'],
@@ -325,9 +444,11 @@
       const status = await api('/api/status');
       lastStatus = status;
       const calendars = arrayOrEmpty(await api('/api/calendars'));
+      currentCalendars = calendars;
       renderStatus(status, calendars);
       renderEndpoints(status);
       renderSetup(status);
+      renderRESTControls(calendars, status);
       renderCalendars(calendars);
       await loadMeetings();
       await loadTools();
@@ -579,6 +700,155 @@
       ].join('\n');
     }
 
+    function renderRESTControls(calendars, status) {
+      const selected = restCalendar.value;
+      restCalendar.replaceChildren(
+        optionElement('', 'All default calendars'),
+        ...calendars.map((calendar) => optionElement(calendar.id, `${calendar.name} (${calendar.enabled ? 'enabled' : 'disabled'})`))
+      );
+      if (selected && calendars.some((calendar) => calendar.id === selected)) {
+        restCalendar.value = selected;
+      }
+      updateRESTURLs(status);
+    }
+
+    function optionElement(value, label) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }
+
+    function buildRESTRequest(base = window.location.origin) {
+      const endpoint = restEndpointPicker.value;
+      const selectedCalendarID = restCalendar.value;
+      const format = restFormat.value || 'json';
+      const url = new URL(endpoint, base);
+      const admin = endpoint.startsWith('/api/rest/') && !isReadRESTEndpoint(endpoint);
+      if (!admin) {
+        addQueryValue(url, 'limit', document.querySelector('#rest-limit').value);
+        addQueryValue(url, 'window', document.querySelector('#rest-window').value);
+        addQueryValue(url, 'day', document.querySelector('#rest-day').value);
+        addQueryValue(url, 'range', document.querySelector('#rest-range').value);
+        addQueryValue(url, 'timezone', document.querySelector('#rest-timezone').value);
+        addQueryValue(url, 'sort', document.querySelector('#rest-sort').value);
+        addQueryValue(url, 'query', document.querySelector('#rest-query').value);
+        if (selectedCalendarID) url.searchParams.append('calendar_id', selectedCalendarID);
+        setBoolQuery(url, 'include_description', document.querySelector('#rest-include-description').checked);
+        setBoolQuery(url, 'include_links', document.querySelector('#rest-include-links').checked, true);
+        setBoolQuery(url, 'links_only', document.querySelector('#rest-links-only').checked);
+        setBoolQuery(url, 'in_progress_only', document.querySelector('#rest-in-progress').checked);
+        setBoolQuery(url, 'exclude_all_day', document.querySelector('#rest-exclude-all-day').checked);
+        setBoolQuery(url, 'exclude_cancelled', document.querySelector('#rest-exclude-cancelled').checked);
+        setBoolQuery(url, 'include_disabled', document.querySelector('#rest-include-disabled').checked);
+        if (format !== 'json') url.searchParams.set('format', format);
+      }
+      return { url, admin, body: restAdminBody(endpoint, selectedCalendarID) };
+    }
+
+    function isReadRESTEndpoint(endpoint) {
+      return [
+        '/api/rest/upcoming_meetings',
+        '/api/rest/upcoming_meetings_by_calendar',
+        '/api/rest/today_meetings',
+        '/api/rest/next_meetings',
+        '/api/rest/search_meetings',
+        '/api/rest/free_busy',
+        '/api/rest/list_calendars',
+        '/api/rest/server_status'
+      ].includes(endpoint);
+    }
+
+    function restAdminBody(endpoint, selectedCalendarID) {
+      const calendar = currentCalendars.find((item) => item.id === selectedCalendarID) || currentCalendars[0] || {};
+      if (endpoint.endsWith('/refresh_all_calendars')) return {};
+      if (endpoint.endsWith('/validate_calendar')) return { url: calendar.url || '', limit: Number(document.querySelector('#rest-limit').value) || 5 };
+      if (endpoint.endsWith('/update_calendar')) return { id: calendar.id || '', name: calendar.name || '', include_in_general_queries: Boolean(calendar.include_in_general_queries) };
+      return { id: calendar.id || '' };
+    }
+
+    function addQueryValue(url, key, value) {
+      const trimmed = String(value || '').trim();
+      if (trimmed) url.searchParams.set(key, trimmed);
+    }
+
+    function setBoolQuery(url, key, value, includeFalse = false) {
+      if (value || includeFalse) url.searchParams.set(key, String(Boolean(value)));
+    }
+
+    function updateRESTURLs(status = lastStatus) {
+      const request = buildRESTRequest(window.location.origin);
+      const externalBase = status && status.external_url;
+      const externalRequest = externalBase ? buildRESTRequest(externalBase) : null;
+      setCopyCode('#rest-generated-internal', request.url.toString());
+      setCopyCode('#rest-generated-external', externalRequest ? externalRequest.url.toString() : 'External URL not configured');
+      renderRESTExamples();
+    }
+
+    function setCopyCode(selector, value) {
+      const node = document.querySelector(selector);
+      node.textContent = value;
+      node.dataset.copyValue = value;
+    }
+
+    function renderRESTExamples() {
+      const base = window.location.origin;
+      const examples = [
+        ['/api/events/today?format=txt&limit=5', 'Today text'],
+        ['/api/events/next.ascii?limit=3', 'Next ASCII'],
+        ['/api/events/by-calendar?format=md&exclude_cancelled=true', 'Grouped Markdown'],
+        ['/api/free-busy?range=today_tomorrow&format=json', 'Free/busy JSON'],
+        ['/openapi.json', 'OpenAPI']
+      ];
+      document.querySelector('#rest-examples').replaceChildren(...examples.map(([path, label], index) => {
+        const id = `rest-example-${index}`;
+        const row = document.createElement('div');
+        row.className = 'endpoint-cell';
+        row.innerHTML = `<code id="${id}" data-copy-value="${escapeHTML(base + path)}">${escapeHTML(label)}: ${escapeHTML(base + path)}</code><button class="copy-button" type="button" data-copy-target="${id}">Copy</button>`;
+        return row;
+      }));
+    }
+
+    async function fetchRESTPreview() {
+      const request = buildRESTRequest();
+      restStatus.textContent = 'Fetching...';
+      try {
+        const options = request.admin ? {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request.body)
+        } : {};
+        const response = await fetch(request.url.toString(), options);
+        const text = await response.text();
+        if (!response.ok) throw new Error(text);
+        restTextPreview.textContent = text;
+        if ((response.headers.get('Content-Type') || '').includes('application/json')) {
+          renderJSON(restJSONPreview, JSON.parse(text));
+        } else if (!request.admin) {
+          const jsonRequest = buildRESTRequest();
+          jsonRequest.url.searchParams.set('format', 'json');
+          const jsonResponse = await fetch(jsonRequest.url.toString());
+          const jsonText = await jsonResponse.text();
+          if (jsonResponse.ok) {
+            renderJSON(restJSONPreview, JSON.parse(jsonText));
+          } else {
+            restJSONPreview.textContent = '{}';
+          }
+        } else {
+          restJSONPreview.textContent = '{}';
+        }
+        restStatus.textContent = 'Complete';
+      } catch (error) {
+        restStatus.textContent = 'Error';
+        restTextPreview.textContent = error.message;
+        restJSONPreview.textContent = '{}';
+      }
+    }
+
+    function renderRESTPreview() {
+      updateRESTURLs(lastStatus);
+    }
+
     async function loadTools() {
       if (tools.length === 0) {
         tools = arrayOrEmpty(await api('/api/tools'));
@@ -676,6 +946,36 @@
         selectionStatus.textContent = 'Error';
         console.error(error);
       }
+    });
+
+    [
+      restEndpointPicker,
+      restCalendar,
+      restFormat,
+      document.querySelector('#rest-limit'),
+      document.querySelector('#rest-window'),
+      document.querySelector('#rest-day'),
+      document.querySelector('#rest-range'),
+      document.querySelector('#rest-timezone'),
+      document.querySelector('#rest-sort'),
+      document.querySelector('#rest-query'),
+      document.querySelector('#rest-include-description'),
+      document.querySelector('#rest-include-links'),
+      document.querySelector('#rest-links-only'),
+      document.querySelector('#rest-in-progress'),
+      document.querySelector('#rest-exclude-all-day'),
+      document.querySelector('#rest-exclude-cancelled'),
+      document.querySelector('#rest-include-disabled')
+    ].forEach((control) => {
+      control.addEventListener('input', renderRESTPreview);
+      control.addEventListener('change', renderRESTPreview);
+    });
+
+    runREST.addEventListener('click', fetchRESTPreview);
+
+    openREST.addEventListener('click', () => {
+      const request = buildRESTRequest();
+      window.open(request.url.toString(), '_blank', 'noopener,noreferrer');
     });
 
     runTool.addEventListener('click', async () => {
