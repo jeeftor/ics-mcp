@@ -80,7 +80,7 @@ func normalizeExternalURL(value string) string {
 func resolveLocation(value string, logger *slog.Logger) (*time.Location, string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return time.Local, time.Local.String()
+		return time.UTC, "UTC"
 	}
 	location, timezone, err := loadLocation(value)
 	if err != nil {

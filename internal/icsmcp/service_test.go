@@ -534,8 +534,8 @@ func TestServiceDefaultTimezoneIgnoresContainerTZ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
-	if status.Timezone != "Test/Local" {
-		t.Fatalf("timezone = %q, want Test/Local", status.Timezone)
+	if status.Timezone != "UTC" {
+		t.Fatalf("timezone = %q, want UTC", status.Timezone)
 	}
 }
 
