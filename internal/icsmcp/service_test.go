@@ -1413,6 +1413,21 @@ func TestListCalendarStatusHandlesMissingRefreshState(t *testing.T) {
 	}
 }
 
+func TestListCalendarStatusReportsScanFailuresWithContext(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if _, err := svc.store.db.ExecContext(ctx, `INSERT INTO calendars (id, key, name, url, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"calendar-1", "WORK", "Work", "https://example.test/work.ics", "not-an-int", "2026-06-29T12:00:00Z", "2026-06-29T12:00:00Z"); err != nil {
+		t.Fatalf("insert corrupt calendar fixture error = %v", err)
+	}
+
+	_, err := svc.ListCalendarStatus(ctx)
+	if err == nil || !strings.Contains(err.Error(), "scan calendar status") {
+		t.Fatalf("ListCalendarStatus() error = %v, want scan calendar status context", err)
+	}
+}
+
 func TestRefreshAllCalendarsReportsSuccessFailureAndSkipped(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -1538,6 +1553,23 @@ func TestRefreshStatePersistsAndParsesTimestamps(t *testing.T) {
 
 	if parsed := parseTimePtr(sql.NullString{String: "not-a-time", Valid: true}); parsed != nil {
 		t.Fatalf("parseTimePtr(invalid) = %v, want nil", parsed)
+	}
+}
+
+func TestRefreshStateReportsScanFailuresWithContext(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `UPDATE refresh_state SET event_count = ? WHERE calendar_id = ?`, "not-an-int", cal.ID); err != nil {
+		t.Fatalf("corrupt refresh_state fixture error = %v", err)
+	}
+
+	_, err = svc.store.refreshState(ctx, cal.ID)
+	if err == nil || !strings.Contains(err.Error(), "scan refresh state") {
+		t.Fatalf("refreshState() error = %v, want scan refresh state context", err)
 	}
 }
 

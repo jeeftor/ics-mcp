@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.43 - 2026-06-30
+
+### Improved
+- Expanded SQLite refresh-state and calendar-status scan failure coverage.
+
 ## v1.4.42 - 2026-06-30
 
 ### Improved
