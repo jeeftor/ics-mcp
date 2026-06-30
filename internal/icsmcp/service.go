@@ -379,11 +379,12 @@ func (s *Service) RunRefresher(ctx context.Context) {
 func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
 	limit := query.limit(10)
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000, true)
+	location, timezone, err := s.queryLocation(query)
 	if err != nil {
 		return nil, err
 	}
-	location, timezone, err := s.queryLocation(query)
+	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true)
 	if err != nil {
 		return nil, err
 	}
@@ -451,11 +452,12 @@ func (s *Service) FreeBusy(ctx context.Context, query UpcomingQuery) ([]BusyBloc
 // UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
 func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000, true)
+	location, timezone, err := s.queryLocation(query)
 	if err != nil {
 		return nil, err
 	}
-	location, timezone, err := s.queryLocation(query)
+	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true)
 	if err != nil {
 		return nil, err
 	}
@@ -510,12 +512,69 @@ func (s *Service) queryLocation(query UpcomingQuery) (*time.Location, string, er
 	return location, resolvedTimezone, nil
 }
 
+func (s *Service) applyQueryWindow(query UpcomingQuery, now time.Time, lookaheadDays int, location *time.Location) (UpcomingQuery, time.Time) {
+	until := now.Add(time.Duration(lookaheadDays) * 24 * time.Hour)
+	localNow := now.In(location)
+	startOfToday := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	setWindow := func(after, before time.Time) {
+		query.After = after.UTC()
+		query.Before = before.UTC()
+		query.OverlapWindow = true
+		until = query.Before
+	}
+	switch strings.ToLower(strings.TrimSpace(query.Window)) {
+	case "today":
+		setWindow(startOfToday, startOfToday.Add(24*time.Hour))
+	case "tomorrow":
+		tomorrow := startOfToday.Add(24 * time.Hour)
+		setWindow(tomorrow, tomorrow.Add(24*time.Hour))
+	case "today_tomorrow", "today_and_tomorrow":
+		setWindow(startOfToday, startOfToday.Add(48*time.Hour))
+	case "next_24h", "next_24_hours":
+		setWindow(localNow, localNow.Add(24*time.Hour))
+	case "workday":
+		setWindow(startOfToday.Add(9*time.Hour), startOfToday.Add(17*time.Hour))
+	case "rest_of_workday":
+		setWindow(localNow, startOfToday.Add(17*time.Hour))
+	case "this_week", "rest_of_week":
+		setWindow(localNow, startOfToday.Add(time.Duration(daysUntilNextMonday(localNow))*24*time.Hour))
+	case "rest_of_work_week":
+		workWeekEnd := startOfToday.Add(time.Duration(daysUntilWeekday(localNow, time.Friday))*24*time.Hour + 17*time.Hour)
+		setWindow(localNow, workWeekEnd)
+	}
+	if !query.Before.IsZero() {
+		until = query.Before
+	}
+	if until.Before(now) {
+		until = now
+	}
+	return query, until
+}
+
+func daysUntilNextMonday(t time.Time) int {
+	days := (int(time.Monday) - int(t.Weekday()) + 7) % 7
+	if days == 0 {
+		return 7
+	}
+	return days
+}
+
+func daysUntilWeekday(t time.Time, weekday time.Weekday) int {
+	return (int(weekday) - int(t.Weekday()) + 7) % 7
+}
+
 func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery, location *time.Location, timezone string) []Meeting {
 	meetings := make([]Meeting, 0, len(events))
 	for _, event := range events {
 		ongoing := event.Start.Before(now) && event.End.After(now)
 		localStart := event.Start.In(location)
 		localEnd := event.End.In(location)
+		meetingURL := event.MeetingURL
+		meetingURLType := event.MeetingURLType
+		if query.IncludeLinks != nil && !*query.IncludeLinks {
+			meetingURL = ""
+			meetingURLType = ""
+		}
 		meeting := Meeting{
 			Day:             localStart.Format("Mon"),
 			Date:            localStart.Format("2006-01-02"),
@@ -526,8 +585,8 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
 			Name:            event.Name,
 			Description:     meetingDescription(event.Description, query),
-			MeetingURL:      event.MeetingURL,
-			MeetingURLType:  event.MeetingURLType,
+			MeetingURL:      meetingURL,
+			MeetingURLType:  meetingURLType,
 			CalendarID:      event.CalendarID,
 			CalendarName:    event.CalendarName,
 			Ongoing:         ongoing,
@@ -549,7 +608,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 }
 
 func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
-	if query.Query == "" && !query.InProgressOnly && !query.ExcludeAllDay && !query.ExcludeCancelled && query.After.IsZero() && query.Before.IsZero() {
+	if query.Query == "" && !query.InProgressOnly && !query.ExcludeAllDay && !query.ExcludeCancelled && !query.LinksOnly && query.After.IsZero() && query.Before.IsZero() {
 		return meetings
 	}
 	search := strings.ToLower(strings.TrimSpace(query.Query))
@@ -565,6 +624,9 @@ func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
 			continue
 		}
 		if query.ExcludeCancelled && meeting.Cancelled {
+			continue
+		}
+		if query.LinksOnly && meeting.MeetingURL == "" {
 			continue
 		}
 		if !query.After.IsZero() {

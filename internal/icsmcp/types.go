@@ -90,6 +90,7 @@ type UpcomingQuery struct {
 	CalendarIDs         []string  `json:"calendar_ids,omitempty"`
 	LookaheadDays       int       `json:"lookahead_days,omitempty"`
 	Query               string    `json:"query,omitempty"`
+	Window              string    `json:"window,omitempty"`
 	Timezone            string    `json:"timezone,omitempty"`
 	Detail              string    `json:"detail,omitempty"`
 	Sort                string    `json:"sort,omitempty"`
@@ -100,6 +101,8 @@ type UpcomingQuery struct {
 	Before              time.Time `json:"before,omitempty"`
 	IncludeDescription  bool      `json:"include_description,omitempty"`
 	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
+	IncludeLinks        *bool     `json:"include_links,omitempty"`
+	LinksOnly           bool      `json:"links_only,omitempty"`
 	OverlapWindow       bool      `json:"-"`
 }
 

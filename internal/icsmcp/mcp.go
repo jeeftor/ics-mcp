@@ -58,7 +58,9 @@ type updateInput struct {
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
 func NewMCPServer(svc *Service) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: svc.buildInfo.Version}, nil)
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; sort supports start_time, agenda, calendar, and ongoing_first."},
+	registerMCPResources(server, svc)
+	registerMCPPrompts(server)
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; supports window presets, sort, include_links, and links_only."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
@@ -96,7 +98,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use after and before for a specific availability window."},
+	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use window presets or after and before for a specific availability window."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
 			busy, err := svc.FreeBusy(ctx, in)
 			return nil, freeBusyOutput{Busy: busy}, err

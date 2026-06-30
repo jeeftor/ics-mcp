@@ -1039,6 +1039,77 @@ func TestUpcomingMeetingsSupportsCalendarSort(t *testing.T) {
 	}
 }
 
+func TestUpcomingMeetingsSupportsWindowPresets(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	denver, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 7, 1, 10, 0, 0, 0, denver).UTC()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Today", Start: time.Date(2026, 7, 1, 15, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 1, 15, 30, 0, 0, denver).UTC()},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Tomorrow", Start: time.Date(2026, 7, 2, 9, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 2, 9, 30, 0, 0, denver).UTC()},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Next Week", Start: time.Date(2026, 7, 6, 9, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 6, 9, 30, 0, 0, denver).UTC()},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	todayTomorrow, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Timezone: "America/Denver", Window: "today_tomorrow", Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(today_tomorrow) error = %v", err)
+	}
+	if got := meetingNames(todayTomorrow); !slices.Equal(got, []string{"Today", "Tomorrow"}) {
+		t.Fatalf("today_tomorrow meetings = %#v", got)
+	}
+
+	restOfWeek, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Timezone: "America/Denver", Window: "rest_of_week", Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(rest_of_week) error = %v", err)
+	}
+	if got := meetingNames(restOfWeek); !slices.Equal(got, []string{"Today", "Tomorrow"}) {
+		t.Fatalf("rest_of_week meetings = %#v", got)
+	}
+}
+
+func TestUpcomingMeetingsSupportsLinkControls(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Linked", MeetingURL: "https://teams.microsoft.com/l/meetup-join/abc", MeetingURLType: "teams", Start: now.Add(time.Hour), End: now.Add(90 * time.Minute)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "No Link", Start: now.Add(2 * time.Hour), End: now.Add(150 * time.Minute)},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	withoutLinks, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, IncludeLinks: ptr(false)})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(include_links=false) error = %v", err)
+	}
+	if withoutLinks[0].MeetingURL != "" || withoutLinks[0].MeetingURLType != "" {
+		t.Fatalf("include_links=false meeting = %#v", withoutLinks[0])
+	}
+
+	linksOnly, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, LinksOnly: true})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(links_only) error = %v", err)
+	}
+	if got := meetingNames(linksOnly); !slices.Equal(got, []string{"Linked"}) {
+		t.Fatalf("links_only meetings = %#v", got)
+	}
+}
+
 func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

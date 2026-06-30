@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.2 - 2026-06-30
+
+### Added
+- Added MCP resources for server status, calendars, today's meetings, and upcoming meetings.
+- Added MCP prompts for daily briefings, meeting prep, availability summaries, and calendar debug reports.
+- Added `window` presets for `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`.
+- Added `include_links` and `links_only` meeting query controls.
+
 ## v1.5.1 - 2026-06-30
 
 ### Added

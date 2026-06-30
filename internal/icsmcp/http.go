@@ -217,6 +217,7 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	}
 	query.CalendarIDs = values["calendar_id"]
 	query.Query = values.Get("query")
+	query.Window = values.Get("window")
 	query.Timezone = values.Get("timezone")
 	query.Detail = values.Get("detail")
 	query.Sort = values.Get("sort")
@@ -224,6 +225,11 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
 	query.ExcludeCancelled = parseBoolQuery(values.Get("exclude_cancelled"))
 	query.IncludeDescription = parseBoolQuery(values.Get("include_description"))
+	if raw := values.Get("include_links"); raw != "" {
+		includeLinks := parseBoolQuery(raw)
+		query.IncludeLinks = &includeLinks
+	}
+	query.LinksOnly = parseBoolQuery(values.Get("links_only"))
 	if raw := values.Get("description_max_chars"); raw != "" {
 		maxChars, err := strconv.Atoi(raw)
 		if err != nil {
