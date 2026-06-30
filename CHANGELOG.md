@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.18 - 2026-06-30
+
+### Improved
+- Expanded parser coverage for untitled ICS events and missing-UID parse failures.
+- Expanded debug tool-preview coverage for malformed JSON arguments across all argument-taking preview tools.
+
 ## v1.4.17 - 2026-06-30
 
 ### Improved
