@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.57 - 2026-06-30
+
+### Improved
+- Expanded coverage for calendar-selection clear failures and event-cache replacement startup errors.
+
 ## v1.4.56 - 2026-06-30
 
 ### Improved
