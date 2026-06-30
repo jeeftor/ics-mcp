@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.45 - 2026-06-30
+
+### Improved
+- Expanded event query coverage for corrupt cached event row scan failures.
+
 ## v1.4.44 - 2026-06-30
 
 ### Improved

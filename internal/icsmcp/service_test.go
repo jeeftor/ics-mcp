@@ -806,6 +806,28 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 	}
 }
 
+func TestStoreQueryEventsReportsScanFailuresWithContext(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	start := time.Date(2026, 6, 29, 16, 0, 0, 0, time.UTC)
+	_, err = svc.store.db.ExecContext(ctx, `INSERT INTO events
+		(id, calendar_id, uid, name, description, cancelled, all_day, start_time, end_time)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"event-1", cal.ID, "uid-1", "Broken cache", "", "not-an-int", 0, start.Format(time.RFC3339Nano), start.Add(30*time.Minute).Format(time.RFC3339Nano))
+	if err != nil {
+		t.Fatalf("insert corrupt event error = %v", err)
+	}
+
+	_, err = svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), nil, 10)
+	if err == nil || !strings.Contains(err.Error(), "scan event") {
+		t.Fatalf("queryEvents() error = %v, want scan event context", err)
+	}
+}
+
 func TestStoreListCalendarsReportsScanFailuresWithContext(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
