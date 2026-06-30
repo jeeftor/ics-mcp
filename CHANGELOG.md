@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.72 - 2026-06-30
+
+### Improved
+- Expanded direct coverage for `UpcomingQuery` JSON decoding, including canonical `in_progress_only`, legacy `only_ongoing`, mixed inputs, and invalid argument types.
+
 ## v1.4.71 - 2026-06-30
 
 ### Added

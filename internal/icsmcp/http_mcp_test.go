@@ -535,6 +535,36 @@ func TestToolPreviewRejectsInvalidTimezone(t *testing.T) {
 	}
 }
 
+func TestUpcomingQueryUnmarshalJSONSupportsCurrentAndLegacyInProgressFilters(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "current field", raw: `{"in_progress_only":true}`, want: true},
+		{name: "legacy field", raw: `{"only_ongoing":true}`, want: true},
+		{name: "current field wins true with legacy false", raw: `{"in_progress_only":true,"only_ongoing":false}`, want: true},
+		{name: "legacy field upgrades current false", raw: `{"in_progress_only":false,"only_ongoing":true}`, want: true},
+		{name: "both false", raw: `{"in_progress_only":false,"only_ongoing":false}`, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var query UpcomingQuery
+			if err := json.Unmarshal([]byte(tt.raw), &query); err != nil {
+				t.Fatalf("json.Unmarshal() error = %v", err)
+			}
+			if query.InProgressOnly != tt.want {
+				t.Fatalf("InProgressOnly = %v, want %v", query.InProgressOnly, tt.want)
+			}
+		})
+	}
+
+	var query UpcomingQuery
+	if err := json.Unmarshal([]byte(`{"limit":"bad"}`), &query); err == nil {
+		t.Fatalf("json.Unmarshal(invalid) error = nil, want error")
+	}
+}
+
 func TestDecodeToolArgsDefaultsEmptyRawMessageToObject(t *testing.T) {
 	var got struct {
 		Limit int `json:"limit"`
