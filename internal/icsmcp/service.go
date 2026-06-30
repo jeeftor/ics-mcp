@@ -354,7 +354,7 @@ func (s *Service) RunRefresher(ctx context.Context) {
 func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
 	limit := query.limit(10)
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000)
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000, true)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +375,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 // UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
 func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
-	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000)
+	events, err := s.store.queryEvents(ctx, now, now.Add(time.Duration(lookaheadDays)*24*time.Hour), query.CalendarIDs, 10000, true)
 	if err != nil {
 		return nil, err
 	}
@@ -595,11 +595,12 @@ func calendarsFromEnv(env map[string]string) []Calendar {
 		}
 		suffix := strings.TrimPrefix(key, "ICSMCP_CALENDAR_")
 		calendars = append(calendars, Calendar{
-			ID:      stableID(suffix),
-			Key:     suffix,
-			Name:    strings.ReplaceAll(suffix, "_", " "),
-			URL:     value,
-			Enabled: true,
+			ID:                      stableID(suffix),
+			Key:                     suffix,
+			Name:                    strings.ReplaceAll(suffix, "_", " "),
+			URL:                     value,
+			Enabled:                 true,
+			IncludeInGeneralQueries: true,
 		})
 	}
 	slices.SortFunc(calendars, func(a, b Calendar) int {
@@ -632,7 +633,7 @@ func calendarFromInput(in AddCalendarInput) (Calendar, error) {
 	if name == "" {
 		name = strings.ReplaceAll(key, "_", " ")
 	}
-	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true}, nil
+	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true, IncludeInGeneralQueries: true}, nil
 }
 
 func normalizeKey(value string) string {

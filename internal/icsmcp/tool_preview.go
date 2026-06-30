@@ -40,7 +40,7 @@ func ToolInfos() []ToolInfo {
 		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "validate_calendar", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
-		{Name: "update_calendar", Description: "Rename, enable, disable, or update a calendar URL.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed"}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed"}},
+		{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed","include_in_general_queries":true}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed", "include_in_general_queries": true}},
 		{Name: "remove_calendar", Description: "Remove a calendar and its cached events.", Category: "admin", Destructive: true, InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
 		{Name: "refresh_calendar", Description: "Refresh a calendar feed now.", Category: "admin", InputExample: `{"id":"calendar-id"}`, DefaultArguments: map[string]any{"id": ""}},
 		{Name: "refresh_all_calendars", Description: "Refresh all enabled calendar feeds now.", Category: "admin", InputExample: `{}`, DefaultArguments: map[string]any{}},
@@ -113,7 +113,7 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		if err := decodeToolArgs(raw, &in); err != nil {
 			return ToolCallResponse{}, err
 		}
-		cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled})
+		cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries})
 		return ToolCallResponse{Tool: name, Result: calendarOutput{Calendar: cal}}, err
 	case "remove_calendar":
 		var in removeInput
