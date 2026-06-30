@@ -841,6 +841,19 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
 
+	groupedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "upcoming_meetings_by_calendar",
+		Arguments: map[string]any{},
+	})
+	if err != nil || groupedResult.IsError {
+		t.Fatalf("upcoming_meetings_by_calendar result = %#v err = %v", groupedResult, err)
+	}
+	var grouped groupedMeetingsOutput
+	decodeStructured(t, groupedResult.StructuredContent, &grouped)
+	if len(grouped.Calendars) != 1 || grouped.Calendars[0].CalendarName != "Work" || len(grouped.Calendars[0].Meetings) != 1 {
+		t.Fatalf("grouped meetings = %#v", grouped.Calendars)
+	}
+
 	nextResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "next_meetings",
 		Arguments: map[string]any{},
