@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.61 - 2026-06-30
+
+### Improved
+- Expanded official MCP SDK integration coverage for the `refresh_calendar` admin tool.
+
 ## v1.4.60 - 2026-06-30
 
 ### Improved
