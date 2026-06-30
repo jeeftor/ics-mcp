@@ -429,13 +429,13 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&window=today_tomorrow&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&include_links=false&links_only=true&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
 		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
 	}
-	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Sort != "agenda" {
+	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Window != "today_tomorrow" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Sort != "agenda" {
 		t.Fatalf("basic query fields = %#v", query)
 	}
 	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
@@ -443,6 +443,9 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	}
 	if !query.InProgressOnly || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription {
 		t.Fatalf("boolean filters = %#v", query)
+	}
+	if query.IncludeLinks == nil || *query.IncludeLinks || !query.LinksOnly {
+		t.Fatalf("link filters = %#v", query)
 	}
 	if query.DescriptionMaxChars != 42 {
 		t.Fatalf("description max chars = %d, want 42", query.DescriptionMaxChars)
@@ -887,6 +890,82 @@ func TestCombinedHTTPHandlerServesMCPEndpoint(t *testing.T) {
 	}
 }
 
+func TestMCPResourcesAndPromptsExposeCalendarContext(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 13, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		Name:         "Planning",
+		Start:        now.Add(time.Hour),
+		End:          now.Add(90 * time.Minute),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatalf("Connect(/mcp) error = %v", err)
+	}
+	defer session.Close()
+
+	resources, err := session.ListResources(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListResources() error = %v", err)
+	}
+	var resourceURIs []string
+	for _, resource := range resources.Resources {
+		resourceURIs = append(resourceURIs, resource.URI)
+	}
+	for _, want := range []string{"icsmcp://status", "icsmcp://calendars", "icsmcp://meetings/today", "icsmcp://meetings/upcoming"} {
+		if !contains(resourceURIs, want) {
+			t.Fatalf("resource URIs = %#v, missing %s", resourceURIs, want)
+		}
+	}
+
+	read, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "icsmcp://meetings/today"})
+	if err != nil {
+		t.Fatalf("ReadResource(today) error = %v", err)
+	}
+	if len(read.Contents) != 1 || read.Contents[0].MIMEType != "application/json" || !strings.Contains(read.Contents[0].Text, "Planning") {
+		t.Fatalf("today resource = %#v", read.Contents)
+	}
+
+	prompts, err := session.ListPrompts(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListPrompts() error = %v", err)
+	}
+	var promptNames []string
+	for _, prompt := range prompts.Prompts {
+		promptNames = append(promptNames, prompt.Name)
+	}
+	for _, want := range []string{"daily_briefing", "meeting_prep", "availability_summary", "calendar_debug_report"} {
+		if !contains(promptNames, want) {
+			t.Fatalf("prompt names = %#v, missing %s", promptNames, want)
+		}
+	}
+
+	prompt, err := session.GetPrompt(ctx, &mcp.GetPromptParams{Name: "daily_briefing"})
+	if err != nil {
+		t.Fatalf("GetPrompt(daily_briefing) error = %v", err)
+	}
+	if len(prompt.Messages) != 1 {
+		t.Fatalf("daily_briefing messages = %#v", prompt.Messages)
+	}
+	content, ok := prompt.Messages[0].Content.(*mcp.TextContent)
+	if !ok || !strings.Contains(content.Text, "today_meetings") || !strings.Contains(content.Text, "icsmcp://meetings/today") {
+		t.Fatalf("daily_briefing prompt content = %#v", prompt.Messages[0].Content)
+	}
+}
+
 func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -942,7 +1021,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "detail", "sort", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "sort", "include_description", "include_links", "links_only", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}
