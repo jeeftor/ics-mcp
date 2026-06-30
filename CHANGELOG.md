@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.62 - 2026-06-30
+
+### Improved
+- Expanded integration coverage for the combined HTTP server's `/mcp` Streamable HTTP endpoint.
+
 ## v1.4.61 - 2026-06-30
 
 ### Improved

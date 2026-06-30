@@ -770,6 +770,30 @@ func TestHTTPAPIEmptyCollectionsEncodeAsArrays(t *testing.T) {
 	}
 }
 
+func TestCombinedHTTPHandlerServesMCPEndpoint(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatalf("Connect(/mcp) error = %v", err)
+	}
+	defer session.Close()
+
+	var toolNames []string
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatalf("Tools() error = %v", err)
+		}
+		toolNames = append(toolNames, tool.Name)
+	}
+	if !contains(toolNames, "upcoming_meetings") {
+		t.Fatalf("/mcp tool names = %#v, missing upcoming_meetings", toolNames)
+	}
+}
+
 func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
