@@ -943,6 +943,26 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 }
 
+func TestTodayMeetingsReportsInvalidTimezone(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	_, err := svc.TodayMeetings(ctx, UpcomingQuery{Timezone: "America/Denbver"})
+	if err == nil || !strings.Contains(err.Error(), "America/Denbver") {
+		t.Fatalf("TodayMeetings() error = %v, want invalid timezone", err)
+	}
+}
+
+func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	_, err := svc.FreeBusy(ctx, UpcomingQuery{Timezone: "America/Denbver"})
+	if err == nil || !strings.Contains(err.Error(), "America/Denbver") {
+		t.Fatalf("FreeBusy() error = %v, want invalid timezone", err)
+	}
+}
+
 func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	meeting := Meeting{
 		Day:             "Tue",
@@ -985,6 +1005,58 @@ func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	}
 	if got["duration"] != "1 hr 30 min" {
 		t.Fatalf("duration = %q", got["duration"])
+	}
+}
+
+func TestCompactMeetingFormattingHelpersCoverEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{name: "invalid clock fallback", got: compactTimeRange("bad", "10:00"), want: "bad-10:00"},
+		{name: "cross meridiem range", got: compactTimeRange("11:30", "12:30"), want: "11:30 AM-12:30 PM"},
+		{name: "minutes", got: durationText(30), want: "30 min"},
+		{name: "plural hours", got: durationText(120), want: "2 hrs"},
+		{name: "rounded singular day", got: durationText(1439), want: "1 day"},
+		{name: "rounded plural days", got: durationText(2879), want: "2 days"},
+		{name: "day and hour", got: durationText(1500), want: "1 day 1 hr"},
+		{name: "plural days and hour", got: durationText(2940), want: "2 days 1 hr"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Fatalf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMeetingAndGroupJSONDecodeErrorsAndFallbacks(t *testing.T) {
+	var meeting Meeting
+	if err := json.Unmarshal([]byte("{"), &meeting); err == nil {
+		t.Fatal("Meeting.UnmarshalJSON() error = nil, want invalid JSON error")
+	}
+
+	var compact Meeting
+	if err := json.Unmarshal([]byte(`{"title":"Planning","calendar":"Work","duration_minutes":90}`), &compact); err != nil {
+		t.Fatalf("Meeting.UnmarshalJSON(compact) error = %v", err)
+	}
+	if compact.Name != "Planning" || compact.CalendarName != "Work" || compact.Duration != "1 hr 30 min" {
+		t.Fatalf("compact meeting fallback = %#v", compact)
+	}
+
+	var group CalendarMeetingGroup
+	if err := json.Unmarshal([]byte("{"), &group); err == nil {
+		t.Fatal("CalendarMeetingGroup.UnmarshalJSON() error = nil, want invalid JSON error")
+	}
+
+	var compactGroup CalendarMeetingGroup
+	if err := json.Unmarshal([]byte(`{"calendar_name":"Work","meetings":[]}`), &compactGroup); err != nil {
+		t.Fatalf("CalendarMeetingGroup.UnmarshalJSON(compact) error = %v", err)
+	}
+	if compactGroup.Calendar != "Work" || compactGroup.CalendarName != "Work" {
+		t.Fatalf("compact group fallback = %#v", compactGroup)
 	}
 }
 

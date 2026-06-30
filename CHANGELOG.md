@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.76 - 2026-06-30
+
+### Improved
+- Expanded feature coverage for compact meeting formatting, compact/full JSON decoding, invalid timezone handling, and direct MCP calls for `next_meeting`, `today_meetings`, and `free_busy`.
+
 ## v1.4.75 - 2026-06-30
 
 ### Changed
