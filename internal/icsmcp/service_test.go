@@ -603,6 +603,29 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 }
 
+func TestUpcomingMeetingsByCalendarReportsInvalidTimezone(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID: cal.ID,
+		Name:       "Planning",
+		Start:      now.Add(time.Hour),
+		End:        now.Add(90 * time.Minute),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	groups, err := svc.UpcomingMeetingsByCalendar(ctx, UpcomingQuery{Now: now, Timezone: "America/Denbver"})
+	if err == nil || !strings.Contains(err.Error(), "America/Denbver") {
+		t.Fatalf("UpcomingMeetingsByCalendar() groups=%#v error=%v, want timezone error", groups, err)
+	}
+}
+
 func TestServiceResolvesTimezoneFormats(t *testing.T) {
 	tests := []struct {
 		name         string
