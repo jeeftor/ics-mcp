@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.14 - 2026-06-30
+
+### Improved
+- Expanded logging coverage for colored slog level rendering, empty attribute handling, and handler slice cloning.
+
 ## v1.4.13 - 2026-06-30
 
 ### Improved
