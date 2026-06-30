@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.0 - 2026-06-30
+
+### Release Notes
+- Promoted the current MCP calendar server work to a minor release after the addition of token-efficient meeting tools, richer calendar debug UI, timezone-aware output, recurrence metadata, meeting join-link extraction, per-calendar general-query inclusion, free/busy output, and faster release automation.
+
+### Included
+- Compact-by-default MCP/API meeting output with optional full detail and opt-in descriptions.
+- Read tools for next meeting, next meetings, today's meetings, current meetings, search, grouped calendar views, and free/busy availability.
+- Admin/debug UI tabs for setup info, calendar configuration, upcoming meeting previews, and MCP tool calls.
+- Docker and binary release artifacts built through the optimized GitHub release workflow.
+
 ## v1.4.77 - 2026-06-30
 
 ### Fixed
