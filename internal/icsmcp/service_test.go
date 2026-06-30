@@ -804,6 +804,84 @@ func TestStoreUpsertCalendarReportsRefreshStateInsertFailure(t *testing.T) {
 	}
 }
 
+func TestStoreUpsertCalendarReportsCalendarInsertFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	_, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_calendar_insert
+		BEFORE INSERT ON calendars
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked calendar insert');
+		END`)
+	if err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	_, err = svc.store.upsertCalendar(ctx, Calendar{
+		ID:      "calendar-1",
+		Key:     "WORK",
+		Name:    "Work",
+		URL:     "https://example.test/work.ics",
+		Enabled: true,
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "insert calendar") {
+		t.Fatalf("upsertCalendar() error = %v, want insert calendar", err)
+	}
+}
+
+func TestStoreUpsertCalendarPreservesExistingEnabledState(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	original, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/old.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+
+	updated, err := svc.store.upsertCalendar(ctx, Calendar{
+		ID:      original.ID,
+		Key:     "WORK",
+		Name:    "Work Renamed",
+		URL:     "https://example.test/new.ics",
+		Enabled: false,
+	}, false)
+	if err != nil {
+		t.Fatalf("upsertCalendar() error = %v", err)
+	}
+	if !updated.Enabled {
+		t.Fatalf("updated.Enabled = false, want existing enabled state preserved")
+	}
+	if updated.Name != "Work Renamed" || updated.URL != "https://example.test/new.ics" {
+		t.Fatalf("updated calendar = %#v", updated)
+	}
+}
+
+func TestStoreUpsertCalendarReportsExistingUpdateFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	original, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/old.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	_, err = svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_calendar_upsert_update
+		BEFORE UPDATE ON calendars
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked calendar upsert update');
+		END`)
+	if err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	_, err = svc.store.upsertCalendar(ctx, Calendar{
+		ID:      original.ID,
+		Key:     "WORK",
+		Name:    "Work Renamed",
+		URL:     "https://example.test/new.ics",
+		Enabled: true,
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "update calendar") {
+		t.Fatalf("upsertCalendar() error = %v, want update calendar", err)
+	}
+}
+
 func TestStoreUpdateCalendarReportsUpdateExecutionFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
