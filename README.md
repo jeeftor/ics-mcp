@@ -19,7 +19,7 @@ Defaults:
 - SQLite database: `./data/icsmcp.sqlite3`
 - Refresh interval: `5m`
 - Log level: `info`
-- Display timezone: `ICSMCP_TIMEZONE`, then `TZ`, then the host local timezone
+- Display timezone: `ICSMCP_TIMEZONE`, then the host local timezone
 
 Print build metadata:
 
@@ -159,7 +159,7 @@ docker run --rm -p 3333:3333 \
 
 Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. Put `ICSMCP_TIMEZONE` and `ICSMCP_EXTERNAL_URL` there too when the container is reached through a LAN IP, reverse proxy, or non-default port. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
-Use `ICSMCP_TIMEZONE` for ics-mcp display times. The container image does not need a `TZ` environment variable.
+Use `ICSMCP_TIMEZONE` for ics-mcp display times. The app intentionally ignores the generic container `TZ` variable, so the container image does not need a `TZ` environment variable.
 
 The repository also includes `compose.yaml`. It does not set `ICSMCP_TIMEZONE` itself, so values from `config/.env` are honored inside the container:
 

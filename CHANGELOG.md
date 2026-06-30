@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.15 - 2026-06-30
+
+### Changed
+- Removed the generic `TZ` environment variable fallback from app timezone configuration; use `ICSMCP_TIMEZONE` or `--timezone` for display times.
+
 ## v1.4.14 - 2026-06-30
 
 ### Improved
