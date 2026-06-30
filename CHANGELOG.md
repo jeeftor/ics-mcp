@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.53 - 2026-06-30
+
+### Improved
+- Expanded startup coverage for SQLite open and migration failures.
+
 ## v1.4.52 - 2026-06-30
 
 ### Improved

@@ -240,6 +240,16 @@ func TestRunServeReportsDatabaseDirectoryCreationErrors(t *testing.T) {
 	}
 }
 
+func TestRunServeReportsOpenStoreErrors(t *testing.T) {
+	dbPath := t.TempDir()
+	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	if err == nil || !strings.Contains(err.Error(), "migrate sqlite") {
+		t.Fatalf("runServe() error = %v, want sqlite migration context", err)
+	}
+}
+
 func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
