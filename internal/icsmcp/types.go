@@ -208,10 +208,10 @@ func (m Meeting) MarshalJSON() ([]byte, error) {
 		Calendar        string `json:"calendar,omitempty"`
 		Duration        string `json:"duration"`
 		DurationMinutes int    `json:"duration_minutes"`
-		Ongoing         bool   `json:"ongoing,omitempty"`
-		AllDay          bool   `json:"all_day,omitempty"`
-		Cancelled       bool   `json:"cancelled,omitempty"`
-		Recurring       bool   `json:"recurring,omitempty"`
+		Ongoing         bool   `json:"ongoing"`
+		AllDay          bool   `json:"all_day"`
+		Cancelled       bool   `json:"cancelled"`
+		Recurring       bool   `json:"recurring"`
 		MeetingURL      string `json:"meeting_url,omitempty"`
 		MeetingURLType  string `json:"meeting_url_type,omitempty"`
 		Description     string `json:"description,omitempty"`
