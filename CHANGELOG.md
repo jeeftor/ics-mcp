@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.68 - 2026-06-30
+
+### Improved
+- Expanded calendar selection coverage for corrupt SQLite calendar ID scan failures.
+
 ## v1.4.67 - 2026-06-30
 
 ### Improved
