@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.24 - 2026-06-30
+
+### Improved
+- Expanded calendar validation coverage for default lookahead, default preview limit, sorted preview output, and result trimming.
+
 ## v1.4.23 - 2026-06-30
 
 ### Improved

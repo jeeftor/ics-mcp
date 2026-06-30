@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -864,6 +865,31 @@ func TestValidateCalendarFetchesAndParsesFeedWithoutSaving(t *testing.T) {
 	}
 }
 
+func TestValidateCalendarUsesDefaultWindowAndLimitsPreviewMeetings(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleManyOneTimeICS(now, 12)))
+	}))
+	defer feed.Close()
+
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: feed.URL})
+	if err != nil {
+		t.Fatalf("ValidateCalendar() error = %v", err)
+	}
+	if !result.OK || result.EventCount != 12 {
+		t.Fatalf("validation result = %#v, want 12 parsed events", result)
+	}
+	if len(result.Meetings) != 10 {
+		t.Fatalf("validation meetings = %d, want default limit 10", len(result.Meetings))
+	}
+	if result.Meetings[0].Name != "Preview 01" || result.Meetings[9].Name != "Preview 10" {
+		t.Fatalf("validation meetings = %#v, want sorted first ten", result.Meetings)
+	}
+}
+
 func TestValidateCalendarReportsParseFailuresWithoutSaving(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -1442,6 +1468,19 @@ func TestUpcomingMeetingsFiltersByCalendarIDs(t *testing.T) {
 
 func ptr[T any](value T) *T {
 	return &value
+}
+
+func sampleManyOneTimeICS(start time.Time, count int) string {
+	var b strings.Builder
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n")
+	for i := 0; i < count; i++ {
+		eventStart := start.Add(time.Duration(i+1) * time.Hour).UTC()
+		eventEnd := eventStart.Add(30 * time.Minute)
+		_, _ = fmt.Fprintf(&b, "BEGIN:VEVENT\r\nUID:preview-%02d\r\nDTSTAMP:%s\r\nDTSTART:%s\r\nDTEND:%s\r\nSUMMARY:Preview %02d\r\nEND:VEVENT\r\n",
+			i+1, start.UTC().Format("20060102T150405Z"), eventStart.Format("20060102T150405Z"), eventEnd.Format("20060102T150405Z"), i+1)
+	}
+	b.WriteString("END:VCALENDAR\r\n")
+	return b.String()
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
