@@ -254,6 +254,23 @@ func TestParseICSDefaultsUntitledEvents(t *testing.T) {
 	}
 }
 
+func TestParseICSSkipsEventsMissingEnd(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
+		"BEGIN:VEVENT\r\nUID:missing-end\r\nDTSTAMP:20260629T120000Z\r\nDTSTART:20260629T123000Z\r\nSUMMARY:Missing End\r\nEND:VEVENT\r\n"+
+		"BEGIN:VEVENT\r\nUID:valid\r\nDTSTAMP:20260629T120000Z\r\nDTSTART:20260629T140000Z\r\nDTEND:20260629T143000Z\r\nSUMMARY:Valid Event\r\nEND:VEVENT\r\n"+
+		"END:VCALENDAR\r\n", now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want only the valid event: %#v", len(events), events)
+	}
+	if events[0].UID != "valid" || events[0].Name != "Valid Event" {
+		t.Fatalf("event = %#v, want valid event only", events[0])
+	}
+}
+
 func TestParseICSReportsMissingUIDErrors(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	_, err := ParseICS(sampleMissingUIDICS(), now, 24*time.Hour)
@@ -1289,6 +1306,22 @@ func TestRefreshAllCalendarsReportsSuccessFailureAndSkipped(t *testing.T) {
 	}
 	if !byID[disabled.ID].OK || !byID[disabled.ID].Skipped || byID[disabled.ID].Error != "" {
 		t.Fatalf("disabled result = %#v", byID[disabled.ID])
+	}
+}
+
+func TestRefreshAllCalendarsReportsStatusListingFailures(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if err := svc.store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	results, err := svc.RefreshAllCalendars(ctx)
+	if err == nil || !strings.Contains(err.Error(), "list calendar status") {
+		t.Fatalf("RefreshAllCalendars() error = %v, want status listing error", err)
+	}
+	if results != nil {
+		t.Fatalf("RefreshAllCalendars() results = %#v, want nil on status listing failure", results)
 	}
 }
 
