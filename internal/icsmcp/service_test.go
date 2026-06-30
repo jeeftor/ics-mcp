@@ -3,6 +3,7 @@ package icsmcp
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +109,17 @@ func TestEnvMapIncludesCurrentProcessEnvironment(t *testing.T) {
 	env := EnvMap()
 	if env["ICSMCP_TEST_ENV_MAP"] != "present" {
 		t.Fatalf("EnvMap()[ICSMCP_TEST_ENV_MAP] = %q, want present", env["ICSMCP_TEST_ENV_MAP"])
+	}
+}
+
+func TestOpenStoreReportsMigrationErrors(t *testing.T) {
+	store, err := OpenStore(t.TempDir() + "/missing/icsmcp.sqlite3")
+	if err == nil {
+		_ = store.Close()
+		t.Fatalf("OpenStore() error = nil, want missing parent directory error")
+	}
+	if !strings.Contains(err.Error(), "migrate sqlite") {
+		t.Fatalf("OpenStore() error = %v, want migrate sqlite context", err)
 	}
 }
 
@@ -670,6 +682,66 @@ func TestRemoveCalendarDeletesCachedEventsAndRefreshState(t *testing.T) {
 	}
 }
 
+func TestReplaceEventsRollsBackOnDuplicateIDs(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{ID: "duplicate", UID: "first", Name: "First", Start: now.Add(time.Hour), End: now.Add(2 * time.Hour)},
+		{ID: "duplicate", UID: "second", Name: "Second", Start: now.Add(3 * time.Hour), End: now.Add(4 * time.Hour)},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err == nil || !strings.Contains(err.Error(), "insert event") {
+		t.Fatalf("ReplaceEvents() error = %v, want duplicate insert error", err)
+	}
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 0 {
+		t.Fatalf("meetings after rolled-back replace = %#v, want none", meetings)
+	}
+}
+
+func TestRefreshStatePersistsAndParsesTimestamps(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 123, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	want := refreshState{
+		LastAttempt:  ptr(now),
+		LastSuccess:  ptr(now.Add(time.Minute)),
+		LastError:    "temporary",
+		NextRefresh:  ptr(now.Add(5 * time.Minute)),
+		ETag:         `"v2"`,
+		LastModified: "Mon, 29 Jun 2026 12:00:00 GMT",
+		EventCount:   42,
+	}
+	if err := svc.store.updateRefreshState(ctx, cal.ID, want); err != nil {
+		t.Fatalf("updateRefreshState() error = %v", err)
+	}
+	got, err := svc.store.refreshState(ctx, cal.ID)
+	if err != nil {
+		t.Fatalf("refreshState() error = %v", err)
+	}
+	if got.LastAttempt == nil || !got.LastAttempt.Equal(*want.LastAttempt) ||
+		got.LastSuccess == nil || !got.LastSuccess.Equal(*want.LastSuccess) ||
+		got.NextRefresh == nil || !got.NextRefresh.Equal(*want.NextRefresh) ||
+		got.LastError != want.LastError || got.ETag != want.ETag || got.LastModified != want.LastModified || got.EventCount != want.EventCount {
+		t.Fatalf("refreshState() = %#v, want %#v", got, want)
+	}
+
+	if parsed := parseTimePtr(sql.NullString{String: "not-a-time", Valid: true}); parsed != nil {
+		t.Fatalf("parseTimePtr(invalid) = %v, want nil", parsed)
+	}
+}
+
 func TestDisabledCalendarsDoNotReturnCachedMeetings(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -860,11 +932,11 @@ func TestUpcomingMeetingsFiltersByCalendarIDs(t *testing.T) {
 		t.Fatalf("AddCalendar(personal) error = %v", err)
 	}
 	if err := svc.ReplaceEvents(ctx, work.ID, []EventInstance{{
-		ID:          "work-1",
-		UID:         "work-uid",
-		Name:        "Work Planning",
-		Start:       now.Add(time.Hour),
-		End:         now.Add(2 * time.Hour),
+		ID:           "work-1",
+		UID:          "work-uid",
+		Name:         "Work Planning",
+		Start:        now.Add(time.Hour),
+		End:          now.Add(2 * time.Hour),
 		CalendarName: "ignored",
 	}}); err != nil {
 		t.Fatalf("ReplaceEvents(work) error = %v", err)
