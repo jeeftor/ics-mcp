@@ -183,6 +183,31 @@ func (s *Service) UpdateCalendar(ctx context.Context, id string, in UpdateCalend
 	return s.store.updateCalendar(ctx, id, in)
 }
 
+// GeneralQueryCalendars returns calendar IDs included in default generalized meeting queries.
+func (s *Service) GeneralQueryCalendars(ctx context.Context) (CalendarSelection, error) {
+	calendars, err := s.ListCalendars(ctx)
+	if err != nil {
+		return CalendarSelection{}, err
+	}
+	ids := make([]string, 0, len(calendars))
+	for _, cal := range calendars {
+		if cal.IncludeInGeneralQueries {
+			ids = append(ids, cal.ID)
+		}
+	}
+	return CalendarSelection{CalendarIDs: ids}, nil
+}
+
+// SetGeneralQueryCalendars saves calendar IDs included in default generalized meeting queries.
+func (s *Service) SetGeneralQueryCalendars(ctx context.Context, calendarIDs []string) (CalendarSelection, error) {
+	ids := uniqueCalendarIDs(calendarIDs)
+	if err := s.store.setGeneralQueryCalendarIDs(ctx, ids); err != nil {
+		return CalendarSelection{}, err
+	}
+	s.logger.Info("calendar default query selection saved", "calendar_count", len(ids))
+	return s.GeneralQueryCalendars(ctx)
+}
+
 // RemoveCalendar deletes a calendar and cached events.
 func (s *Service) RemoveCalendar(ctx context.Context, id string) error {
 	if err := s.store.deleteCalendar(ctx, id); err != nil {
@@ -647,6 +672,20 @@ func normalizeKey(value string) string {
 func stableID(key string) string {
 	sum := sha1.Sum([]byte(strings.ToUpper(key)))
 	return hex.EncodeToString(sum[:])
+}
+
+func uniqueCalendarIDs(ids []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
 
 // EnvMap returns the current process environment as a map.

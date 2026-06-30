@@ -514,6 +514,59 @@ func TestUpcomingMeetingsHonorsGeneralQueryCalendarSelection(t *testing.T) {
 	}
 }
 
+func TestSetGeneralQueryCalendarsPersistsBulkSelection(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	home, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "home", Name: "Home", URL: "https://example.test/home.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(home) error = %v", err)
+	}
+
+	selection, err := svc.SetGeneralQueryCalendars(ctx, []string{home.ID})
+	if err != nil {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v", err)
+	}
+	if !slices.Equal(selection.CalendarIDs, []string{home.ID}) {
+		t.Fatalf("selection = %#v, want home only", selection)
+	}
+
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	byID := map[string]Calendar{}
+	for _, cal := range calendars {
+		byID[cal.ID] = cal
+	}
+	if byID[work.ID].IncludeInGeneralQueries || !byID[home.ID].IncludeInGeneralQueries {
+		t.Fatalf("calendar inclusion after bulk save = %#v", byID)
+	}
+
+	selection, err = svc.SetGeneralQueryCalendars(ctx, []string{"", home.ID, home.ID, " "})
+	if err != nil {
+		t.Fatalf("SetGeneralQueryCalendars(duplicates) error = %v", err)
+	}
+	if !slices.Equal(selection.CalendarIDs, []string{home.ID}) {
+		t.Fatalf("deduplicated selection = %#v, want home only", selection)
+	}
+
+	selection, err = svc.SetGeneralQueryCalendars(ctx, nil)
+	if err != nil {
+		t.Fatalf("SetGeneralQueryCalendars(nil) error = %v", err)
+	}
+	if len(selection.CalendarIDs) != 0 {
+		t.Fatalf("empty selection = %#v, want no selected calendars", selection)
+	}
+
+	if _, err := svc.SetGeneralQueryCalendars(ctx, []string{"missing"}); err == nil || !strings.Contains(err.Error(), "unknown calendar id") {
+		t.Fatalf("SetGeneralQueryCalendars(missing) error = %v, want unknown calendar id", err)
+	}
+}
+
 func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

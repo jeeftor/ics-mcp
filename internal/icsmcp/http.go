@@ -128,6 +128,23 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/calendars/general-query-selection", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			selection, err := svc.GeneralQueryCalendars(r.Context())
+			writeJSON(w, selection, err)
+		case http.MethodPut:
+			var in CalendarSelection
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			selection, err := svc.SetGeneralQueryCalendars(r.Context(), in.CalendarIDs)
+			writeJSON(w, selection, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
 	mux.HandleFunc("/api/calendars/validate", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w)

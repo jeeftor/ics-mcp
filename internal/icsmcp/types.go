@@ -55,6 +55,11 @@ type UpdateCalendarInput struct {
 	IncludeInGeneralQueries *bool  `json:"include_in_general_queries,omitempty"`
 }
 
+// CalendarSelection stores the calendars used by default generalized event queries.
+type CalendarSelection struct {
+	CalendarIDs []string `json:"calendar_ids"`
+}
+
 // EventInstance is a normalized event occurrence stored in SQLite.
 type EventInstance struct {
 	ID             string    `json:"id"`
