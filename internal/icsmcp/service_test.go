@@ -904,6 +904,31 @@ func TestStoreUpdateCalendarReportsUpdateExecutionFailure(t *testing.T) {
 	}
 }
 
+func TestStoreUpdateCalendarCanUpdateOnlyURL(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	original, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/old.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+
+	updated, err := svc.store.updateCalendar(ctx, original.ID, UpdateCalendarInput{URL: "https://example.test/new.ics"})
+	if err != nil {
+		t.Fatalf("updateCalendar() error = %v", err)
+	}
+	if updated.Name != "Work" || updated.URL != "https://example.test/new.ics" || !updated.Enabled {
+		t.Fatalf("updated calendar = %#v", updated)
+	}
+
+	persisted, err := svc.store.calendarByID(ctx, original.ID)
+	if err != nil {
+		t.Fatalf("calendarByID() error = %v", err)
+	}
+	if persisted.Name != "Work" || persisted.URL != "https://example.test/new.ics" || !persisted.Enabled {
+		t.Fatalf("persisted calendar = %#v", persisted)
+	}
+}
+
 func TestStoreReplaceEventsReportsInsertFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

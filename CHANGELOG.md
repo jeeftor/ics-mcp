@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.37 - 2026-06-30
+
+### Improved
+- Expanded SQLite calendar update coverage for URL-only edits and persisted state.
+
 ## v1.4.36 - 2026-06-30
 
 ### Improved
