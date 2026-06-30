@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.28 - 2026-06-30
+
+### Improved
+- Expanded due-refresh coverage for status scan failures and the warning log path.
+
 ## v1.4.27 - 2026-06-30
 
 ### Fixed

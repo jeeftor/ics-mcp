@@ -1454,6 +1454,26 @@ func TestRefreshDueCalendarsRefreshesDueAndSkipsFutureOrDisabled(t *testing.T) {
 	}
 }
 
+func TestRefreshDueCalendarsLogsStatusScanFailures(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	var logs bytes.Buffer
+	svc := NewService(store, ServiceOptions{Logger: slog.New(slog.NewTextHandler(&logs, nil))})
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	svc.RefreshDueCalendars(ctx)
+
+	gotLogs := logs.String()
+	if !strings.Contains(gotLogs, "calendar refresh scan failed") || !strings.Contains(gotLogs, "sql: database is closed") {
+		t.Fatalf("logs = %q, want status scan failure", gotLogs)
+	}
+}
+
 func TestRunRefresherRefreshesUntilContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
