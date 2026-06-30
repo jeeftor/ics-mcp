@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.7 - 2026-06-30
+
+### Improved
+- Expanded service coverage for the long-running background refresher loop, context cancellation, and calendar-ID filtered meeting queries.
+
 ## v1.4.6 - 2026-06-30
 
 ### Improved
