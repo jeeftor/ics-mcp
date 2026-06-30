@@ -700,6 +700,26 @@ func TestSetGeneralQueryCalendarsReportsCalendarIDListFailures(t *testing.T) {
 	}
 }
 
+func TestSetGeneralQueryCalendarsReportsCalendarIDScanFailures(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if _, err := svc.store.db.ExecContext(ctx, "DROP TABLE calendars"); err != nil {
+		t.Fatalf("DROP TABLE calendars error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, "CREATE TABLE calendars (id TEXT)"); err != nil {
+		t.Fatalf("CREATE TABLE calendars fixture error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, "INSERT INTO calendars (id) VALUES (NULL)"); err != nil {
+		t.Fatalf("INSERT corrupt calendar fixture error = %v", err)
+	}
+
+	_, err := svc.SetGeneralQueryCalendars(ctx, nil)
+
+	if err == nil || !strings.Contains(err.Error(), "scan calendar id") {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v, want scan calendar id", err)
+	}
+}
+
 func TestReplaceEventsReportsClosedStoreErrors(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
