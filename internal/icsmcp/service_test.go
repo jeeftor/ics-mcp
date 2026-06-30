@@ -750,6 +750,66 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 	}
 }
 
+func TestStoreUpsertCalendarReportsRefreshStateInsertFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if _, err := svc.store.db.ExecContext(ctx, "DROP TABLE refresh_state"); err != nil {
+		t.Fatalf("DROP TABLE refresh_state error = %v", err)
+	}
+
+	_, err := svc.store.upsertCalendar(ctx, Calendar{
+		ID:      "calendar-1",
+		Key:     "WORK",
+		Name:    "Work",
+		URL:     "https://example.test/work.ics",
+		Enabled: true,
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "insert refresh state") {
+		t.Fatalf("upsertCalendar() error = %v, want insert refresh state", err)
+	}
+}
+
+func TestStoreUpdateCalendarReportsUpdateExecutionFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	_, err = svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_calendar_update
+		BEFORE UPDATE ON calendars
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked calendar update');
+		END`)
+	if err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	_, err = svc.store.updateCalendar(ctx, cal.ID, UpdateCalendarInput{Name: "Renamed"})
+	if err == nil || !strings.Contains(err.Error(), "update calendar") {
+		t.Fatalf("updateCalendar() error = %v, want update calendar", err)
+	}
+}
+
+func TestStoreReplaceEventsReportsInsertFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	start := time.Date(2026, 6, 29, 16, 0, 0, 0, time.UTC)
+	events := []EventInstance{
+		{ID: "duplicate", UID: "uid-1", Name: "One", Start: start, End: start.Add(30 * time.Minute)},
+		{ID: "duplicate", UID: "uid-2", Name: "Two", Start: start, End: start.Add(30 * time.Minute)},
+	}
+
+	err = svc.store.replaceEvents(ctx, cal.ID, events)
+	if err == nil || !strings.Contains(err.Error(), "insert event") {
+		t.Fatalf("replaceEvents() error = %v, want insert event", err)
+	}
+}
+
 func TestMetricsTextIncludesCalendarState(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
