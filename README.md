@@ -148,16 +148,16 @@ The admin page at `/` is also the local debug interface. It shows the exact same
 Tagged releases publish multi-architecture images to GitHub Container Registry:
 
 ```bash
+mkdir -p config
+$EDITOR config/.env
 docker pull ghcr.io/jeeftor/ics-mcp:latest
 docker run --rm -p 3333:3333 \
   -v "$PWD/config:/config" \
-  -e ICSMCP_TIMEZONE=America/Denver \
-  -e ICSMCP_EXTERNAL_URL=http://192.168.1.112:3333 \
   ghcr.io/jeeftor/ics-mcp:latest \
   serve --http-addr 0.0.0.0:3333 --config-dir /config --log-level info
 ```
 
-Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. Put `ICSMCP_TIMEZONE` and `ICSMCP_EXTERNAL_URL` there too when the container is reached through a LAN IP, reverse proxy, or non-default port. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
+Create `config/.env` before running the container, or pass `ICSMCP_CALENDAR_<KEY>` values through your container runtime. Put `ICSMCP_TIMEZONE` and `ICSMCP_EXTERNAL_URL` in `config/.env` too when the container is reached through a LAN IP, reverse proxy, or non-default port. The `/config` mount preserves the SQLite database and UI/API changes across restarts.
 
 Use `ICSMCP_TIMEZONE` for ics-mcp display times. The app defaults to `UTC` when no app timezone is configured and intentionally ignores the generic container `TZ` variable, so the container image does not need a `TZ` environment variable.
 

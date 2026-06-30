@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.32 - 2026-06-30
+
+### Changed
+- Updated Docker run directions to keep timezone and external URL in mounted `config/.env` instead of passing app config as container environment variables.
+
 ## v1.4.31 - 2026-06-30
 
 ### Improved
