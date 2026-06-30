@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -684,6 +685,88 @@ func TestRefreshDueCalendarsRefreshesDueAndSkipsFutureOrDisabled(t *testing.T) {
 	}
 	if statusByID[disabled.ID].LastAttempt != nil {
 		t.Fatalf("disabled status = %#v, want no refresh attempt", statusByID[disabled.ID])
+	}
+}
+
+func TestRunRefresherRefreshesUntilContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{RefreshInterval: 10 * time.Millisecond, Lookahead: 30 * 24 * time.Hour})
+	var requests atomic.Int32
+	seenSecondRequest := make(chan struct{})
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 2 {
+			close(seenSecondRequest)
+		}
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	if _, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL}); err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		svc.RunRefresher(ctx)
+	}()
+
+	select {
+	case <-seenSecondRequest:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("RunRefresher made %d requests, want at least 2", requests.Load())
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("RunRefresher did not stop after context cancellation")
+	}
+}
+
+func TestUpcomingMeetingsFiltersByCalendarIDs(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	personal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "personal", Name: "Personal", URL: "https://example.test/personal.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(personal) error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, work.ID, []EventInstance{{
+		ID:          "work-1",
+		UID:         "work-uid",
+		Name:        "Work Planning",
+		Start:       now.Add(time.Hour),
+		End:         now.Add(2 * time.Hour),
+		CalendarName: "ignored",
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents(work) error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, personal.ID, []EventInstance{{
+		ID:    "personal-1",
+		UID:   "personal-uid",
+		Name:  "Personal Errand",
+		Start: now.Add(30 * time.Minute),
+		End:   now.Add(90 * time.Minute),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents(personal) error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, CalendarIDs: []string{work.ID}})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 || meetings[0].Name != "Work Planning" || meetings[0].CalendarName != "Work" {
+		t.Fatalf("filtered meetings = %#v", meetings)
 	}
 }
 
