@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.49 - 2026-06-30
+
+### Improved
+- Expanded grouped upcoming-meeting coverage for invalid timezone overrides.
+
 ## v1.4.48 - 2026-06-30
 
 ### Improved
