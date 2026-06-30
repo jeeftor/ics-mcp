@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.13 - 2026-06-30
+
+### Improved
+- Expanded CLI and logging coverage for repeatable calendar flags, invalid serve log levels, startup DB directory creation, DB path defaults, startup URL output, and structured slog attributes/groups.
+
 ## v1.4.12 - 2026-06-30
 
 ### Improved
