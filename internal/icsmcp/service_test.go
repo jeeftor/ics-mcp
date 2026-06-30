@@ -806,6 +806,21 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 	}
 }
 
+func TestStoreListCalendarsReportsScanFailuresWithContext(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if _, err := svc.store.db.ExecContext(ctx, `INSERT INTO calendars (id, key, name, url, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"calendar-1", "WORK", "Work", "https://example.test/work.ics", "not-an-int", "2026-06-29T12:00:00Z", "2026-06-29T12:00:00Z"); err != nil {
+		t.Fatalf("insert corrupt calendar fixture error = %v", err)
+	}
+
+	_, err := svc.ListCalendars(ctx)
+	if err == nil || !strings.Contains(err.Error(), "scan calendar") {
+		t.Fatalf("ListCalendars() error = %v, want scan calendar context", err)
+	}
+}
+
 func TestPlaceholdersFormatsSQLParameterLists(t *testing.T) {
 	for _, tc := range []struct {
 		count int

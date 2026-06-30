@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.42 - 2026-06-30
+
+### Improved
+- Expanded calendar listing coverage for corrupt SQLite row scan failures.
+- Added clearer error context when listing calendars fails while scanning a row.
+
 ## v1.4.41 - 2026-06-30
 
 ### Improved

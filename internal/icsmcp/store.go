@@ -143,7 +143,7 @@ func (s *Store) listCalendars(ctx context.Context) ([]Calendar, error) {
 	for rows.Next() {
 		cal, err := scanCalendar(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan calendar: %w", err)
 		}
 		calendars = append(calendars, cal)
 	}
