@@ -372,6 +372,40 @@ func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRefreshCalendarRouteUpdatesCache(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var ok map[string]bool
+	doJSON(t, http.MethodPost, server.URL+"/api/calendars/"+cal.ID+"/refresh", nil, &ok)
+	if !ok["ok"] {
+		t.Fatalf("refresh response = %#v, want ok", ok)
+	}
+
+	var statuses []CalendarStatus
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &statuses)
+	if len(statuses) != 1 || statuses[0].EventCount != 1 || statuses[0].LastSuccess == nil {
+		t.Fatalf("status after manual refresh = %#v", statuses)
+	}
+	var meetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	if len(meetings) != 1 || meetings[0].Name != "Planning" {
+		t.Fatalf("meetings after manual refresh = %#v", meetings)
+	}
+}
+
 func TestToolPreviewRejectsInvalidTimezone(t *testing.T) {
 	svc := newTestService(t)
 	_, err := PreviewToolCall(context.Background(), svc, "upcoming_meetings", json.RawMessage(`{"timezone":"America/Denbver"}`))
