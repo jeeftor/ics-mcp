@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.55 - 2026-06-30
+
+### Added
+- Added `GET`/`PUT /api/calendars/general-query-selection` for saving the calendars used by default generalized meeting queries.
+- Added bulk default-query calendar selection controls to the admin UI.
+
 ## v1.4.54 - 2026-06-30
 
 ### Improved

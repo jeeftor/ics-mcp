@@ -177,6 +177,57 @@ func (s *Store) updateCalendar(ctx context.Context, id string, in UpdateCalendar
 	return cal, nil
 }
 
+func (s *Store) setGeneralQueryCalendarIDs(ctx context.Context, calendarIDs []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin calendar selection update: %w", err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM calendars`)
+	if err != nil {
+		return fmt.Errorf("list calendar ids: %w", err)
+	}
+	known := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan calendar id: %w", err)
+		}
+		known[id] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close calendar id rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate calendar ids: %w", err)
+	}
+
+	for _, id := range calendarIDs {
+		if !known[id] {
+			return fmt.Errorf("unknown calendar id %q", id)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE calendars SET include_in_general_queries = 0, updated_at = ?`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("clear calendar selection: %w", err)
+	}
+	if len(calendarIDs) > 0 {
+		args := make([]any, 0, len(calendarIDs)+1)
+		args = append(args, time.Now().UTC().Format(time.RFC3339Nano))
+		for _, id := range calendarIDs {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE calendars SET include_in_general_queries = 1, updated_at = ? WHERE id IN (`+placeholders(len(calendarIDs))+`)`, args...); err != nil {
+			return fmt.Errorf("save calendar selection: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit calendar selection update: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) deleteCalendar(ctx context.Context, id string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE calendar_id = ?`, id); err != nil {
 		return fmt.Errorf("delete events: %w", err)

@@ -69,6 +69,8 @@
     .tool-button.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
     .tool-output { min-height: 260px; font-size: 13px; }
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+    .selection-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+    .selection-bar .spacer { flex: 1 1 auto; }
     .json-key { color: #7dd3fc; }
     .json-string { color: #86efac; }
     .json-number { color: #fbbf24; }
@@ -191,6 +193,14 @@
           <input id="url" name="url" placeholder="ICS URL" required>
           <button class="primary" type="submit">Add Calendar</button>
         </form>
+        <div class="selection-bar">
+          <span class="muted"><span id="selected-calendar-count">0</span> selected for default meeting queries</span>
+          <span class="spacer"></span>
+          <button id="select-all-calendars" type="button">Select All</button>
+          <button id="select-no-calendars" type="button">Select None</button>
+          <button id="save-calendar-selection" class="primary" type="button">Save Selection</button>
+          <span id="selection-status" class="muted"></span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -251,6 +261,10 @@
     const toolStatus = document.querySelector('#tool-status');
     const runTool = document.querySelector('#run-tool');
     const form = document.querySelector('#add-form');
+    const saveSelectionButton = document.querySelector('#save-calendar-selection');
+    const selectAllCalendarsButton = document.querySelector('#select-all-calendars');
+    const selectNoCalendarsButton = document.querySelector('#select-no-calendars');
+    const selectionStatus = document.querySelector('#selection-status');
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
@@ -259,6 +273,7 @@
       ['Admin UI', '/'],
       ['MCP Server', '/mcp'],
       ['Status API', '/api/status'],
+      ['Default Calendar Selection', '/api/calendars/general-query-selection'],
       ['Health', '/healthz'],
       ['Readiness', '/readyz'],
       ['Metrics', '/metrics']
@@ -330,6 +345,7 @@
     function renderCalendars(calendars) {
       if (calendars.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="muted">No calendars configured.</td></tr>';
+        updateSelectedCalendarCount();
         return;
       }
       tbody.replaceChildren(...calendars.map((calendar) => {
@@ -338,7 +354,7 @@
           <td data-label="Name"><input value="${escapeHTML(calendar.name)}" data-field="name"></td>
           <td data-label="ID" class="mono">${escapeHTML(calendar.id)}</td>
           <td data-label="Enabled">${calendar.enabled ? 'Yes' : 'No'}</td>
-          <td data-label="General Queries"><input type="checkbox" data-field="include_in_general_queries" ${calendar.include_in_general_queries ? 'checked' : ''}></td>
+          <td data-label="General Queries"><input type="checkbox" data-field="include_in_general_queries" data-calendar-id="${escapeHTML(calendar.id)}" ${calendar.include_in_general_queries ? 'checked' : ''}></td>
           <td data-label="Refresh"><span class="muted">Last:</span> ${fmt(calendar.last_success)}<br><span class="muted">Next:</span> ${fmt(calendar.next_refresh)}</td>
           <td data-label="Events">${calendar.event_count}</td>
           <td data-label="Error" class="error">${escapeHTML(calendar.last_error || '')}</td>
@@ -357,6 +373,7 @@
           });
           await load();
         });
+        row.querySelector('[data-field="include_in_general_queries"]').addEventListener('change', updateSelectedCalendarCount);
         row.querySelector('[data-action="refresh"]').addEventListener('click', async () => {
           await api('/api/calendars/' + calendar.id + '/refresh', { method: 'POST' });
           await load();
@@ -367,6 +384,17 @@
         });
         return row;
       }));
+      updateSelectedCalendarCount();
+    }
+
+    function selectedGeneralCalendarIDs() {
+      return Array.from(document.querySelectorAll('[data-field="include_in_general_queries"]'))
+        .filter((input) => input.checked)
+        .map((input) => input.dataset.calendarId);
+    }
+
+    function updateSelectedCalendarCount() {
+      document.querySelector('#selected-calendar-count').textContent = selectedGeneralCalendarIDs().length;
     }
 
     async function loadMeetings() {
@@ -549,6 +577,33 @@
       form.reset();
       await load();
       selectTab('calendars');
+    });
+
+    selectAllCalendarsButton.addEventListener('click', () => {
+      document.querySelectorAll('[data-field="include_in_general_queries"]').forEach((input) => { input.checked = true; });
+      selectionStatus.textContent = 'Selection changed';
+      updateSelectedCalendarCount();
+    });
+
+    selectNoCalendarsButton.addEventListener('click', () => {
+      document.querySelectorAll('[data-field="include_in_general_queries"]').forEach((input) => { input.checked = false; });
+      selectionStatus.textContent = 'Selection changed';
+      updateSelectedCalendarCount();
+    });
+
+    saveSelectionButton.addEventListener('click', async () => {
+      selectionStatus.textContent = 'Saving...';
+      try {
+        await api('/api/calendars/general-query-selection', {
+          method: 'PUT',
+          body: JSON.stringify({ calendar_ids: selectedGeneralCalendarIDs() })
+        });
+        selectionStatus.textContent = 'Saved';
+        await load();
+      } catch (error) {
+        selectionStatus.textContent = 'Error';
+        console.error(error);
+      }
     });
 
     runTool.addEventListener('click', async () => {

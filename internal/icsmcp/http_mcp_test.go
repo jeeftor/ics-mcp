@@ -36,7 +36,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "General Queries", "include_in_general_queries", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime"} {
+	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -207,6 +207,23 @@ func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
 	if got := meetingNames(explicitMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
 		t.Fatalf("explicit meeting names = %#v", got)
 	}
+
+	var saved CalendarSelection
+	doJSON(t, http.MethodPut, server.URL+"/api/calendars/general-query-selection", CalendarSelection{CalendarIDs: []string{private.ID}}, &saved)
+	if !slices.Equal(saved.CalendarIDs, []string{private.ID}) {
+		t.Fatalf("saved selection = %#v, want private only", saved)
+	}
+
+	var selected CalendarSelection
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars/general-query-selection", nil, &selected)
+	if !slices.Equal(selected.CalendarIDs, []string{private.ID}) {
+		t.Fatalf("selected calendar ids = %#v, want private only", selected.CalendarIDs)
+	}
+
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &defaultMeetings)
+	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
+		t.Fatalf("default meeting names after bulk selection = %#v", got)
+	}
 }
 
 func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
@@ -291,6 +308,8 @@ func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
 		{name: "tools list method", method: http.MethodPost, path: "/api/tools", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar collection method", method: http.MethodPut, path: "/api/calendars", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar add bad json", method: http.MethodPost, path: "/api/calendars", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar selection method", method: http.MethodPost, path: "/api/calendars/general-query-selection", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "calendar selection bad json", method: http.MethodPut, path: "/api/calendars/general-query-selection", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
 		{name: "calendar validate method", method: http.MethodGet, path: "/api/calendars/validate", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar validate bad json", method: http.MethodPost, path: "/api/calendars/validate", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
 		{name: "calendar empty id", method: http.MethodGet, path: "/api/calendars/", wantStatus: http.StatusNotFound, wantBody: "404 page not found"},
