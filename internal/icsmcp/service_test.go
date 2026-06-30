@@ -275,6 +275,22 @@ func TestParseICSDetectsAllDayAndCancelledEvents(t *testing.T) {
 	}
 }
 
+func TestParseICSDetectsCancelledSummaryWithoutStatus(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
+		"BEGIN:VEVENT\r\nUID:cancelled-summary\r\nDTSTAMP:20260629T120000Z\r\nDTSTART:20260629T130000Z\r\nDTEND:20260629T140000Z\r\nSUMMARY:Cancelled: Planning\r\nEND:VEVENT\r\n"+
+		"END:VCALENDAR\r\n", now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if !events[0].Cancelled {
+		t.Fatalf("cancelled = false, want title-prefixed cancellation")
+	}
+}
+
 func TestParseICSDefaultsUntitledEvents(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleUntitledICS(), now, 24*time.Hour)
@@ -289,6 +305,16 @@ func TestParseICSDefaultsUntitledEvents(t *testing.T) {
 	}
 	if events[0].UID != "untitled-1" {
 		t.Fatalf("UID = %q, want untitled-1", events[0].UID)
+	}
+}
+
+func TestParseICSReportsMissingStartErrors(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	_, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
+		"BEGIN:VEVENT\r\nUID:missing-start\r\nDTSTAMP:20260629T120000Z\r\nDTEND:20260629T143000Z\r\nSUMMARY:Missing Start\r\nEND:VEVENT\r\n"+
+		"END:VCALENDAR\r\n", now, 24*time.Hour)
+	if err == nil || !strings.Contains(err.Error(), "could not parse event without DTSTART") {
+		t.Fatalf("ParseICS(missing DTSTART) error = %v, want missing DTSTART parse error", err)
 	}
 }
 

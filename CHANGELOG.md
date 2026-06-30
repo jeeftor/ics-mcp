@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.60 - 2026-06-30
+
+### Improved
+- Expanded ICS parser regression coverage for title-prefixed cancellations and missing-start parse failures.
+
 ## v1.4.59 - 2026-06-30
 
 ### Improved
