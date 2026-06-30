@@ -101,7 +101,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `detail`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `detail`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
 
 `/healthz` is the liveness endpoint and `/readyz` is the readiness endpoint. The `z` suffix is a common convention from Kubernetes-style health checks.
 
@@ -124,21 +124,23 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `refresh_calendar`
 - `refresh_all_calendars`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus `ongoing`, `all_day`, `cancelled`, `recurring`, and meeting URL fields only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time unless `sort` is supplied. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus `ongoing`, `all_day`, `cancelled`, `recurring`, and meeting URL fields only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `end_date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
 
-`upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
+`sort` supports these modes: `start_time` for raw chronological order, `agenda` for ongoing timed meetings then upcoming timed meetings then all-day/multi-day blocks, `calendar` for all-day/multi-day blocks first then timed events, and `ongoing_first` for current events first then chronological order.
+
+`upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar. The `sort` option applies within each calendar group.
 
 `next_meeting` returns only the next non-all-day, non-cancelled meeting. Use this when a consumer asks what is next and does not need a larger agenda.
 
 `next_meetings` is the opinionated, token-conscious preset for normal meeting prep. It returns the same shape as `upcoming_meetings`, but always excludes all-day blocks and cancelled events.
 
-`today_meetings` returns meetings for the current display day using the configured timezone or the optional query timezone.
+`today_meetings` returns meetings for the current display day using the configured timezone or the optional query timezone. It defaults to `sort: "agenda"` so ongoing timed meetings and upcoming timed meetings appear before all-day or multi-day blocks. Use `sort: "calendar"` to show all-day and multi-day blocks first.
 
 `current_meetings` returns only events that have already started and have not ended yet. Ongoing events are marked with `ongoing: true`.
 
-`search_meetings` uses the same cached event data and filters as `upcoming_meetings`; pass `query` to match title, description, or calendar name.
+`search_meetings` uses the same cached event data and filters as `upcoming_meetings`; pass `query` to match title, calendar name, or cached description. Descriptions are still omitted from output unless `include_description` is true.
 
-`free_busy` returns busy blocks without meeting titles or descriptions. It is the most privacy-preserving and token-efficient view when a consumer only needs availability.
+`free_busy` returns busy blocks without meeting titles or descriptions. It is the most privacy-preserving and token-efficient view when a consumer only needs availability. Use `after` and `before` to keep availability checks scoped to a specific window.
 
 `server_status` returns build metadata, timezone, optional external URL, and calendar refresh state.
 
@@ -148,7 +150,7 @@ The admin tools use one canonical verb-first naming style: `list_calendars`, `ad
 
 Compact meeting outputs include `when`, `title`, `calendar`, `duration`, and `duration_minutes`. Optional fields such as `ongoing`, `all_day`, `cancelled`, `recurring`, `meeting_url`, and `meeting_url_type` are emitted only when useful. `recurring` is true for expanded RRULE instances and `RECURRENCE-ID` overrides; pass `detail: "full"` when a consumer needs raw `recurrence_id` values or separate time fields. Cancelled recurring overrides are preserved with `cancelled: true`, then hidden by default when `exclude_cancelled` is enabled. `meeting_url` is set when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
 
-MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `next_meetings`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, `timezone`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
+MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `next_meetings`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, `timezone`, `sort`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
 
 ## Debug UI
 

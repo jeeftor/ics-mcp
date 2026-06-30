@@ -984,6 +984,61 @@ func TestTodayMeetingsIncludesOngoingEventStartedBeforeToday(t *testing.T) {
 	}
 }
 
+func TestTodayMeetingsDefaultsToAgendaSort(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	denver, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 7, 2, 9, 0, 0, 0, denver).UTC()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "All Day OOO", AllDay: true, Start: time.Date(2026, 7, 2, 0, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 3, 0, 0, 0, 0, denver).UTC()},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Ongoing Standup", Start: time.Date(2026, 7, 2, 8, 45, 0, 0, denver).UTC(), End: time.Date(2026, 7, 2, 9, 15, 0, 0, denver).UTC()},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Next Planning", Start: time.Date(2026, 7, 2, 10, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 2, 10, 30, 0, 0, denver).UTC()},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.TodayMeetings(ctx, UpcomingQuery{Now: now, Timezone: "America/Denver", Limit: 10})
+	if err != nil {
+		t.Fatalf("TodayMeetings() error = %v", err)
+	}
+	if got := meetingNames(meetings); !slices.Equal(got, []string{"Ongoing Standup", "Next Planning", "All Day OOO"}) {
+		t.Fatalf("agenda sorted meetings = %#v", got)
+	}
+}
+
+func TestUpcomingMeetingsSupportsCalendarSort(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 7, 2, 9, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Timed Meeting", Start: now.Add(time.Hour), End: now.Add(90 * time.Minute)},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "All Day OOO", AllDay: true, Start: now.Add(-9 * time.Hour), End: now.Add(15 * time.Hour)},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, Sort: "calendar"})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if got := meetingNames(meetings); !slices.Equal(got, []string{"All Day OOO", "Timed Meeting"}) {
+		t.Fatalf("calendar sorted meetings = %#v", got)
+	}
+}
+
 func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

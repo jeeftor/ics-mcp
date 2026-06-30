@@ -58,12 +58,12 @@ type updateInput struct {
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
 func NewMCPServer(svc *Service) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: svc.buildInfo.Version}, nil)
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; sort supports start_time, agenda, calendar, and ongoing_first."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; sort applies within each group."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, groupedMeetingsOutput, error) {
 			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 			return nil, groupedMeetingsOutput{Calendars: groups}, err
@@ -80,7 +80,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings for the current display day."},
+	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings for the current display day. Defaults to agenda sort: ongoing timed, upcoming timed, then all-day or multi-day blocks."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.TodayMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
@@ -91,12 +91,12 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, description, or calendar name."},
+	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Descriptions remain omitted from output unless requested."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions."},
+	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use after and before for a specific availability window."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
 			busy, err := svc.FreeBusy(ctx, in)
 			return nil, freeBusyOutput{Busy: busy}, err

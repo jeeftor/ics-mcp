@@ -388,9 +388,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 		return nil, err
 	}
 	meetings := filterMeetings(s.meetingsFromEvents(events, now, query, location, timezone), query)
-	slices.SortFunc(meetings, func(a, b Meeting) int {
-		return a.StartTime.Compare(b.StartTime)
-	})
+	sortMeetings(meetings, query.Sort)
 	if len(meetings) > limit {
 		meetings = meetings[:limit]
 	}
@@ -423,6 +421,9 @@ func (s *Service) TodayMeetings(ctx context.Context, query UpcomingQuery) ([]Mee
 	query.Before = localStart.Add(24 * time.Hour).UTC()
 	query.ExcludeCancelled = true
 	query.OverlapWindow = true
+	if query.Sort == "" {
+		query.Sort = "agenda"
+	}
 	return s.UpcomingMeetings(ctx, query)
 }
 
@@ -459,6 +460,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 		return nil, err
 	}
 	meetings := filterMeetings(s.meetingsFromEvents(events, now, query, location, timezone), query)
+	sortMeetings(meetings, query.Sort)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
 	groups := []CalendarMeetingGroup{}
@@ -580,6 +582,62 @@ func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
 		filtered = append(filtered, meeting)
 	}
 	return filtered
+}
+
+func sortMeetings(meetings []Meeting, sortMode string) {
+	switch strings.ToLower(strings.TrimSpace(sortMode)) {
+	case "agenda":
+		slices.SortFunc(meetings, compareAgendaMeetings)
+	case "calendar":
+		slices.SortFunc(meetings, compareCalendarMeetings)
+	case "ongoing_first":
+		slices.SortFunc(meetings, compareOngoingFirstMeetings)
+	default:
+		slices.SortFunc(meetings, compareMeetingStartTime)
+	}
+}
+
+func compareAgendaMeetings(a, b Meeting) int {
+	aClass := agendaClass(a)
+	bClass := agendaClass(b)
+	if aClass != bClass {
+		return aClass - bClass
+	}
+	return compareMeetingStartTime(a, b)
+}
+
+func agendaClass(meeting Meeting) int {
+	if meeting.Ongoing && !meeting.AllDay {
+		return 0
+	}
+	if !meeting.Ongoing && !meeting.AllDay {
+		return 1
+	}
+	return 2
+}
+
+func compareCalendarMeetings(a, b Meeting) int {
+	if a.AllDay != b.AllDay {
+		if a.AllDay {
+			return -1
+		}
+		return 1
+	}
+	return compareMeetingStartTime(a, b)
+}
+
+func compareOngoingFirstMeetings(a, b Meeting) int {
+	if a.Ongoing != b.Ongoing {
+		if a.Ongoing {
+			return -1
+		}
+		return 1
+	}
+	return compareMeetingStartTime(a, b)
+}
+
+func compareMeetingStartTime(a, b Meeting) int {
+	return a.StartTime.Compare(b.StartTime)
 }
 
 func meetingDescription(description string, query UpcomingQuery) string {

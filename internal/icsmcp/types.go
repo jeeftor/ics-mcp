@@ -92,6 +92,7 @@ type UpcomingQuery struct {
 	Query               string    `json:"query,omitempty"`
 	Timezone            string    `json:"timezone,omitempty"`
 	Detail              string    `json:"detail,omitempty"`
+	Sort                string    `json:"sort,omitempty"`
 	InProgressOnly      bool      `json:"in_progress_only,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
 	ExcludeCancelled    bool      `json:"exclude_cancelled,omitempty"`
