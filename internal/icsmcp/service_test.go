@@ -595,6 +595,32 @@ func TestValidateCalendarReportsParseFailuresWithoutSaving(t *testing.T) {
 	}
 }
 
+func TestAddCalendarAndRefreshKeepsCalendarWhenRefreshFails(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary", http.StatusBadGateway)
+	}))
+	defer feed.Close()
+
+	cal, err := svc.AddCalendarAndRefresh(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendarAndRefresh() error = %v", err)
+	}
+	if cal.Key != "WORK" || cal.Name != "Work" {
+		t.Fatalf("saved calendar = %#v", cal)
+	}
+	statuses, err := svc.ListCalendarStatus(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendarStatus() error = %v", err)
+	}
+	if len(statuses) != 1 || statuses[0].LastError == "" || statuses[0].LastAttempt == nil || statuses[0].EventCount != 0 {
+		t.Fatalf("status after failed add refresh = %#v", statuses)
+	}
+}
+
 func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -639,6 +665,13 @@ func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	}
 }
 
+func TestRemoveCalendarIsIdempotentForMissingID(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.RemoveCalendar(context.Background(), "missing"); err != nil {
+		t.Fatalf("RemoveCalendar(missing) error = %v", err)
+	}
+}
+
 func TestRemoveCalendarDeletesCachedEventsAndRefreshState(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -679,6 +712,58 @@ func TestRemoveCalendarDeletesCachedEventsAndRefreshState(t *testing.T) {
 	}
 	if state.LastAttempt != nil || state.LastSuccess != nil || state.LastError != "" || state.ETag != "" || state.EventCount != 0 {
 		t.Fatalf("refreshState(removed) = %#v, want empty state", state)
+	}
+}
+
+func TestRefreshAllCalendarsReportsSuccessFailureAndSkipped(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	goodFeed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer goodFeed.Close()
+	badFeed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary", http.StatusBadGateway)
+	}))
+	defer badFeed.Close()
+
+	good, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "good", Name: "Good", URL: goodFeed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar(good) error = %v", err)
+	}
+	bad, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "bad", Name: "Bad", URL: badFeed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar(bad) error = %v", err)
+	}
+	disabled, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "disabled", Name: "Disabled", URL: goodFeed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar(disabled) error = %v", err)
+	}
+	if _, err := svc.UpdateCalendar(ctx, disabled.ID, UpdateCalendarInput{Enabled: ptr(false)}); err != nil {
+		t.Fatalf("UpdateCalendar(disabled) error = %v", err)
+	}
+
+	results, err := svc.RefreshAllCalendars(ctx)
+	if err != nil {
+		t.Fatalf("RefreshAllCalendars() error = %v", err)
+	}
+	byID := map[string]RefreshCalendarResult{}
+	for _, result := range results {
+		byID[result.CalendarID] = result
+	}
+	if len(byID) != 3 {
+		t.Fatalf("refresh results = %#v, want 3", results)
+	}
+	if !byID[good.ID].OK || byID[good.ID].Skipped || byID[good.ID].Error != "" {
+		t.Fatalf("good result = %#v", byID[good.ID])
+	}
+	if byID[bad.ID].OK || byID[bad.ID].Error == "" || byID[bad.ID].Skipped {
+		t.Fatalf("bad result = %#v", byID[bad.ID])
+	}
+	if !byID[disabled.ID].OK || !byID[disabled.ID].Skipped || byID[disabled.ID].Error != "" {
+		t.Fatalf("disabled result = %#v", byID[disabled.ID])
 	}
 }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.11 - 2026-06-30
+
+### Improved
+- Expanded service coverage for add-and-refresh failures, idempotent calendar removal, and refresh-all success/failure/skipped summaries.
+
 ## v1.4.10 - 2026-06-30
 
 ### Improved
