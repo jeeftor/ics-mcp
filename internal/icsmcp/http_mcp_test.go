@@ -938,6 +938,19 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("list calendars = %#v", listed.Calendars)
 	}
 
+	refreshResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "refresh_calendar",
+		Arguments: map[string]any{"id": addOut.Calendar.ID},
+	})
+	if err != nil || refreshResult.IsError {
+		t.Fatalf("refresh_calendar result = %#v err = %v", refreshResult, err)
+	}
+	var refreshed okOutput
+	decodeStructured(t, refreshResult.StructuredContent, &refreshed)
+	if !refreshed.OK {
+		t.Fatalf("refresh calendar = %#v", refreshed)
+	}
+
 	refreshAllResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "refresh_all_calendars",
 		Arguments: map[string]any{},
