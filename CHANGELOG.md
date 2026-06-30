@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.29 - 2026-06-30
+
+### Improved
+- Expanded HTTP JSON helper coverage for response encoding failures.
+
 ## v1.4.28 - 2026-06-30
 
 ### Improved

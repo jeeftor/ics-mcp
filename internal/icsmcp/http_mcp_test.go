@@ -300,6 +300,25 @@ func TestParseBoolQueryAcceptedValues(t *testing.T) {
 	}
 }
 
+func TestWriteJSONReportsEncodeFailures(t *testing.T) {
+	recorder := httptest.NewRecorder()
+
+	writeJSON(recorder, map[string]any{"bad": make(chan int)}, nil)
+
+	resp := recorder.Result()
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("writeJSON() status = %d body=%s, want 500", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "unsupported type: chan int") {
+		t.Fatalf("writeJSON() body = %q, want encoder error", body)
+	}
+}
+
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&only_ongoing=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
