@@ -242,6 +242,50 @@ func TestPlainSlogHandlerWithEmptyGroupAndEmptyAttrs(t *testing.T) {
 	}
 }
 
+func TestColorSlogHandlerRendersAllLevelLabels(t *testing.T) {
+	var out bytes.Buffer
+	handler := newColorSlogHandler(&out, slog.LevelDebug)
+	logger := slog.New(handler)
+
+	logger.Debug("debugging")
+	logger.Info("ready")
+	logger.Warn("slow")
+	logger.Error("failed")
+
+	got := out.String()
+	for _, want := range []string{"DEBUG", "INFO", "WARN", "ERROR"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("color log output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestSlogHandlerSkipsEmptyAttrsAndClonesSlices(t *testing.T) {
+	handler := newPlainSlogHandler(io.Discard, slog.LevelInfo).(*colorSlogHandler)
+	var b strings.Builder
+	handler.writeAttr(&b, slog.Attr{})
+	if b.Len() != 0 {
+		t.Fatalf("empty attr wrote %q, want no output", b.String())
+	}
+
+	values := []string{"first"}
+	cloned := slicesClone(values)
+	values[0] = "changed"
+	if len(cloned) != 1 || cloned[0] != "first" {
+		t.Fatalf("slicesClone() = %#v after source mutation, want independent copy", cloned)
+	}
+
+	var out bytes.Buffer
+	logger := slog.New(newPlainSlogHandler(&out, slog.LevelInfo).WithAttrs([]slog.Attr{slog.String("first", "1")}).WithAttrs([]slog.Attr{slog.String("second", "2")}))
+	logger.Info("attrs")
+	got := out.String()
+	for _, want := range []string{"first=1", "second=2"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 const httpStatusBadGateway = 502
 
 func appBuildInfo() app.BuildInfo {
