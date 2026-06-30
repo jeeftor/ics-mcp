@@ -36,7 +36,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime"} {
+	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "General Queries", "include_in_general_queries", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -150,6 +150,63 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	}
 
 	_, _ = ctx, svc
+}
+
+func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	general, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "general", Name: "General", URL: "https://example.test/general.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(general) error = %v", err)
+	}
+	private, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "private", Name: "Private", URL: "https://example.test/private.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(private) error = %v", err)
+	}
+	for _, cal := range []Calendar{general, private} {
+		if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+			CalendarID: cal.ID,
+			Name:       cal.Name + " Meeting",
+			Start:      now.Add(time.Hour),
+			End:        now.Add(90 * time.Minute),
+		}}); err != nil {
+			t.Fatalf("ReplaceEvents(%s) error = %v", cal.Name, err)
+		}
+	}
+
+	var updated Calendar
+	doJSON(t, http.MethodPatch, server.URL+"/api/calendars/"+private.ID, UpdateCalendarInput{IncludeInGeneralQueries: ptr(false)}, &updated)
+	if updated.IncludeInGeneralQueries {
+		t.Fatalf("updated calendar = %#v, want include_in_general_queries false", updated)
+	}
+
+	var list []CalendarStatus
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &list)
+	if len(list) != 2 {
+		t.Fatalf("calendar list = %#v", list)
+	}
+	for _, cal := range list {
+		if cal.ID == private.ID && cal.IncludeInGeneralQueries {
+			t.Fatalf("private calendar status = %#v, want hidden from general queries", cal)
+		}
+	}
+
+	var defaultMeetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &defaultMeetings)
+	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"General Meeting"}) {
+		t.Fatalf("default meeting names = %#v", got)
+	}
+
+	var explicitMeetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&calendar_id="+private.ID, nil, &explicitMeetings)
+	if got := meetingNames(explicitMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
+		t.Fatalf("explicit meeting names = %#v", got)
+	}
 }
 
 func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
@@ -552,12 +609,12 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 		t.Fatalf("validate_calendar preview = %#v", validateResp)
 	}
 
-	updateResp, err := PreviewToolCall(ctx, svc, "update_calendar", rawJSON(t, updateInput{ID: addOut.Calendar.ID, Name: "Renamed"}))
+	updateResp, err := PreviewToolCall(ctx, svc, "update_calendar", rawJSON(t, updateInput{ID: addOut.Calendar.ID, Name: "Renamed", IncludeInGeneralQueries: ptr(false)}))
 	if err != nil {
 		t.Fatalf("update_calendar preview error = %v", err)
 	}
 	updateOut, ok := updateResp.Result.(calendarOutput)
-	if !ok || updateOut.Calendar.Name != "Renamed" {
+	if !ok || updateOut.Calendar.Name != "Renamed" || updateOut.Calendar.IncludeInGeneralQueries {
 		t.Fatalf("update_calendar preview = %#v", updateResp)
 	}
 

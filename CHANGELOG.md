@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.46 - 2026-06-30
+
+### Added
+- Added per-calendar `include_in_general_queries` configuration in SQLite, the REST API, MCP admin tools, and the debug UI.
+- Default upcoming-meeting queries now omit calendars opted out of general queries while explicit calendar filters still include them.
+
 ## v1.4.45 - 2026-06-30
 
 ### Improved

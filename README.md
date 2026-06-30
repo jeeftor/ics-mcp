@@ -66,6 +66,8 @@ ICSMCP_LOG_COLOR=true
 
 The suffix after `ICSMCP_CALENDAR_` is the stable key. Underscores are shown as spaces by default. Calendars from `.env` and `--calendar name=url` are upserted on startup; calendars added in the UI, API, or MCP tools are not deleted just because they are absent from startup config.
 
+Each calendar also has an `include_in_general_queries` setting, exposed in the Calendars tab, `PATCH /api/calendars/{id}`, and `update_calendar`. It defaults to `true`. Set it to `false` when a calendar should keep refreshing and remain explicitly queryable, but should not appear in default/general upcoming meeting results. Explicit `calendar_id` or `calendar_ids` filters still return that calendar.
+
 After startup, SQLite is the runtime source of truth for display names, enabled state, refresh state, and cached event instances.
 
 Outlook / Exchange feeds commonly use Windows timezone IDs such as `Eastern Standard Time`, `Mountain Standard Time`, and `Pacific Standard Time`; those are mapped to IANA zones during parsing before events are cached.
@@ -99,7 +101,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `after` and `before` use RFC3339 timestamps.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `after` and `before` use RFC3339 timestamps.
 
 `/healthz` is the liveness endpoint and `/readyz` is the readiness endpoint. The `z` suffix is a common convention from Kubernetes-style health checks.
 
@@ -119,7 +121,7 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `refresh_calendar`
 - `refresh_all_calendars`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Use `timezone` to render a specific query in another IANA timezone. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`.
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
@@ -141,7 +143,7 @@ MCP tool discovery exposes each tool name, description, and JSON input schema. F
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, copy buttons for endpoint/setup values, setup snippets for MCP clients, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 

@@ -454,6 +454,66 @@ func TestUpcomingMeetingsByCalendarDefaultsToTenPerCalendar(t *testing.T) {
 	}
 }
 
+func TestUpcomingMeetingsHonorsGeneralQueryCalendarSelection(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	general, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "general", Name: "General", URL: "https://example.test/general.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(general) error = %v", err)
+	}
+	private, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "private", Name: "Private", URL: "https://example.test/private.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(private) error = %v", err)
+	}
+	if _, err := svc.UpdateCalendar(ctx, private.ID, UpdateCalendarInput{IncludeInGeneralQueries: ptr(false)}); err != nil {
+		t.Fatalf("UpdateCalendar() error = %v", err)
+	}
+	for _, cal := range []Calendar{general, private} {
+		if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+			CalendarID: cal.ID,
+			Name:       cal.Name + " Meeting",
+			Start:      now.Add(time.Hour),
+			End:        now.Add(90 * time.Minute),
+		}}); err != nil {
+			t.Fatalf("ReplaceEvents(%s) error = %v", cal.Name, err)
+		}
+	}
+
+	defaultMeetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"General Meeting"}) {
+		t.Fatalf("default meeting names = %#v", got)
+	}
+
+	explicitPrivate, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10, CalendarIDs: []string{private.ID}})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(explicit private) error = %v", err)
+	}
+	if got := meetingNames(explicitPrivate); !slices.Equal(got, []string{"Private Meeting"}) {
+		t.Fatalf("explicit private meeting names = %#v", got)
+	}
+
+	defaultGroups, err := svc.UpcomingMeetingsByCalendar(ctx, UpcomingQuery{Now: now, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetingsByCalendar() error = %v", err)
+	}
+	if len(defaultGroups) != 1 || defaultGroups[0].CalendarID != general.ID {
+		t.Fatalf("default groups = %#v, want only general calendar", defaultGroups)
+	}
+
+	explicitGroups, err := svc.UpcomingMeetingsByCalendar(ctx, UpcomingQuery{Now: now, Limit: 10, CalendarIDs: []string{private.ID}})
+	if err != nil {
+		t.Fatalf("UpcomingMeetingsByCalendar(explicit private) error = %v", err)
+	}
+	if len(explicitGroups) != 1 || explicitGroups[0].CalendarID != private.ID {
+		t.Fatalf("explicit groups = %#v, want private calendar", explicitGroups)
+	}
+}
+
 func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -798,7 +858,7 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 				t.Fatalf("insert corrupt event error = %v", err)
 			}
 
-			_, err = svc.store.queryEvents(ctx, time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC), time.Date(2026, 6, 29, 17, 0, 0, 0, time.UTC), nil, 10)
+			_, err = svc.store.queryEvents(ctx, time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC), time.Date(2026, 6, 29, 17, 0, 0, 0, time.UTC), nil, 10, false)
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 				t.Fatalf("queryEvents() error = %v, want %q", err, tc.wantError)
 			}
@@ -822,7 +882,7 @@ func TestStoreQueryEventsReportsScanFailuresWithContext(t *testing.T) {
 		t.Fatalf("insert corrupt event error = %v", err)
 	}
 
-	_, err = svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), nil, 10)
+	_, err = svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), nil, 10, false)
 	if err == nil || !strings.Contains(err.Error(), "scan event") {
 		t.Fatalf("queryEvents() error = %v, want scan event context", err)
 	}
@@ -868,11 +928,12 @@ func TestStoreUpsertCalendarReportsRefreshStateInsertFailure(t *testing.T) {
 	}
 
 	_, err := svc.store.upsertCalendar(ctx, Calendar{
-		ID:      "calendar-1",
-		Key:     "WORK",
-		Name:    "Work",
-		URL:     "https://example.test/work.ics",
-		Enabled: true,
+		ID:                      "calendar-1",
+		Key:                     "WORK",
+		Name:                    "Work",
+		URL:                     "https://example.test/work.ics",
+		Enabled:                 true,
+		IncludeInGeneralQueries: true,
 	}, false)
 	if err == nil || !strings.Contains(err.Error(), "insert refresh state") {
 		t.Fatalf("upsertCalendar() error = %v, want insert refresh state", err)
@@ -892,11 +953,12 @@ func TestStoreUpsertCalendarReportsCalendarInsertFailure(t *testing.T) {
 	}
 
 	_, err = svc.store.upsertCalendar(ctx, Calendar{
-		ID:      "calendar-1",
-		Key:     "WORK",
-		Name:    "Work",
-		URL:     "https://example.test/work.ics",
-		Enabled: true,
+		ID:                      "calendar-1",
+		Key:                     "WORK",
+		Name:                    "Work",
+		URL:                     "https://example.test/work.ics",
+		Enabled:                 true,
+		IncludeInGeneralQueries: true,
 	}, false)
 	if err == nil || !strings.Contains(err.Error(), "insert calendar") {
 		t.Fatalf("upsertCalendar() error = %v, want insert calendar", err)
@@ -912,11 +974,12 @@ func TestStoreUpsertCalendarPreservesExistingEnabledState(t *testing.T) {
 	}
 
 	updated, err := svc.store.upsertCalendar(ctx, Calendar{
-		ID:      original.ID,
-		Key:     "WORK",
-		Name:    "Work Renamed",
-		URL:     "https://example.test/new.ics",
-		Enabled: false,
+		ID:                      original.ID,
+		Key:                     "WORK",
+		Name:                    "Work Renamed",
+		URL:                     "https://example.test/new.ics",
+		Enabled:                 false,
+		IncludeInGeneralQueries: true,
 	}, false)
 	if err != nil {
 		t.Fatalf("upsertCalendar() error = %v", err)
@@ -926,6 +989,36 @@ func TestStoreUpsertCalendarPreservesExistingEnabledState(t *testing.T) {
 	}
 	if updated.Name != "Work Renamed" || updated.URL != "https://example.test/new.ics" {
 		t.Fatalf("updated calendar = %#v", updated)
+	}
+}
+
+func TestStartupImportPreservesGeneralQuerySelection(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	original, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/old.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.UpdateCalendar(ctx, original.ID, UpdateCalendarInput{IncludeInGeneralQueries: ptr(false)}); err != nil {
+		t.Fatalf("UpdateCalendar() error = %v", err)
+	}
+
+	err = svc.ImportStartupCalendars(ctx, map[string]string{
+		"ICSMCP_CALENDAR_WORK": "https://example.test/new.ics",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ImportStartupCalendars() error = %v", err)
+	}
+
+	persisted, err := svc.store.calendarByID(ctx, original.ID)
+	if err != nil {
+		t.Fatalf("calendarByID() error = %v", err)
+	}
+	if persisted.IncludeInGeneralQueries {
+		t.Fatalf("IncludeInGeneralQueries = true, want startup import to preserve false")
+	}
+	if persisted.URL != "https://example.test/new.ics" {
+		t.Fatalf("URL = %q, want startup import to update feed URL", persisted.URL)
 	}
 }
 
@@ -946,11 +1039,12 @@ func TestStoreUpsertCalendarReportsExistingUpdateFailure(t *testing.T) {
 	}
 
 	_, err = svc.store.upsertCalendar(ctx, Calendar{
-		ID:      original.ID,
-		Key:     "WORK",
-		Name:    "Work Renamed",
-		URL:     "https://example.test/new.ics",
-		Enabled: true,
+		ID:                      original.ID,
+		Key:                     "WORK",
+		Name:                    "Work Renamed",
+		URL:                     "https://example.test/new.ics",
+		Enabled:                 true,
+		IncludeInGeneralQueries: true,
 	}, false)
 	if err == nil || !strings.Contains(err.Error(), "update calendar") {
 		t.Fatalf("upsertCalendar() error = %v, want update calendar", err)
@@ -1056,7 +1150,7 @@ func TestStoreReplaceEventsRollsBackPartialInsertFailure(t *testing.T) {
 	if err := svc.store.replaceEvents(ctx, cal.ID, events); err == nil {
 		t.Fatalf("replaceEvents() error = nil, want duplicate insert error")
 	}
-	cached, err := svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), []string{cal.ID}, 10)
+	cached, err := svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), []string{cal.ID}, 10, true)
 	if err != nil {
 		t.Fatalf("queryEvents() error = %v", err)
 	}

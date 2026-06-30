@@ -4,11 +4,12 @@ import "time"
 
 // Calendar is a configured ICS feed.
 type Calendar struct {
-	ID      string `json:"id"`
-	Key     string `json:"key"`
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Enabled bool   `json:"enabled"`
+	ID                      string `json:"id"`
+	Key                     string `json:"key"`
+	Name                    string `json:"name"`
+	URL                     string `json:"url"`
+	Enabled                 bool   `json:"enabled"`
+	IncludeInGeneralQueries bool   `json:"include_in_general_queries"`
 }
 
 // CalendarStatus includes configuration plus refresh state.
@@ -48,9 +49,10 @@ type AddCalendarInput struct {
 
 // UpdateCalendarInput updates mutable calendar fields.
 type UpdateCalendarInput struct {
-	Name    string `json:"name,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Enabled *bool  `json:"enabled,omitempty"`
+	Name                    string `json:"name,omitempty"`
+	URL                     string `json:"url,omitempty"`
+	Enabled                 *bool  `json:"enabled,omitempty"`
+	IncludeInGeneralQueries *bool  `json:"include_in_general_queries,omitempty"`
 }
 
 // EventInstance is a normalized event occurrence stored in SQLite.
