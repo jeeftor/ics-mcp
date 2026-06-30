@@ -118,12 +118,13 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 
 Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `calendar`, `query`, `window`, `day`, `range`, `timezone`, `detail`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `include_disabled`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. Disabled calendars are also omitted unless `include_disabled=true` is supplied with an explicit calendar filter. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window`, `day`, and `range` accept presets such as `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
 
-REST read endpoints default to JSON and can also render simple-client formats with either a path extension, `format` query parameter, or `Accept` header: `json`, `html`, `md`, `txt`, and `ascii`. Examples:
+REST read endpoints default to JSON and can also render simple-client formats with either a path extension, `format` query parameter, or `Accept` header: `json`, `html`, `md`, `txt`, `ascii`, and `csv`. `txt` is a plain line-oriented view. `html`, `md`, `ascii`, and `csv` render table-shaped output and accept a comma-separated `fields` selector. The default table fields are `when,calendar,title,duration`; useful alternatives include `duration_minutes`, `ongoing`, `all_day`, `cancelled`, `recurring`, `meeting_url`, `start`, `end`, `timezone`, and `calendar_id`. Examples:
 
 ```bash
 curl 'http://localhost:3333/api/events/today?format=txt&limit=5'
 curl 'http://localhost:3333/api/events/next.ascii?limit=3'
-curl 'http://localhost:3333/api/events/by-calendar?format=md&exclude_cancelled=true'
+curl 'http://localhost:3333/api/events/by-calendar?format=md&fields=when,calendar,title,duration&exclude_cancelled=true'
+curl 'http://localhost:3333/api/events.csv?fields=when,title&limit=10'
 curl 'http://localhost:3333/api/free-busy?range=today_tomorrow&format=json'
 curl 'http://localhost:3333/api/events?calendar_id=e81d3050123a252f593bdd01e0e0bd373a596f67&include_disabled=true'
 ```
@@ -185,7 +186,7 @@ MCP tool discovery exposes each tool name, description, and JSON input schema. F
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, REST endpoints, OpenAPI link, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a dedicated Meetings tab with the next-meetings preview grouped by calendar, a REST tab with generated internal/external URLs and JSON/text previews, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, REST endpoints, OpenAPI link, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a dedicated Meetings tab with the next-meetings preview grouped by calendar, a REST tab with generated internal/external URLs, format/layout/field controls, JSON/text previews, and e-paper-style example URLs, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 

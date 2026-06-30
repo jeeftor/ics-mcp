@@ -33,11 +33,14 @@ func TestCalendarFlagsCollectRepeatableValues(t *testing.T) {
 func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 	var out strings.Builder
 
-	printStartupInfo(&out, "127.0.0.1:3333", "America/Denver", "https://ics-mcp.example.net")
+	printStartupInfo(&out, "127.0.0.1:3333", app.BuildInfo{Version: "2.0.0", Commit: "abc123", Date: "2026-06-30T21:53:41Z"}, "America/Denver", "https://ics-mcp.example.net")
 
 	got := out.String()
 	for _, want := range []string{
 		"ICS MCP server listening on 127.0.0.1:3333",
+		"Version: 2.0.0",
+		"Commit: abc123",
+		"Build Date: 2026-06-30T21:53:41Z",
 		"Display timezone: America/Denver",
 		"Admin UI: http://127.0.0.1:3333/",
 		"MCP endpoint: http://127.0.0.1:3333/mcp",
@@ -54,7 +57,7 @@ func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 func TestPrintStartupInfoOmitsExternalURLWhenUnset(t *testing.T) {
 	var out strings.Builder
 
-	printStartupInfo(&out, "0.0.0.0:3333", "UTC", "")
+	printStartupInfo(&out, "0.0.0.0:3333", app.BuildInfo{}, "UTC", "")
 
 	got := out.String()
 	if strings.Contains(got, "External URL") || strings.Contains(got, "External MCP endpoint") {
@@ -65,7 +68,7 @@ func TestPrintStartupInfoOmitsExternalURLWhenUnset(t *testing.T) {
 func TestPrintStartupInfoStopsAfterInitialWriteError(t *testing.T) {
 	writer := &errWriter{}
 
-	printStartupInfo(writer, "127.0.0.1:3333", "UTC", "https://ics-mcp.example.net")
+	printStartupInfo(writer, "127.0.0.1:3333", app.BuildInfo{}, "UTC", "https://ics-mcp.example.net")
 
 	if writer.writes != 1 {
 		t.Fatalf("write count = %d, want exactly one failed write", writer.writes)

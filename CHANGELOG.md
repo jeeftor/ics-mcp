@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.0.1 - 2026-06-30
+
+### Added
+- Added CSV as a REST read format and added `fields=...` selection for table-shaped REST formats.
+- Added REST UI layout presets and field controls for building table, ASCII, Markdown, HTML, and CSV URLs.
+
+### Changed
+- Render REST Markdown, HTML, and ASCII responses as tables while keeping `txt` as a plain line-oriented format.
+- Reordered admin UI tabs to `Info`, `Calendars`, `Meetings`, `Tools`, `REST`.
+- Printed startup version, commit, and build date as separate one-item-per-line startup details.
+
 ## v2.0.0 - 2026-06-30
 
 ### Added

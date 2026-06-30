@@ -83,7 +83,7 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		handleEventAlias(w, r, svc)
 	})
-	for _, suffix := range []string{".json", ".html", ".md", ".txt", ".ascii"} {
+	for _, suffix := range []string{".json", ".html", ".md", ".txt", ".ascii", ".csv"} {
 		mux.HandleFunc("/api/events"+suffix, func(w http.ResponseWriter, r *http.Request) {
 			handleEventAlias(w, r, svc)
 		})
@@ -94,7 +94,7 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 	mux.HandleFunc("/api/free-busy", func(w http.ResponseWriter, r *http.Request) {
 		handleFreeBusyAlias(w, r, svc)
 	})
-	for _, suffix := range []string{".json", ".html", ".md", ".txt", ".ascii"} {
+	for _, suffix := range []string{".json", ".html", ".md", ".txt", ".ascii", ".csv"} {
 		mux.HandleFunc("/api/free-busy"+suffix, func(w http.ResponseWriter, r *http.Request) {
 			handleFreeBusyAlias(w, r, svc)
 		})
@@ -511,7 +511,7 @@ func resolveCalendarID(r *http.Request, svc *Service, value string) (string, err
 }
 
 func splitFormat(path string) (string, string) {
-	for _, format := range []string{"json", "html", "md", "txt", "ascii"} {
+	for _, format := range []string{"json", "html", "md", "txt", "ascii", "csv"} {
 		suffix := "." + format
 		if strings.HasSuffix(path, suffix) {
 			return strings.TrimSuffix(path, suffix), format
@@ -533,6 +533,8 @@ func negotiatedFormat(r *http.Request, pathFormat string) string {
 		return "html"
 	case strings.Contains(accept, "text/markdown"):
 		return "md"
+	case strings.Contains(accept, "text/csv"):
+		return "csv"
 	case strings.Contains(accept, "text/plain"):
 		return "txt"
 	default:
@@ -544,24 +546,48 @@ func writeFormatted(w http.ResponseWriter, r *http.Request, value any, pathForma
 	switch negotiatedFormat(r, pathFormat) {
 	case "html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(renderHTML(value)))
+		_, _ = w.Write([]byte(renderHTML(value, selectedFields(r))))
 	case "md":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		_, _ = w.Write([]byte(renderMarkdown(value)))
-	case "txt", "ascii":
+		_, _ = w.Write([]byte(renderMarkdown(value, selectedFields(r))))
+	case "txt":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte(renderText(value)))
+	case "ascii":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(renderASCII(value, selectedFields(r))))
+	case "csv":
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		_, _ = w.Write([]byte(renderCSV(value, selectedFields(r))))
 	default:
 		writeJSON(w, value, nil)
 	}
 }
 
-func renderHTML(value any) string {
-	return "<!doctype html><html><body><pre>" + html.EscapeString(renderText(value)) + "</pre></body></html>"
+func selectedFields(r *http.Request) []string {
+	raw := strings.TrimSpace(r.URL.Query().Get("fields"))
+	if raw == "" {
+		return []string{"when", "calendar", "title", "duration"}
+	}
+	fields := []string{}
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.ToLower(strings.TrimSpace(field))
+		if field != "" {
+			fields = append(fields, field)
+		}
+	}
+	if len(fields) == 0 {
+		return []string{"when", "calendar", "title", "duration"}
+	}
+	return fields
 }
 
-func renderMarkdown(value any) string {
-	return "# " + renderTitle(value) + "\n\n" + renderText(value)
+func renderHTML(value any, fields []string) string {
+	return "<!doctype html><html><head><style>body{font-family:system-ui,sans-serif}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}</style></head><body>" + renderHTMLBody(value, fields) + "</body></html>"
+}
+
+func renderMarkdown(value any, fields []string) string {
+	return "# " + renderTitle(value) + "\n\n" + renderMarkdownBody(value, fields)
 }
 
 func renderText(value any) string {
@@ -589,6 +615,56 @@ func renderText(value any) string {
 	return b.String()
 }
 
+func renderASCII(value any, fields []string) string {
+	switch typed := value.(type) {
+	case meetingsOutput:
+		return renderMeetingsASCII(typed.Meetings, fields)
+	case groupedMeetingsOutput:
+		return renderGroupsASCII(typed.Calendars, fields)
+	case freeBusyOutput:
+		return renderBusyASCII(typed.Busy, fields)
+	case []Meeting:
+		return renderMeetingsASCII(typed, fields)
+	case []CalendarMeetingGroup:
+		return renderGroupsASCII(typed, fields)
+	case []BusyBlock:
+		return renderBusyASCII(typed, fields)
+	default:
+		return renderText(value)
+	}
+}
+
+func renderCSV(value any, fields []string) string {
+	var rows [][]string
+	switch typed := value.(type) {
+	case meetingsOutput:
+		rows = meetingRows(typed.Meetings, fields)
+	case groupedMeetingsOutput:
+		rows = groupRows(typed.Calendars, fields)
+	case freeBusyOutput:
+		rows = busyRows(typed.Busy, fields)
+	case []Meeting:
+		rows = meetingRows(typed, fields)
+	case []CalendarMeetingGroup:
+		rows = groupRows(typed, fields)
+	case []BusyBlock:
+		rows = busyRows(typed, fields)
+	default:
+		return renderText(value)
+	}
+	var b strings.Builder
+	for _, row := range rows {
+		for index, cell := range row {
+			if index > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(csvCell(cell))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func renderTitle(value any) string {
 	switch value.(type) {
 	case groupedMeetingsOutput, []CalendarMeetingGroup:
@@ -598,6 +674,381 @@ func renderTitle(value any) string {
 	default:
 		return "Meetings"
 	}
+}
+
+func renderHTMLBody(value any, fields []string) string {
+	switch typed := value.(type) {
+	case meetingsOutput:
+		return renderMeetingsHTML(typed.Meetings, fields)
+	case groupedMeetingsOutput:
+		return renderGroupsHTML(typed.Calendars, fields)
+	case freeBusyOutput:
+		return renderBusyHTML(typed.Busy, fields)
+	case []Meeting:
+		return renderMeetingsHTML(typed, fields)
+	case []CalendarMeetingGroup:
+		return renderGroupsHTML(typed, fields)
+	case []BusyBlock:
+		return renderBusyHTML(typed, fields)
+	default:
+		return "<pre>" + html.EscapeString(renderText(value)) + "</pre>"
+	}
+}
+
+func renderMarkdownBody(value any, fields []string) string {
+	switch typed := value.(type) {
+	case meetingsOutput:
+		return renderMeetingsMarkdown(typed.Meetings, fields)
+	case groupedMeetingsOutput:
+		return renderGroupsMarkdown(typed.Calendars, fields)
+	case freeBusyOutput:
+		return renderBusyMarkdown(typed.Busy, fields)
+	case []Meeting:
+		return renderMeetingsMarkdown(typed, fields)
+	case []CalendarMeetingGroup:
+		return renderGroupsMarkdown(typed, fields)
+	case []BusyBlock:
+		return renderBusyMarkdown(typed, fields)
+	default:
+		return "```json\n" + strings.TrimSpace(renderText(value)) + "\n```\n"
+	}
+}
+
+func renderMeetingsHTML(meetings []Meeting, fields []string) string {
+	if len(meetings) == 0 {
+		return "<p>No meetings.</p>"
+	}
+	var b strings.Builder
+	writeHTMLTable(&b, fieldLabels(fields), meetingRows(meetings, fields)[1:])
+	return b.String()
+}
+
+func renderGroupsHTML(groups []CalendarMeetingGroup, fields []string) string {
+	if len(groups) == 0 {
+		return "<p>No meetings.</p>"
+	}
+	var b strings.Builder
+	for _, group := range groups {
+		_, _ = fmt.Fprintf(&b, "<h2>%s</h2>", html.EscapeString(group.CalendarName))
+		b.WriteString(renderMeetingsHTML(group.Meetings, fields))
+	}
+	return b.String()
+}
+
+func renderBusyHTML(busy []BusyBlock, fields []string) string {
+	busyFields := busyFields(fields)
+	if len(busy) == 0 {
+		return "<p>No busy blocks.</p>"
+	}
+	var b strings.Builder
+	writeHTMLTable(&b, fieldLabels(busyFields), busyRows(busy, busyFields)[1:])
+	return b.String()
+}
+
+func writeHTMLTable(b *strings.Builder, headers []string, rows [][]string) {
+	b.WriteString("<table><thead><tr>")
+	for _, header := range headers {
+		_, _ = fmt.Fprintf(b, "<th>%s</th>", html.EscapeString(header))
+	}
+	b.WriteString("</tr></thead><tbody>")
+	for _, row := range rows {
+		b.WriteString("<tr>")
+		for _, cell := range row {
+			_, _ = fmt.Fprintf(b, "<td>%s</td>", html.EscapeString(cell))
+		}
+		b.WriteString("</tr>")
+	}
+	b.WriteString("</tbody></table>")
+}
+
+func renderMeetingsMarkdown(meetings []Meeting, fields []string) string {
+	if len(meetings) == 0 {
+		return "No meetings.\n"
+	}
+	return renderMarkdownTable(fieldLabels(fields), meetingRows(meetings, fields)[1:])
+}
+
+func renderGroupsMarkdown(groups []CalendarMeetingGroup, fields []string) string {
+	if len(groups) == 0 {
+		return "No meetings.\n"
+	}
+	var b strings.Builder
+	for _, group := range groups {
+		_, _ = fmt.Fprintf(&b, "## %s\n\n", markdownCell(group.CalendarName))
+		b.WriteString(renderMeetingsMarkdown(group.Meetings, fields))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func renderBusyMarkdown(busy []BusyBlock, fields []string) string {
+	busyFields := busyFields(fields)
+	if len(busy) == 0 {
+		return "No busy blocks.\n"
+	}
+	return renderMarkdownTable(fieldLabels(busyFields), busyRows(busy, busyFields)[1:])
+}
+
+func renderMarkdownTable(headers []string, rows [][]string) string {
+	var b strings.Builder
+	b.WriteString("| ")
+	for index, header := range headers {
+		if index > 0 {
+			b.WriteString(" | ")
+		}
+		b.WriteString(markdownCell(header))
+	}
+	b.WriteString(" |\n| ")
+	for index := range headers {
+		if index > 0 {
+			b.WriteString(" | ")
+		}
+		b.WriteString("---")
+	}
+	b.WriteString(" |\n")
+	for _, row := range rows {
+		b.WriteString("| ")
+		for index, cell := range row {
+			if index > 0 {
+				b.WriteString(" | ")
+			}
+			b.WriteString(markdownCell(cell))
+		}
+		b.WriteString(" |\n")
+	}
+	return b.String()
+}
+
+func markdownCell(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", " "), "|", "\\|")
+}
+
+func renderMeetingsASCII(meetings []Meeting, fields []string) string {
+	if len(meetings) == 0 {
+		return "No meetings.\n"
+	}
+	rows := meetingRows(meetings, fields)
+	rows[0] = fieldLabels(fields)
+	return renderASCIITable(rows)
+}
+
+func renderGroupsASCII(groups []CalendarMeetingGroup, fields []string) string {
+	if len(groups) == 0 {
+		return "No meetings.\n"
+	}
+	var b strings.Builder
+	for _, group := range groups {
+		_, _ = fmt.Fprintf(&b, "%s\n", group.CalendarName)
+		b.WriteString(renderMeetingsASCII(group.Meetings, fields))
+	}
+	return b.String()
+}
+
+func renderBusyASCII(busy []BusyBlock, fields []string) string {
+	busyFields := busyFields(fields)
+	if len(busy) == 0 {
+		return "No busy blocks.\n"
+	}
+	rows := busyRows(busy, busyFields)
+	rows[0] = fieldLabels(busyFields)
+	return renderASCIITable(rows)
+}
+
+func meetingRows(meetings []Meeting, fields []string) [][]string {
+	rows := [][]string{fields}
+	for _, meeting := range meetings {
+		row := make([]string, 0, len(fields))
+		for _, field := range fields {
+			row = append(row, meetingField(meeting, field))
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func groupRows(groups []CalendarMeetingGroup, fields []string) [][]string {
+	rows := [][]string{fields}
+	for _, group := range groups {
+		for _, meeting := range group.Meetings {
+			row := make([]string, 0, len(fields))
+			for _, field := range fields {
+				if field == "group" {
+					row = append(row, group.CalendarName)
+				} else {
+					row = append(row, meetingField(meeting, field))
+				}
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+func busyRows(busy []BusyBlock, fields []string) [][]string {
+	rows := [][]string{fields}
+	for _, block := range busy {
+		row := make([]string, 0, len(fields))
+		for _, field := range fields {
+			row = append(row, busyField(block, field))
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func meetingField(meeting Meeting, field string) string {
+	switch field {
+	case "when":
+		return meeting.When
+	case "calendar":
+		return meeting.CalendarName
+	case "title", "name":
+		return meeting.Name
+	case "duration":
+		return meeting.Duration
+	case "duration_minutes":
+		return strconv.Itoa(meeting.DurationMinutes)
+	case "ongoing":
+		return strconv.FormatBool(meeting.Ongoing)
+	case "all_day":
+		return strconv.FormatBool(meeting.AllDay)
+	case "cancelled":
+		return strconv.FormatBool(meeting.Cancelled)
+	case "recurring":
+		return strconv.FormatBool(meeting.Recurring)
+	case "meeting_url":
+		return meeting.MeetingURL
+	case "meeting_url_type":
+		return meeting.MeetingURLType
+	case "description":
+		return meeting.Description
+	case "start":
+		return meeting.Start
+	case "end":
+		return meeting.End
+	case "timezone":
+		return meeting.Timezone
+	case "calendar_id":
+		return meeting.CalendarID
+	default:
+		return ""
+	}
+}
+
+func busyField(block BusyBlock, field string) string {
+	switch field {
+	case "when":
+		return block.When
+	case "calendar":
+		return block.Calendar
+	case "duration":
+		return block.Duration
+	case "duration_minutes":
+		return strconv.Itoa(block.DurationMinutes)
+	case "ongoing":
+		return strconv.FormatBool(block.Ongoing)
+	case "all_day":
+		return strconv.FormatBool(block.AllDay)
+	default:
+		return ""
+	}
+}
+
+func fieldLabels(fields []string) []string {
+	labels := make([]string, 0, len(fields))
+	for _, field := range fields {
+		labels = append(labels, fieldLabel(field))
+	}
+	return labels
+}
+
+func fieldLabel(field string) string {
+	switch field {
+	case "all_day":
+		return "All Day"
+	case "calendar_id":
+		return "Calendar ID"
+	case "duration_minutes":
+		return "Duration Minutes"
+	case "meeting_url":
+		return "Meeting URL"
+	case "meeting_url_type":
+		return "Meeting URL Type"
+	default:
+		parts := strings.Split(field, "_")
+		for index, part := range parts {
+			if part == "" {
+				continue
+			}
+			parts[index] = strings.ToUpper(part[:1]) + part[1:]
+		}
+		return strings.Join(parts, " ")
+	}
+}
+
+func busyFields(fields []string) []string {
+	allowed := map[string]bool{
+		"when":             true,
+		"calendar":         true,
+		"duration":         true,
+		"duration_minutes": true,
+		"ongoing":          true,
+		"all_day":          true,
+	}
+	filtered := []string{}
+	for _, field := range fields {
+		if allowed[field] {
+			filtered = append(filtered, field)
+		}
+	}
+	if len(filtered) == 0 {
+		return []string{"when", "calendar", "duration"}
+	}
+	return filtered
+}
+
+func csvCell(value string) string {
+	if strings.ContainsAny(value, "\",\n\r") {
+		return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+	}
+	return value
+}
+
+func renderASCIITable(rows [][]string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for index, cell := range row {
+			if width := len(cell); width > widths[index] {
+				widths[index] = width
+			}
+		}
+	}
+	var b strings.Builder
+	writeASCIIRule(&b, widths)
+	for index, row := range rows {
+		b.WriteString("|")
+		for cellIndex, cell := range row {
+			_, _ = fmt.Fprintf(&b, " %-*s |", widths[cellIndex], cell)
+		}
+		b.WriteString("\n")
+		if index == 0 {
+			writeASCIIRule(&b, widths)
+		}
+	}
+	writeASCIIRule(&b, widths)
+	return b.String()
+}
+
+func writeASCIIRule(b *strings.Builder, widths []int) {
+	b.WriteString("+")
+	for _, width := range widths {
+		b.WriteString(strings.Repeat("-", width+2))
+		b.WriteString("+")
+	}
+	b.WriteString("\n")
 }
 
 func writeMeetingsText(b *strings.Builder, meetings []Meeting) {

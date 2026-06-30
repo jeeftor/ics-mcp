@@ -94,6 +94,7 @@
     .rest-control-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; align-items: center; }
     .rest-checkboxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
     .rest-checkboxes label { display: flex; gap: 6px; align-items: center; }
+    .rest-field-builder { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
     .rest-url-stack { display: grid; gap: 8px; }
     .rest-preview-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .rest-preview-grid .tool-output { min-height: 180px; }
@@ -139,10 +140,10 @@
     </div>
     <nav class="tabs" aria-label="Debug pages">
       <button class="tab active" type="button" data-tab="info">Info</button>
-      <button class="tab" type="button" data-tab="rest">REST</button>
       <button class="tab" type="button" data-tab="calendars">Calendars</button>
       <button class="tab" type="button" data-tab="meetings">Meetings</button>
       <button class="tab" type="button" data-tab="tools">Tools</button>
+      <button class="tab" type="button" data-tab="rest">REST</button>
     </nav>
   </header>
 
@@ -265,7 +266,34 @@
                 <option value="md">md</option>
                 <option value="txt">txt</option>
                 <option value="ascii">ascii</option>
+                <option value="csv">csv</option>
               </select>
+            </div>
+            <div class="rest-control-row">
+              <label for="rest-layout">Layout</label>
+              <select id="rest-layout">
+                <option value="summary">summary</option>
+                <option value="status">status</option>
+                <option value="links">links</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
+            <div class="rest-field-builder">
+              <div class="rest-checkboxes" id="rest-field-options">
+                <label><input type="checkbox" value="when" checked> when</label>
+                <label><input type="checkbox" value="calendar" checked> calendar</label>
+                <label><input type="checkbox" value="title" checked> title</label>
+                <label><input type="checkbox" value="duration" checked> duration</label>
+                <label><input type="checkbox" value="duration_minutes"> minutes</label>
+                <label><input type="checkbox" value="ongoing"> ongoing</label>
+                <label><input type="checkbox" value="all_day"> all-day</label>
+                <label><input type="checkbox" value="cancelled"> cancelled</label>
+                <label><input type="checkbox" value="recurring"> recurring</label>
+                <label><input type="checkbox" value="meeting_url"> meeting URL</label>
+                <label><input type="checkbox" value="start"> start</label>
+                <label><input type="checkbox" value="end"> end</label>
+              </div>
+              <div class="rest-control-row"><label for="rest-fields">Fields</label><input id="rest-fields" value="when,calendar,title,duration"></div>
             </div>
             <div class="rest-control-row"><label for="rest-limit">Limit</label><input id="rest-limit" type="number" min="1" value="10"></div>
             <div class="rest-control-row"><label for="rest-window">Window</label><select id="rest-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></div>
@@ -296,8 +324,8 @@
               <span id="rest-status" class="muted"></span>
             </div>
             <div class="rest-preview-grid">
-              <pre id="rest-json-preview" class="tool-output">{}</pre>
               <pre id="rest-text-preview" class="tool-output"></pre>
+              <pre id="rest-json-preview" class="tool-output">{}</pre>
             </div>
           </div>
         </div>
@@ -383,6 +411,9 @@
     const restEndpointPicker = document.querySelector('#rest-endpoint-picker');
     const restCalendar = document.querySelector('#rest-calendar');
     const restFormat = document.querySelector('#rest-format');
+    const restLayout = document.querySelector('#rest-layout');
+    const restFields = document.querySelector('#rest-fields');
+    const restFieldOptions = document.querySelector('#rest-field-options');
     const runREST = document.querySelector('#run-rest');
     const openREST = document.querySelector('#open-rest');
     const restStatus = document.querySelector('#rest-status');
@@ -393,6 +424,11 @@
     let lastStatus = null;
     let currentCalendars = [];
     const tabStorageKey = 'icsmcp.activeTab';
+    const restFieldPresets = {
+      summary: ['when', 'calendar', 'title', 'duration'],
+      status: ['when', 'calendar', 'title', 'duration', 'ongoing', 'all_day', 'cancelled', 'recurring'],
+      links: ['when', 'calendar', 'title', 'meeting_url']
+    };
     const endpoints = [
       ['Admin UI', '/'],
       ['MCP Server', '/mcp'],
@@ -733,6 +769,7 @@
         addQueryValue(url, 'timezone', document.querySelector('#rest-timezone').value);
         addQueryValue(url, 'sort', document.querySelector('#rest-sort').value);
         addQueryValue(url, 'query', document.querySelector('#rest-query').value);
+        if (format !== 'json' && format !== 'txt') addQueryValue(url, 'fields', restFields.value);
         if (selectedCalendarID) url.searchParams.append('calendar_id', selectedCalendarID);
         setBoolQuery(url, 'include_description', document.querySelector('#rest-include-description').checked);
         setBoolQuery(url, 'include_links', document.querySelector('#rest-include-links').checked, true);
@@ -776,6 +813,45 @@
       if (value || includeFalse) url.searchParams.set(key, String(Boolean(value)));
     }
 
+    function applyRESTFieldPreset() {
+      const fields = restFieldPresets[restLayout.value];
+      if (!fields) return;
+      setRESTFields(fields);
+      updateRESTURLs(lastStatus);
+    }
+
+    function syncRESTFieldsFromChecks() {
+      const fields = [...restFieldOptions.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+      restFields.value = fields.join(',');
+      if (!matchesRESTPreset(fields)) restLayout.value = 'custom';
+      updateRESTURLs(lastStatus);
+    }
+
+    function syncRESTChecksFromFields() {
+      const fields = restFields.value.split(',').map((field) => field.trim()).filter(Boolean);
+      restFieldOptions.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        input.checked = fields.includes(input.value);
+      });
+      if (!matchesRESTPreset(fields)) restLayout.value = 'custom';
+      updateRESTURLs(lastStatus);
+    }
+
+    function setRESTFields(fields) {
+      restFields.value = fields.join(',');
+      restFieldOptions.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        input.checked = fields.includes(input.value);
+      });
+    }
+
+    function matchesRESTPreset(fields) {
+      return Object.entries(restFieldPresets).some(([name, preset]) => {
+        if (preset.length !== fields.length) return false;
+        const matched = preset.every((field, index) => field === fields[index]);
+        if (matched) restLayout.value = name;
+        return matched;
+      });
+    }
+
     function updateRESTURLs(status = lastStatus) {
       const request = buildRESTRequest(window.location.origin);
       const externalBase = status && status.external_url;
@@ -796,7 +872,8 @@
       const examples = [
         ['/api/events/today?format=txt&limit=5', 'Today text'],
         ['/api/events/next.ascii?limit=3', 'Next ASCII'],
-        ['/api/events/by-calendar?format=md&exclude_cancelled=true', 'Grouped Markdown'],
+        ['/api/events/by-calendar?format=md&fields=when,calendar,title,duration&exclude_cancelled=true', 'Grouped Markdown'],
+        ['/api/events.csv?fields=when,title&limit=10', 'Events CSV'],
         ['/api/free-busy?range=today_tomorrow&format=json', 'Free/busy JSON'],
         ['/openapi.json', 'OpenAPI']
       ];
@@ -821,10 +898,17 @@
         const response = await fetch(request.url.toString(), options);
         const text = await response.text();
         if (!response.ok) throw new Error(text);
-        restTextPreview.textContent = text;
-        if ((response.headers.get('Content-Type') || '').includes('application/json')) {
+        const contentType = response.headers.get('Content-Type') || '';
+        if (contentType.includes('application/json')) {
+          restTextPreview.style.display = 'none';
+          restJSONPreview.style.display = '';
           renderJSON(restJSONPreview, JSON.parse(text));
-        } else if (!request.admin) {
+        } else {
+          restTextPreview.style.display = '';
+          restJSONPreview.style.display = '';
+          restTextPreview.textContent = text;
+        }
+        if (!contentType.includes('application/json') && !request.admin) {
           const jsonRequest = buildRESTRequest();
           jsonRequest.url.searchParams.set('format', 'json');
           const jsonResponse = await fetch(jsonRequest.url.toString());
@@ -835,7 +919,7 @@
             restJSONPreview.textContent = '{}';
           }
         } else {
-          restJSONPreview.textContent = '{}';
+          if (!contentType.includes('application/json')) restJSONPreview.textContent = '{}';
         }
         restStatus.textContent = 'Complete';
       } catch (error) {
@@ -952,6 +1036,7 @@
       restEndpointPicker,
       restCalendar,
       restFormat,
+      restFields,
       document.querySelector('#rest-limit'),
       document.querySelector('#rest-window'),
       document.querySelector('#rest-day'),
@@ -970,6 +1055,11 @@
       control.addEventListener('input', renderRESTPreview);
       control.addEventListener('change', renderRESTPreview);
     });
+    restLayout.addEventListener('change', applyRESTFieldPreset);
+    restFieldOptions.querySelectorAll('input[type="checkbox"]').forEach((control) => {
+      control.addEventListener('change', syncRESTFieldsFromChecks);
+    });
+    restFields.addEventListener('input', syncRESTChecksFromFields);
 
     runREST.addEventListener('click', fetchRESTPreview);
 
