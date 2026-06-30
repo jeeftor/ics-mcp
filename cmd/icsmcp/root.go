@@ -149,7 +149,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		return err
 	}
 	printStartupInfo(os.Stdout, httpAddr, status.Timezone, status.ExternalURL)
-	logger.Info("server starting", "http_addr", httpAddr, "db_path", dbPath, "refresh_interval", refreshInterval.String(), "timezone", status.Timezone, "external_url", status.ExternalURL)
+	logger.Info("server starting", "version", status.Version.Version, "commit", status.Version.Commit, "build_date", status.Version.Date, "http_addr", httpAddr, "db_path", dbPath, "refresh_interval", refreshInterval.String(), "timezone", status.Timezone, "external_url", status.ExternalURL)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

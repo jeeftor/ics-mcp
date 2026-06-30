@@ -218,13 +218,15 @@ func TestRunServeCreatesDatabaseDirAndReturnsStartupImportError(t *testing.T) {
 func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
-	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+	var logs bytes.Buffer
+	logger := slog.New(newPlainSlogHandler(&logs, slog.LevelInfo))
+	buildInfo := app.BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-30"}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- runServe(ctx, "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+		errCh <- runServe(ctx, "127.0.0.1:0", dbPath, time.Minute, nil, logger, buildInfo, "UTC", "")
 	}()
 
 	timer := time.NewTimer(50 * time.Millisecond)
@@ -246,6 +248,12 @@ func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	}
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("database was not created: %v", err)
+	}
+	gotLogs := logs.String()
+	for _, want := range []string{"msg=\"server starting\"", "version=v9.9.9", "commit=abc123", "build_date=2026-06-30"} {
+		if !strings.Contains(gotLogs, want) {
+			t.Fatalf("startup log missing %q:\n%s", want, gotLogs)
+		}
 	}
 }
 
