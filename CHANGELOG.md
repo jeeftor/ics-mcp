@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.64 - 2026-06-30
+
+### Improved
+- Expanded `runServe` coverage for HTTP listener startup failures.
+
 ## v1.4.63 - 2026-06-30
 
 ### Improved
