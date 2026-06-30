@@ -1504,6 +1504,23 @@ func TestRefreshCalendarRecordsRequestAndReadErrors(t *testing.T) {
 	}
 }
 
+func TestRefreshCalendarReturnsRefreshStateLookupErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `DROP TABLE refresh_state`); err != nil {
+		t.Fatalf("DROP TABLE refresh_state error = %v", err)
+	}
+
+	err = svc.RefreshCalendar(ctx, cal.ID, time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC))
+	if err == nil || !strings.Contains(err.Error(), "refresh_state") {
+		t.Fatalf("RefreshCalendar() error = %v, want refresh_state lookup error", err)
+	}
+}
+
 func TestRemoveCalendarIsIdempotentForMissingID(t *testing.T) {
 	svc := newTestService(t)
 	if err := svc.RemoveCalendar(context.Background(), "missing"); err != nil {

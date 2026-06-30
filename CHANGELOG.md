@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.48 - 2026-06-30
+
+### Improved
+- Expanded refresh coverage for SQLite refresh-state lookup failures.
+
 ## v1.4.47 - 2026-06-30
 
 ### Improved
