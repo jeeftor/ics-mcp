@@ -241,6 +241,16 @@ func TestParseICSHandlesMultipleTimezoneFormats(t *testing.T) {
 	}
 }
 
+func TestParseICSReportsUnknownTimezoneErrors(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	_, err := ParseICS(sampleTimezoneICS("TZID=Definitely/Not_A_Timezone:20260630T090000", "TZID=Definitely/Not_A_Timezone:20260630T093000"), now, 48*time.Hour)
+
+	if err == nil || !strings.Contains(err.Error(), "parse ics") {
+		t.Fatalf("ParseICS(unknown timezone) error = %v, want parse ics error", err)
+	}
+}
+
 func TestParseICSExtractsOnlineMeetingURL(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleTeamsICS(), now, 24*time.Hour)

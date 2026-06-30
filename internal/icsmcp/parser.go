@@ -3,12 +3,15 @@ package icsmcp
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/apognu/gocal"
 	"github.com/google/uuid"
 )
+
+var tzidParamPattern = regexp.MustCompile(`TZID=("[^"]+"|[^;:\r\n]+)`)
 
 var windowsTimezoneMap = map[string]string{
 	"Central Standard Time":      "America/Chicago",
@@ -46,6 +49,9 @@ func loadLocation(value string) (*time.Location, string, error) {
 func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstance, error) {
 	start := now.UTC().Add(-24 * time.Hour)
 	end := now.UTC().Add(lookahead)
+	if err := validateICSTimezones(raw); err != nil {
+		return nil, err
+	}
 	parser := gocal.NewParser(strings.NewReader(raw))
 	parser.Start = &start
 	parser.End = &end
@@ -81,4 +87,19 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 		})
 	}
 	return events, nil
+}
+
+func validateICSTimezones(raw string) error {
+	seen := map[string]bool{}
+	for _, match := range tzidParamPattern.FindAllStringSubmatch(raw, -1) {
+		tzid := strings.Trim(match[1], `"`)
+		if seen[tzid] {
+			continue
+		}
+		seen[tzid] = true
+		if _, _, err := loadLocation(tzid); err != nil {
+			return fmt.Errorf("parse ics timezone %q: %w", tzid, err)
+		}
+	}
+	return nil
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.66 - 2026-06-30
+
+### Fixed
+- Report unrecognized ICS `TZID` values instead of silently accepting potentially shifted meeting times.
+
+### Improved
+- Expanded parser coverage for unknown timezone identifiers in ICS event fields.
+
 ## v1.4.65 - 2026-06-30
 
 ### Improved
