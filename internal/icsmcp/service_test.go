@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/apognu/gocal"
 )
 
 func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *testing.T) {
@@ -438,6 +440,36 @@ func TestParseICSReportsMissingUIDErrors(t *testing.T) {
 	_, err := ParseICS(sampleMissingUIDICS(), now, 24*time.Hour)
 	if err == nil || !strings.Contains(err.Error(), "could not parse event without UID") {
 		t.Fatalf("ParseICS(missing UID) error = %v, want missing UID parse error", err)
+	}
+}
+
+func TestNormalizeParsedEventSkipsEventsMissingStartOrEnd(t *testing.T) {
+	start := time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC)
+	end := start.Add(30 * time.Minute)
+
+	for _, parsed := range []gocal.Event{
+		{Uid: "missing-start", End: &end},
+		{Uid: "missing-end", Start: &start},
+	} {
+		if event, ok := normalizeParsedEvent(parsed); ok {
+			t.Fatalf("normalizeParsedEvent(%s) = %#v, true; want skipped", parsed.Uid, event)
+		}
+	}
+}
+
+func TestNormalizeParsedEventDefaultsMissingUID(t *testing.T) {
+	start := time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC)
+	end := start.Add(30 * time.Minute)
+
+	event, ok := normalizeParsedEvent(gocal.Event{Summary: "No UID", Start: &start, End: &end})
+	if !ok {
+		t.Fatalf("normalizeParsedEvent() skipped event, want normalized event")
+	}
+	if event.UID == "" {
+		t.Fatalf("UID is empty, want generated fallback")
+	}
+	if event.Name != "No UID" {
+		t.Fatalf("name = %q, want No UID", event.Name)
 	}
 }
 

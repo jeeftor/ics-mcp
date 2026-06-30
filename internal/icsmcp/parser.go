@@ -60,35 +60,43 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 	}
 	events := make([]EventInstance, 0, len(parser.Events))
 	for _, parsed := range parser.Events {
-		if parsed.Start == nil || parsed.End == nil {
+		event, ok := normalizeParsedEvent(parsed)
+		if !ok {
 			continue
 		}
-		name := parsed.Summary
-		if name == "" {
-			name = "(untitled)"
-		}
-		uid := parsed.Uid
-		if uid == "" {
-			uid = uuid.NewString()
-		}
-		meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
-		cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
-		events = append(events, EventInstance{
-			ID:             uuid.NewString(),
-			UID:            uid,
-			Name:           name,
-			Description:    parsed.Description,
-			MeetingURL:     meetingURL,
-			MeetingURLType: meetingURLType,
-			Cancelled:      cancelled,
-			AllDay:         parsed.End.Sub(*parsed.Start) >= 24*time.Hour,
-			Recurring:      parsed.IsRecurring || parsed.RecurrenceID != "",
-			RecurrenceID:   parsed.RecurrenceID,
-			Start:          parsed.Start.UTC(),
-			End:            parsed.End.UTC(),
-		})
+		events = append(events, event)
 	}
 	return events, nil
+}
+
+func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
+	if parsed.Start == nil || parsed.End == nil {
+		return EventInstance{}, false
+	}
+	name := parsed.Summary
+	if name == "" {
+		name = "(untitled)"
+	}
+	uid := parsed.Uid
+	if uid == "" {
+		uid = uuid.NewString()
+	}
+	meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
+	cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
+	return EventInstance{
+		ID:             uuid.NewString(),
+		UID:            uid,
+		Name:           name,
+		Description:    parsed.Description,
+		MeetingURL:     meetingURL,
+		MeetingURLType: meetingURLType,
+		Cancelled:      cancelled,
+		AllDay:         parsed.End.Sub(*parsed.Start) >= 24*time.Hour,
+		Recurring:      parsed.IsRecurring || parsed.RecurrenceID != "",
+		RecurrenceID:   parsed.RecurrenceID,
+		Start:          parsed.Start.UTC(),
+		End:            parsed.End.UTC(),
+	}, true
 }
 
 func validateICSTimezones(raw string) error {
