@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.69 - 2026-06-30
+
+### Improved
+- Grouped the admin UI meeting preview by calendar header rows to reduce repeated calendar cells and improve scan efficiency.
+
 ## v1.4.68 - 2026-06-30
 
 ### Improved

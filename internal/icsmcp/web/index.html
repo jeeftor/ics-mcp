@@ -47,6 +47,10 @@
     th, td { padding: 10px 12px; border-bottom: 1px solid #e3e8eb; text-align: left; vertical-align: top; }
     th { background: #eef1f3; font-weight: 650; }
     td.actions { white-space: nowrap; }
+    .calendar-group-row td { background: #e7eef0; border-top: 1px solid #cbd7dc; border-bottom: 1px solid #cbd7dc; padding: 9px 12px; }
+    .calendar-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-weight: 700; }
+    .meeting-table .when-column { width: 26%; }
+    .meeting-table .duration-column { width: 90px; }
     code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .muted { color: var(--muted); }
     .error { color: var(--danger); max-width: 360px; overflow-wrap: anywhere; }
@@ -92,6 +96,7 @@
       tr { border-bottom: 1px solid var(--line); }
       td { border: 0; }
       td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+      .calendar-group-row td::before { display: none; }
     }
   </style>
 </head>
@@ -220,13 +225,12 @@
 
       <section>
         <h2>Next Meetings By Calendar</h2>
-        <table>
+        <table class="meeting-table">
           <thead>
             <tr>
-              <th>Calendar</th>
-              <th>When</th>
+              <th class="when-column">When</th>
               <th>Meeting</th>
-              <th>Duration</th>
+              <th class="duration-column">Duration</th>
             </tr>
           </thead>
           <tbody id="meetings"></tbody>
@@ -400,12 +404,22 @@
     async function loadMeetings() {
       const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true'));
       if (groups.length === 0) {
-        meetingsBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming meetings in the cache.</td></tr>';
+        meetingsBody.innerHTML = '<tr><td colspan="3" class="muted">No upcoming meetings in the cache.</td></tr>';
         return;
       }
       const rows = [];
       for (const group of groups) {
-        for (const [index, meeting] of group.meetings.entries()) {
+        const groupRow = document.createElement('tr');
+        groupRow.className = 'calendar-group-row';
+        groupRow.innerHTML = `
+          <td colspan="3">
+            <div class="calendar-group-title">
+              <span>${escapeHTML(group.calendar_name)}</span>
+              <span class="muted mono">${escapeHTML(group.calendar_id)}</span>
+            </div>
+          </td>`;
+        rows.push(groupRow);
+        for (const meeting of group.meetings) {
           const row = document.createElement('tr');
           const displayDate = formatMeetingDate(meeting.date);
           const displayStart = formatMeetingTime(meeting.start);
@@ -413,7 +427,6 @@
           const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(displayStart)}`;
           const flags = [meeting.all_day ? 'All day' : '', meeting.cancelled ? 'Cancelled' : ''].filter(Boolean).join(' | ');
           row.innerHTML = `
-          <td data-label="Calendar">${index === 0 ? `${escapeHTML(group.calendar_name)}<br><span class="muted mono">${escapeHTML(group.calendar_id)}</span>` : ''}</td>
           <td data-label="When">${marker}<br><span class="muted">${escapeHTML(displayDate)} ${escapeHTML(displayStart)}-${escapeHTML(displayEnd)} ${escapeHTML(meeting.timezone || '')}</span></td>
           <td data-label="Meeting">${escapeHTML(meeting.name)}${flags ? `<br><span class="muted">${escapeHTML(flags)}</span>` : ''}</td>
           <td data-label="Duration">${meeting.duration_minutes} min</td>`;
