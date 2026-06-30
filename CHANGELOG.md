@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.65 - 2026-06-30
+
+### Improved
+- Expanded root CLI entrypoint coverage for command execution and error output.
+
 ## v1.4.64 - 2026-06-30
 
 ### Improved
