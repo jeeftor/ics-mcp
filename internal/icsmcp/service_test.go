@@ -450,6 +450,34 @@ func TestStatusIncludesNormalizedExternalURL(t *testing.T) {
 	}
 }
 
+func TestMetricsTextIncludesCalendarState(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	if _, err := svc.AddCalendarAndRefresh(ctx, AddCalendarInput{Key: "work", Name: `Work "Calendar"`, URL: feed.URL}); err != nil {
+		t.Fatalf("AddCalendarAndRefresh() error = %v", err)
+	}
+
+	metrics, err := svc.MetricsText(ctx)
+	if err != nil {
+		t.Fatalf("MetricsText() error = %v", err)
+	}
+	for _, want := range []string{
+		"# HELP icsmcp_calendars_total",
+		"icsmcp_calendars_total 1",
+		`calendar_key="WORK"`,
+		`calendar_name="Work \"Calendar\""`,
+		" 1\n",
+	} {
+		if !strings.Contains(metrics, want) {
+			t.Fatalf("metrics missing %q:\n%s", want, metrics)
+		}
+	}
+}
+
 func TestValidateCalendarFetchesAndParsesFeedWithoutSaving(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
