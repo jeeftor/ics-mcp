@@ -57,9 +57,8 @@
     .metric-value { font-size: 22px; font-weight: 700; }
     .kv { display: grid; gap: 8px; }
     .kv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
-    .endpoint-list { display: grid; gap: 8px; }
-    .endpoint-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
-    .endpoint-row code, .copy-box { overflow-wrap: anywhere; }
+    .endpoint-table code, .copy-box { overflow-wrap: anywhere; }
+    .endpoint-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
     .copy-button { padding: 6px 9px; font-size: 12px; white-space: nowrap; }
     .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
     .setup-block { background: white; border: 1px solid var(--line); border-radius: 7px; padding: 14px; min-width: 0; }
@@ -84,7 +83,8 @@
       .tabs { padding: 0 14px; overflow-x: auto; }
       main { padding: 14px; }
       form, .tool-runner { grid-template-columns: 1fr; }
-      .kv-row, .endpoint-row { grid-template-columns: 1fr; gap: 3px; }
+      .kv-row { grid-template-columns: 1fr; gap: 3px; }
+      .endpoint-cell { grid-template-columns: 1fr; justify-items: start; }
       table, thead, tbody, tr, th, td { display: block; }
       thead { display: none; }
       tr { border-bottom: 1px solid var(--line); }
@@ -135,14 +135,16 @@
 
       <section>
         <h2>Endpoints</h2>
-        <div class="block endpoint-list">
-          <div class="endpoint-row"><span class="muted">Admin UI</span><code id="admin-url" data-copy-value="/">/</code><button class="copy-button" type="button" data-copy-target="admin-url">Copy</button></div>
-          <div class="endpoint-row"><span class="muted">MCP Server</span><code id="mcp-url" data-copy-value="/mcp">/mcp</code><button class="copy-button" type="button" data-copy-target="mcp-url">Copy</button></div>
-          <div class="endpoint-row"><span class="muted">Status API</span><code id="status-url" data-copy-value="/api/status">/api/status</code><button class="copy-button" type="button" data-copy-target="status-url">Copy</button></div>
-          <div class="endpoint-row"><span class="muted">Health</span><code id="health-url" data-copy-value="/healthz">/healthz</code><button class="copy-button" type="button" data-copy-target="health-url">Copy</button></div>
-          <div class="endpoint-row"><span class="muted">Readiness</span><code id="ready-url" data-copy-value="/readyz">/readyz</code><button class="copy-button" type="button" data-copy-target="ready-url">Copy</button></div>
-          <div class="endpoint-row"><span class="muted">Metrics</span><code id="metrics-url" data-copy-value="/metrics">/metrics</code><button class="copy-button" type="button" data-copy-target="metrics-url">Copy</button></div>
-        </div>
+        <table class="endpoint-table">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Internal</th>
+              <th>External</th>
+            </tr>
+          </thead>
+          <tbody id="endpoint-rows"></tbody>
+        </table>
       </section>
 
       <section>
@@ -252,6 +254,14 @@
     let tools = [];
     let lastStatus = null;
     const tabStorageKey = 'icsmcp.activeTab';
+    const endpoints = [
+      ['Admin UI', '/'],
+      ['MCP Server', '/mcp'],
+      ['Status API', '/api/status'],
+      ['Health', '/healthz'],
+      ['Readiness', '/readyz'],
+      ['Metrics', '/metrics']
+    ];
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => selectTab(tab.dataset.tab));
@@ -380,25 +390,19 @@
     function renderEndpoints(status = lastStatus) {
       const internal = window.location.origin;
       const external = status && status.external_url;
-      setEndpoint('#admin-url', internal, external, '/');
-      setEndpoint('#mcp-url', internal, external, '/mcp');
-      setEndpoint('#status-url', internal, external, '/api/status');
-      setEndpoint('#health-url', internal, external, '/healthz');
-      setEndpoint('#ready-url', internal, external, '/readyz');
-      setEndpoint('#metrics-url', internal, external, '/metrics');
-    }
-
-    function setEndpoint(selector, internal, external, path) {
-      const element = document.querySelector(selector);
-      element.textContent = endpointLabel(internal, external, path);
-      element.dataset.copyValue = endpointValue(internal, external, path);
-    }
-
-    function endpointLabel(internal, external, path) {
-      const suffix = path === '/' ? '/' : path;
-      const internalURL = internal + suffix;
-      if (!external) return internalURL;
-      return `${internalURL} | external ${external + suffix}`;
+      const rows = endpoints.map(([label, path], index) => {
+        const internalID = `endpoint-internal-${index}`;
+        const externalID = `endpoint-external-${index}`;
+        const internalURL = endpointValue(internal, '', path);
+        const externalURL = external ? endpointValue('', external, path) : '';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td data-label="Endpoint">${escapeHTML(label)}</td>
+          <td data-label="Internal"><div class="endpoint-cell"><code id="${internalID}" data-copy-value="${escapeHTML(internalURL)}">${escapeHTML(internalURL)}</code><button class="copy-button" type="button" data-copy-target="${internalID}">Copy</button></div></td>
+          <td data-label="External">${externalURL ? `<div class="endpoint-cell"><code id="${externalID}" data-copy-value="${escapeHTML(externalURL)}">${escapeHTML(externalURL)}</code><button class="copy-button" type="button" data-copy-target="${externalID}">Copy</button></div>` : '<span class="muted">Not configured</span>'}</td>`;
+        return row;
+      });
+      document.querySelector('#endpoint-rows').replaceChildren(...rows);
     }
 
     function endpointValue(internal, external, path) {
