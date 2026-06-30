@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.36 - 2026-06-30
+
+### Improved
+- Expanded SQLite calendar upsert coverage for insert failures, update failures, and preserved enabled state.
+
 ## v1.4.35 - 2026-06-30
 
 ### Improved
