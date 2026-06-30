@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.74 - 2026-06-30
+
+### Improved
+- Expanded root CLI coverage for success and error exit-code handling without changing command behavior.
+
 ## v1.4.73 - 2026-06-30
 
 ### Improved
