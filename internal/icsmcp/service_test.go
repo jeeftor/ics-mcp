@@ -1178,6 +1178,34 @@ func TestRemoveCalendarDeletesCachedEventsAndRefreshState(t *testing.T) {
 	}
 }
 
+func TestListCalendarStatusHandlesMissingRefreshState(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `DELETE FROM refresh_state WHERE calendar_id = ?`, cal.ID); err != nil {
+		t.Fatalf("delete refresh_state fixture: %v", err)
+	}
+
+	statuses, err := svc.ListCalendarStatus(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendarStatus() error = %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("ListCalendarStatus() = %#v, want one calendar", statuses)
+	}
+	status := statuses[0]
+	if status.ID != cal.ID || status.Key != "WORK" || status.Name != "Work" || !status.Enabled {
+		t.Fatalf("calendar status identity = %#v", status)
+	}
+	if status.LastAttempt != nil || status.LastSuccess != nil || status.NextRefresh != nil ||
+		status.LastError != "" || status.ETag != "" || status.LastModified != "" || status.EventCount != 0 {
+		t.Fatalf("refresh status = %#v, want zero-value refresh fields", status)
+	}
+}
+
 func TestRefreshAllCalendarsReportsSuccessFailureAndSkipped(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

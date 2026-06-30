@@ -297,13 +297,19 @@ func (s *Store) listCalendarStatus(ctx context.Context) ([]CalendarStatus, error
 		var status CalendarStatus
 		var enabled int
 		var lastAttempt, lastSuccess, nextRefresh sql.NullString
-		if err := rows.Scan(&status.ID, &status.Key, &status.Name, &status.URL, &enabled, &lastAttempt, &lastSuccess, &status.LastError, &nextRefresh, &status.ETag, &status.LastModified, &status.EventCount); err != nil {
+		var lastError, etag, lastModified sql.NullString
+		var eventCount sql.NullInt64
+		if err := rows.Scan(&status.ID, &status.Key, &status.Name, &status.URL, &enabled, &lastAttempt, &lastSuccess, &lastError, &nextRefresh, &etag, &lastModified, &eventCount); err != nil {
 			return nil, fmt.Errorf("scan calendar status: %w", err)
 		}
 		status.Enabled = enabled != 0
 		status.LastAttempt = parseTimePtr(lastAttempt)
 		status.LastSuccess = parseTimePtr(lastSuccess)
+		status.LastError = lastError.String
 		status.NextRefresh = parseTimePtr(nextRefresh)
+		status.ETag = etag.String
+		status.LastModified = lastModified.String
+		status.EventCount = int(eventCount.Int64)
 		statuses = append(statuses, status)
 	}
 	return statuses, rows.Err()

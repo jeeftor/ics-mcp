@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.27 - 2026-06-30
+
+### Fixed
+- Made calendar status listing tolerate a missing refresh-state row and return zero-value refresh fields instead of a scan error.
+
+### Improved
+- Expanded SQLite status coverage for calendars with missing refresh-state metadata.
+
 ## v1.4.26 - 2026-06-30
 
 ### Changed
