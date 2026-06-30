@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.33 - 2026-06-30
+
+### Improved
+- Expanded meeting URL classifier coverage for malformed raw URL inputs.
+
 ## v1.4.32 - 2026-06-30
 
 ### Changed

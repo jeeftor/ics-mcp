@@ -80,3 +80,10 @@ func TestExtractMeetingURLCleansEscapedNewlineMarkersAndSkipsInvalidURLs(t *test
 		t.Fatalf("empty extraction = (%q, %q), want empty", gotURL, gotType)
 	}
 }
+
+func TestClassifyMeetingURLSkipsMalformedRawURL(t *testing.T) {
+	got := classifyMeetingURL("%")
+	if got != (meetingURLCandidate{}) {
+		t.Fatalf("classifyMeetingURL malformed = %#v, want empty candidate", got)
+	}
+}
