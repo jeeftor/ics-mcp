@@ -82,6 +82,27 @@ func TestCLIStartupImportNormalizesKeysAndRejectsInvalidAssignments(t *testing.T
 	}
 }
 
+func TestAddCalendarValidatesURLAndKeyOrName(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	for _, tc := range []struct {
+		name string
+		in   AddCalendarInput
+		want string
+	}{
+		{name: "missing URL", in: AddCalendarInput{Key: "work", Name: "Work"}, want: "calendar URL is required"},
+		{name: "missing key and name", in: AddCalendarInput{URL: "https://example.test/work.ics"}, want: "calendar key or name is required"},
+		{name: "punctuation only key", in: AddCalendarInput{Key: "!!!", URL: "https://example.test/work.ics"}, want: "calendar key or name is required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := svc.AddCalendar(ctx, tc.in); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("AddCalendar() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestEnvMapIncludesCurrentProcessEnvironment(t *testing.T) {
 	t.Setenv("ICSMCP_TEST_ENV_MAP", "present")
 	env := EnvMap()
