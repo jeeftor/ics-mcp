@@ -266,11 +266,14 @@ func (s *Store) replaceEvents(ctx context.Context, calendarID string, events []E
 	return nil
 }
 
-func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarIDs []string, limit int, generalOnly bool) ([]EventInstance, error) {
+func (s *Store) queryEvents(ctx context.Context, now, until time.Time, calendarIDs []string, limit int, generalOnly bool, includeDisabled bool) ([]EventInstance, error) {
 	query := `SELECT e.id, e.calendar_id, c.name, e.uid, e.name, e.description, e.meeting_url, e.meeting_url_type, e.cancelled, e.all_day, e.recurring, e.recurrence_id, e.start_time, e.end_time
 		FROM events e JOIN calendars c ON c.id = e.calendar_id
-		WHERE c.enabled = 1 AND e.end_time > ? AND e.start_time <= ?`
+		WHERE e.end_time > ? AND e.start_time <= ?`
 	args := []any{now.UTC().Format(time.RFC3339Nano), until.UTC().Format(time.RFC3339Nano)}
+	if !includeDisabled {
+		query += ` AND c.enabled = 1`
+	}
 	if len(calendarIDs) > 0 {
 		query += ` AND e.calendar_id IN (` + placeholders(len(calendarIDs)) + `)`
 		for _, id := range calendarIDs {

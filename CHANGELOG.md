@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.0.0 - 2026-06-30
+
+### Added
+- Added tool-backed REST routes at `GET /api/rest/{tool_name}` for read tools and `POST /api/rest/{tool_name}` for admin tools.
+- Added friendly REST aliases for events, grouped events, today, tomorrow, today-tomorrow, current, next, search, free/busy, and per-calendar event views.
+- Added REST format negotiation with `.json`, `.html`, `.md`, `.txt`, `.ascii`, `format=...`, and `Accept` header support.
+- Added `/openapi.json` and `/docs`.
+- Added explicit disabled-calendar opt-in through `include_disabled=true` for REST and `include_disabled: true` for MCP tool arguments.
+- Added a REST debug UI tab with endpoint selection, calendar selection, generated URLs, copy actions, examples, fetch preview, and JSON/text previews.
+
+### Changed
+- Split the admin UI meeting preview into its own `Meetings` tab, leaving `Calendars` focused on calendar configuration.
+
+### Improved
+- Expanded route, alias, format, OpenAPI, disabled-calendar, and REST UI smoke coverage.
+
 ## v1.5.3 - 2026-06-30
 
 ### Fixed

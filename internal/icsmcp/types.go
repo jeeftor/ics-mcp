@@ -103,6 +103,7 @@ type UpcomingQuery struct {
 	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
 	IncludeLinks        *bool     `json:"include_links,omitempty"`
 	LinksOnly           bool      `json:"links_only,omitempty"`
+	IncludeDisabled     bool      `json:"include_disabled,omitempty"`
 	OverlapWindow       bool      `json:"-"`
 }
 

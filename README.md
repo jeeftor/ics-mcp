@@ -92,6 +92,21 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `GET /api/status`
 - `GET /api/meetings`
 - `GET /api/meetings/by-calendar`
+- `GET /api/rest/{tool_name}`
+- `POST /api/rest/{tool_name}`
+- `GET /api/events`
+- `GET /api/events/by-calendar`
+- `GET /api/events/today`
+- `GET /api/events/tomorrow`
+- `GET /api/events/today-tomorrow`
+- `GET /api/events/current`
+- `GET /api/events/next`
+- `GET /api/events/search`
+- `GET /api/free-busy`
+- `GET /api/calendars/{calendar}/events`
+- `GET /api/calendars/{calendar}/today`
+- `GET /openapi.json`
+- `GET /docs`
 - `GET /api/tools`
 - `POST /api/tools/{name}/call`
 - `GET /api/calendars`
@@ -101,7 +116,19 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `window`, `timezone`, `detail`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window` accepts `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `calendar`, `query`, `window`, `day`, `range`, `timezone`, `detail`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `include_disabled`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. Disabled calendars are also omitted unless `include_disabled=true` is supplied with an explicit calendar filter. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window`, `day`, and `range` accept presets such as `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
+
+REST read endpoints default to JSON and can also render simple-client formats with either a path extension, `format` query parameter, or `Accept` header: `json`, `html`, `md`, `txt`, and `ascii`. Examples:
+
+```bash
+curl 'http://localhost:3333/api/events/today?format=txt&limit=5'
+curl 'http://localhost:3333/api/events/next.ascii?limit=3'
+curl 'http://localhost:3333/api/events/by-calendar?format=md&exclude_cancelled=true'
+curl 'http://localhost:3333/api/free-busy?range=today_tomorrow&format=json'
+curl 'http://localhost:3333/api/events?calendar_id=e81d3050123a252f593bdd01e0e0bd373a596f67&include_disabled=true'
+```
+
+`/api/rest/{tool_name}` exposes the same behavior as MCP tools. Use `GET` for read tools such as `upcoming_meetings`, `today_meetings`, `search_meetings`, and `free_busy`; use `POST` with a JSON body for admin tools such as `update_calendar`, `refresh_calendar`, `refresh_all_calendars`, and `validate_calendar`. `/openapi.json` describes the REST surface, and `/docs` links to the REST tab and OpenAPI document.
 
 `/healthz` is the liveness endpoint and `/readyz` is the readiness endpoint. The `z` suffix is a common convention from Kubernetes-style health checks.
 
@@ -124,7 +151,7 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `refresh_calendar`
 - `refresh_all_calendars`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time unless `sort` is supplied. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus the always-present status flags `ongoing`, `all_day`, `cancelled`, and `recurring`. Meeting URL fields are emitted only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `end_date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Links are included by default when found; pass `include_links: false` to hide them or `links_only: true` to return only meetings with links. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `window`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time unless `sort` is supplied. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus the always-present status flags `ongoing`, `all_day`, `cancelled`, and `recurring`. Meeting URL fields are emitted only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `end_date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Links are included by default when found; pass `include_links: false` to hide them or `links_only: true` to return only meetings with links. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Disabled calendars require both explicit `calendar_ids` and `include_disabled: true`. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `window`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `include_disabled`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
 
 `sort` supports these modes: `start_time` for raw chronological order, `agenda` for ongoing timed meetings then upcoming timed meetings then all-day/multi-day blocks, `calendar` for all-day/multi-day blocks first then timed events, and `ongoing_first` for current events first then chronological order.
 
@@ -158,7 +185,7 @@ MCP tool discovery exposes each tool name, description, and JSON input schema. F
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, REST endpoints, OpenAPI link, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a dedicated Meetings tab with the next-meetings preview grouped by calendar, a REST tab with generated internal/external URLs and JSON/text previews, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 

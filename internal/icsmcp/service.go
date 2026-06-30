@@ -384,7 +384,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 		return nil, err
 	}
 	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true)
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +457,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 		return nil, err
 	}
 	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true)
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
