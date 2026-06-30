@@ -540,6 +540,111 @@ func TestStatusIncludesNormalizedExternalURL(t *testing.T) {
 	}
 }
 
+func TestServiceMethodsPropagateClosedStoreErrors(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	svc := NewService(store, ServiceOptions{})
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "import startup calendars",
+			call: func() error {
+				return svc.ImportStartupCalendars(ctx, map[string]string{"ICSMCP_CALENDAR_WORK": "https://example.test/work.ics"}, nil)
+			},
+		},
+		{
+			name: "add calendar",
+			call: func() error {
+				_, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+				return err
+			},
+		},
+		{
+			name: "list calendars",
+			call: func() error {
+				_, err := svc.ListCalendars(ctx)
+				return err
+			},
+		},
+		{
+			name: "list calendar status",
+			call: func() error {
+				_, err := svc.ListCalendarStatus(ctx)
+				return err
+			},
+		},
+		{
+			name: "update calendar",
+			call: func() error {
+				_, err := svc.UpdateCalendar(ctx, "missing", UpdateCalendarInput{Name: "Renamed"})
+				return err
+			},
+		},
+		{
+			name: "remove calendar",
+			call: func() error {
+				return svc.RemoveCalendar(ctx, "missing")
+			},
+		},
+		{
+			name: "replace events",
+			call: func() error {
+				return svc.ReplaceEvents(ctx, "missing", []EventInstance{{UID: "event-1", Name: "Event", Start: time.Now(), End: time.Now().Add(time.Hour)}})
+			},
+		},
+		{
+			name: "refresh calendar",
+			call: func() error {
+				return svc.RefreshCalendar(ctx, "missing", time.Now())
+			},
+		},
+		{
+			name: "upcoming meetings",
+			call: func() error {
+				_, err := svc.UpcomingMeetings(ctx, UpcomingQuery{})
+				return err
+			},
+		},
+		{
+			name: "upcoming meetings by calendar",
+			call: func() error {
+				_, err := svc.UpcomingMeetingsByCalendar(ctx, UpcomingQuery{})
+				return err
+			},
+		},
+		{
+			name: "status",
+			call: func() error {
+				_, err := svc.Status(ctx)
+				return err
+			},
+		},
+		{
+			name: "metrics",
+			call: func() error {
+				_, err := svc.MetricsText(ctx)
+				return err
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil {
+				t.Fatalf("%s error = nil, want closed store error", tc.name)
+			}
+		})
+	}
+}
+
 func TestMetricsTextIncludesCalendarState(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

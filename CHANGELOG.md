@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.17 - 2026-06-30
+
+### Improved
+- Expanded service-layer coverage for closed SQLite store error propagation across calendar, meeting, status, metrics, and refresh operations.
+
 ## v1.4.16 - 2026-06-30
 
 ### Fixed
