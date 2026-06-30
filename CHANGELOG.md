@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.25 - 2026-06-30
+
+### Improved
+- Expanded SQLite event-cache replacement coverage for clear failures and transaction rollback after partial insert failures.
+
 ## v1.4.24 - 2026-06-30
 
 ### Improved
