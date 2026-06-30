@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.47 - 2026-06-30
+
+### Improved
+- Expanded validation coverage for calendar feed transport failures.
+
 ## v1.4.46 - 2026-06-30
 
 ### Added
