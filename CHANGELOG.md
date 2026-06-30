@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.75 - 2026-06-30
+
+### Improved
+- Split Docker publishing out of GoReleaser so release binaries and per-architecture Docker images run in parallel.
+- Started release tests, GoReleaser, and Docker image jobs concurrently so tests no longer block artifact publishing.
+- Moved the arm64 Docker image build to GitHub's native ARM runner to avoid QEMU emulation.
+- Added workflow concurrency to cancel stale test and release runs for repeated pushes.
+- Made the Docker certificate stage use the build platform to avoid unnecessary arm64 emulation work.
+- Changed the debug UI meeting preview to render each calendar in its own table with human-readable durations.
+
 ## v1.4.74 - 2026-06-30
 
 ### Improved
