@@ -280,6 +280,7 @@ func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
 		{name: "ready method", method: http.MethodPost, path: "/readyz", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "metrics method", method: http.MethodPost, path: "/metrics", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "status method", method: http.MethodPost, path: "/api/status", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "meetings method", method: http.MethodPost, path: "/api/meetings", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "meetings invalid limit", method: http.MethodGet, path: "/api/meetings?limit=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
 		{name: "meetings invalid lookahead", method: http.MethodGet, path: "/api/meetings?lookahead_days=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
 		{name: "meetings invalid description max", method: http.MethodGet, path: "/api/meetings?description_max_chars=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
