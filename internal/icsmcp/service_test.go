@@ -70,6 +70,23 @@ func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	}
 }
 
+func TestParseICSMapsExchangeWindowsTimezones(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleExchangeWindowsTimezoneICS(), now, 48*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if got := events[0].Start.Format(time.RFC3339); got != "2026-06-30T13:00:00Z" {
+		t.Fatalf("start = %s, want Eastern daylight converted to 13:00Z", got)
+	}
+	if got := events[0].End.Format(time.RFC3339); got != "2026-06-30T13:30:00Z" {
+		t.Fatalf("end = %s, want Eastern daylight converted to 13:30Z", got)
+	}
+}
+
 func TestParseICSExtractsOnlineMeetingURL(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleTeamsICS(), now, 24*time.Hour)
@@ -303,6 +320,14 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 	if meetings[0].Start != "09:00" || meetings[0].End != "09:30" || meetings[0].Timezone != "America/Denver" {
 		t.Fatalf("timezone-rendered meeting = %#v", meetings[0])
+	}
+
+	utcMeetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 1, Timezone: "UTC"})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(UTC override) error = %v", err)
+	}
+	if utcMeetings[0].Start != "15:00" || utcMeetings[0].End != "15:30" || utcMeetings[0].Timezone != "UTC" {
+		t.Fatalf("timezone-overridden meeting = %#v", utcMeetings[0])
 	}
 }
 

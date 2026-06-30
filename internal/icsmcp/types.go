@@ -76,6 +76,7 @@ type UpcomingQuery struct {
 	CalendarIDs         []string  `json:"calendar_ids,omitempty"`
 	LookaheadDays       int       `json:"lookahead_days,omitempty"`
 	Query               string    `json:"query,omitempty"`
+	Timezone            string    `json:"timezone,omitempty"`
 	OnlyOngoing         bool      `json:"only_ongoing,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
 	ExcludeCancelled    bool      `json:"exclude_cancelled,omitempty"`
