@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.30 - 2026-06-30
+
+### Improved
+- Expanded tool argument decoding coverage for empty tool-call payloads.
+
 ## v1.4.29 - 2026-06-30
 
 ### Improved

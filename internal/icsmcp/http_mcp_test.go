@@ -380,6 +380,19 @@ func TestToolPreviewRejectsInvalidTimezone(t *testing.T) {
 	}
 }
 
+func TestDecodeToolArgsDefaultsEmptyRawMessageToObject(t *testing.T) {
+	var got struct {
+		Limit int `json:"limit"`
+	}
+
+	if err := decodeToolArgs(nil, &got); err != nil {
+		t.Fatalf("decodeToolArgs(nil) error = %v", err)
+	}
+	if got.Limit != 0 {
+		t.Fatalf("decodeToolArgs(nil) = %#v, want zero-value struct", got)
+	}
+}
+
 func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
