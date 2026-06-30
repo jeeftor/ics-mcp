@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.2 - 2026-06-30
+
+### Added
+- Added REST table time display controls with `time_style=...` and `show_timezone=true`.
+
+### Changed
+- Hide timezone text by default in REST table formats so simple-client views stay compact.
+
 ## v2.0.1 - 2026-06-30
 
 ### Added
