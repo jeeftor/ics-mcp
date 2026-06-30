@@ -35,7 +35,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode"} {
+	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -75,6 +75,19 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&timezone=UTC", nil, &utcMeetings)
 	if len(utcMeetings) != 1 || utcMeetings[0].Timezone != "UTC" {
 		t.Fatalf("UTC meetings preview = %#v", utcMeetings)
+	}
+
+	resp, err = http.Get(server.URL + "/api/meetings?timezone=America%2FDenbver")
+	if err != nil {
+		t.Fatalf("GET invalid timezone error = %v", err)
+	}
+	invalidTimezoneBody, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll(invalid timezone) error = %v", err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(invalidTimezoneBody), "America/Denbver") {
+		t.Fatalf("invalid timezone response status=%d body=%s", resp.StatusCode, invalidTimezoneBody)
 	}
 
 	var groups []CalendarMeetingGroup
@@ -156,6 +169,42 @@ func TestHTTPAPIValidatesCalendarFeed(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIValidateCalendarReportsFailures(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/calendars/validate", "application/json", bytes.NewBufferString(`{"url":""}`))
+	if err != nil {
+		t.Fatalf("POST validate empty URL error = %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll(empty URL) error = %v", err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "calendar URL is required") {
+		t.Fatalf("empty URL response status=%d body=%s", resp.StatusCode, body)
+	}
+
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer feed.Close()
+	resp, err = http.Post(server.URL+"/api/calendars/validate", "application/json", bytes.NewBufferString(`{"url":"`+feed.URL+`"}`))
+	if err != nil {
+		t.Fatalf("POST validate non-2xx error = %v", err)
+	}
+	body, err = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll(non-2xx) error = %v", err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "status 404") {
+		t.Fatalf("non-2xx response status=%d body=%s", resp.StatusCode, body)
+	}
+}
+
 func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	svc := newTestService(t)
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
@@ -179,6 +228,14 @@ func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &statuses)
 	if len(statuses) != 1 || statuses[0].EventCount != 1 || statuses[0].LastSuccess == nil {
 		t.Fatalf("status after add = %#v", statuses)
+	}
+}
+
+func TestToolPreviewRejectsInvalidTimezone(t *testing.T) {
+	svc := newTestService(t)
+	_, err := PreviewToolCall(context.Background(), svc, "upcoming_meetings", json.RawMessage(`{"timezone":"America/Denbver"}`))
+	if err == nil || !strings.Contains(err.Error(), "America/Denbver") {
+		t.Fatalf("PreviewToolCall invalid timezone error = %v, want timezone error", err)
 	}
 }
 
