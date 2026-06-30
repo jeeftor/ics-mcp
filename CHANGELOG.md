@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.19 - 2026-06-30
+
+### Improved
+- Expanded meeting description coverage for opt-in, exact-length, and truncated output.
+- Expanded refresh coverage for parse failures while preserving the last known good event cache.
+
 ## v1.4.18 - 2026-06-30
 
 ### Improved

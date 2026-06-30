@@ -329,6 +329,19 @@ func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	}
 }
 
+func TestMeetingDescriptionHonorsOptInAndLengthBounds(t *testing.T) {
+	description := "short description"
+	if got := meetingDescription(description, UpcomingQuery{}); got != "" {
+		t.Fatalf("meetingDescription(no opt-in) = %q, want empty", got)
+	}
+	if got := meetingDescription(description, UpcomingQuery{IncludeDescription: true, DescriptionMaxChars: len([]rune(description))}); got != description {
+		t.Fatalf("meetingDescription(exact length) = %q, want original", got)
+	}
+	if got := meetingDescription("abcdef", UpcomingQuery{IncludeDescription: true, DescriptionMaxChars: 3}); got != "abc..." {
+		t.Fatalf("meetingDescription(truncated) = %q, want abc...", got)
+	}
+}
+
 func TestUpcomingMeetingsByCalendarDefaultsToTenPerCalendar(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -834,6 +847,48 @@ func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	}
 	if status.Calendars[0].LastError == "" || status.Calendars[0].EventCount != 1 {
 		t.Fatalf("status after failed refresh = %#v", status.Calendars[0])
+	}
+}
+
+func TestRefreshPreservesLastKnownGoodEventsWhenParseFails(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	badFeed := false
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if badFeed {
+			_, _ = w.Write([]byte("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:bad\r\nDTSTART:not-a-date\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"))
+			return
+		}
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	if err := svc.RefreshCalendar(ctx, cal.ID, now); err != nil {
+		t.Fatalf("RefreshCalendar(good feed) error = %v", err)
+	}
+	badFeed = true
+	if err := svc.RefreshCalendar(ctx, cal.ID, now.Add(time.Minute)); err == nil {
+		t.Fatalf("RefreshCalendar(parse failure) error = nil, want parse error")
+	}
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 5})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 || meetings[0].Name != "Planning" {
+		t.Fatalf("cached meetings after parse failure = %#v", meetings)
+	}
+	state, err := svc.store.refreshState(ctx, cal.ID)
+	if err != nil {
+		t.Fatalf("refreshState() error = %v", err)
+	}
+	if state.LastError == "" || state.EventCount != 1 {
+		t.Fatalf("refreshState(parse failure) = %#v, want previous event count and parse error", state)
 	}
 }
 
