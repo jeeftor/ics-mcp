@@ -1166,6 +1166,39 @@ func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	}
 }
 
+func TestCompactMeetingJSONIncludesFalseStatusFlags(t *testing.T) {
+	meeting := Meeting{
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		EndDate:         "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+	}
+
+	data, err := json.Marshal(meeting)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	for _, field := range []string{"ongoing", "all_day", "cancelled", "recurring"} {
+		value, ok := got[field]
+		if !ok {
+			t.Fatalf("compact meeting JSON missing false %q: %s", field, data)
+		}
+		if value != false {
+			t.Fatalf("compact meeting JSON %q = %#v, want false: %s", field, value, data)
+		}
+	}
+}
+
 func TestCompactMeetingFormattingHelpersCoverEdgeCases(t *testing.T) {
 	tests := []struct {
 		name string

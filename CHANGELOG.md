@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.3 - 2026-06-30
+
+### Fixed
+- Kept `ongoing`, `all_day`, `cancelled`, and `recurring` present in compact MCP meeting output even when the value is false, matching the structured-output schema contract.
+
+### Improved
+- Added regression coverage for compact meeting JSON and MCP structured content across upcoming, grouped, next, today, and search meeting tools.
+- Documented the MCP output schema-contract guardrail for future output changes.
+
 ## v1.5.2 - 2026-06-30
 
 ### Added

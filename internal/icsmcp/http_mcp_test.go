@@ -1061,6 +1061,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(upcoming.Meetings) != 1 || upcoming.Meetings[0].Name != "Planning" {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
+	assertStructuredMeetingStatusFields(t, upcomingResult.StructuredContent, "meetings", "upcoming_meetings")
 
 	groupedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "upcoming_meetings_by_calendar",
@@ -1074,6 +1075,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(grouped.Calendars) != 1 || grouped.Calendars[0].CalendarName != "Work" || len(grouped.Calendars[0].Meetings) != 1 {
 		t.Fatalf("grouped meetings = %#v", grouped.Calendars)
 	}
+	assertStructuredGroupedMeetingStatusFields(t, groupedResult.StructuredContent, "upcoming_meetings_by_calendar")
 
 	nextOneResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "next_meeting",
@@ -1100,6 +1102,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(next.Meetings) != 1 || next.Meetings[0].AllDay || next.Meetings[0].Cancelled {
 		t.Fatalf("next meetings = %#v", next.Meetings)
 	}
+	assertStructuredMeetingStatusFields(t, nextResult.StructuredContent, "meetings", "next_meetings")
 
 	todayResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "today_meetings",
@@ -1113,6 +1116,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(today.Meetings) != 1 || today.Meetings[0].Name != "Planning" {
 		t.Fatalf("today meetings = %#v", today.Meetings)
 	}
+	assertStructuredMeetingStatusFields(t, todayResult.StructuredContent, "meetings", "today_meetings")
 
 	currentResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "current_meetings",
@@ -1152,6 +1156,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(search.Meetings) != 1 || search.Meetings[0].Name != "Planning" {
 		t.Fatalf("search meetings = %#v", search.Meetings)
 	}
+	assertStructuredMeetingStatusFields(t, searchResult.StructuredContent, "meetings", "search_meetings")
 
 	statusResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "server_status",
@@ -1313,6 +1318,44 @@ func decodeStructured(t *testing.T, in any, out any) {
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		t.Fatalf("Unmarshal structured content error = %v", err)
+	}
+}
+
+func assertStructuredMeetingStatusFields(t *testing.T, in any, key string, tool string) {
+	t.Helper()
+	var structured map[string][]map[string]any
+	decodeStructured(t, in, &structured)
+	meetings := structured[key]
+	if len(meetings) != 1 {
+		t.Fatalf("%s structured %s length = %d, want 1: %#v", tool, key, len(meetings), structured)
+	}
+	assertMeetingStatusFields(t, meetings[0], tool)
+}
+
+func assertStructuredGroupedMeetingStatusFields(t *testing.T, in any, tool string) {
+	t.Helper()
+	var structured struct {
+		Calendars []struct {
+			Meetings []map[string]any `json:"meetings"`
+		} `json:"calendars"`
+	}
+	decodeStructured(t, in, &structured)
+	if len(structured.Calendars) != 1 || len(structured.Calendars[0].Meetings) != 1 {
+		t.Fatalf("%s structured grouped meetings = %#v", tool, structured.Calendars)
+	}
+	assertMeetingStatusFields(t, structured.Calendars[0].Meetings[0], tool)
+}
+
+func assertMeetingStatusFields(t *testing.T, meeting map[string]any, tool string) {
+	t.Helper()
+	for _, field := range []string{"ongoing", "all_day", "cancelled", "recurring"} {
+		value, ok := meeting[field]
+		if !ok {
+			t.Fatalf("%s compact meeting missing false %q: %#v", tool, field, meeting)
+		}
+		if _, ok := value.(bool); !ok {
+			t.Fatalf("%s compact meeting %q = %#v, want boolean: %#v", tool, field, value, meeting)
+		}
 	}
 }
 
