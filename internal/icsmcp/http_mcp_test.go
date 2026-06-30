@@ -518,6 +518,29 @@ func TestToolPreviewReportsDecodeAndUnknownToolErrors(t *testing.T) {
 	}
 }
 
+func TestToolPreviewReportsDecodeErrorsForArgumentTools(t *testing.T) {
+	svc := newTestService(t)
+	for _, name := range []string{
+		"upcoming_meetings",
+		"upcoming_meetings_by_calendar",
+		"next_meetings",
+		"current_meetings",
+		"search_meetings",
+		"add_calendar",
+		"validate_calendar",
+		"update_calendar",
+		"remove_calendar",
+		"refresh_calendar",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := PreviewToolCall(context.Background(), svc, name, json.RawMessage(`{`))
+			if err == nil || !strings.Contains(err.Error(), "decode tool arguments") {
+				t.Fatalf("%s decode error = %v, want decode tool arguments", name, err)
+			}
+		})
+	}
+}
+
 func TestHTTPAPIEmptyCollectionsEncodeAsArrays(t *testing.T) {
 	svc := newTestService(t)
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
@@ -928,6 +951,30 @@ func sampleCancelledAllDayICS() string {
 		"DTEND:20260701T000000Z\r\n" +
 		"SUMMARY:Canceled: Focus Day\r\n" +
 		"STATUS:CANCELLED\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func sampleUntitledICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:untitled-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260629T130000Z\r\n" +
+		"DTEND:20260629T140000Z\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func sampleMissingUIDICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260629T130000Z\r\n" +
+		"DTEND:20260629T140000Z\r\n" +
+		"SUMMARY:Missing UID\r\n" +
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 }

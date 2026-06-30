@@ -236,6 +236,31 @@ func TestParseICSDetectsAllDayAndCancelledEvents(t *testing.T) {
 	}
 }
 
+func TestParseICSDefaultsUntitledEvents(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleUntitledICS(), now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].Name != "(untitled)" {
+		t.Fatalf("name = %q, want (untitled)", events[0].Name)
+	}
+	if events[0].UID != "untitled-1" {
+		t.Fatalf("UID = %q, want untitled-1", events[0].UID)
+	}
+}
+
+func TestParseICSReportsMissingUIDErrors(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	_, err := ParseICS(sampleMissingUIDICS(), now, 24*time.Hour)
+	if err == nil || !strings.Contains(err.Error(), "could not parse event without UID") {
+		t.Fatalf("ParseICS(missing UID) error = %v, want missing UID parse error", err)
+	}
+}
+
 func TestUpcomingMeetingsIncludesOngoingAndDefaultsToTenSorted(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
