@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.23 - 2026-06-30
+
+### Improved
+- Expanded CLI serve coverage for clean startup and context-cancelled shutdown on an ephemeral HTTP listener.
+
 ## v1.4.22 - 2026-06-30
 
 ### Improved
