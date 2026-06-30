@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.54 - 2026-06-30
+
+### Improved
+- Expanded MCP integration coverage for grouped upcoming-meeting tool calls.
+
 ## v1.4.53 - 2026-06-30
 
 ### Improved
