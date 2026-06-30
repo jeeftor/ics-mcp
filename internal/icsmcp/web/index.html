@@ -47,8 +47,11 @@
     th, td { padding: 10px 12px; border-bottom: 1px solid #e3e8eb; text-align: left; vertical-align: top; }
     th { background: #eef1f3; font-weight: 650; }
     td.actions { white-space: nowrap; }
-    .calendar-group-row td { background: #e7eef0; border-top: 1px solid #cbd7dc; border-bottom: 1px solid #cbd7dc; padding: 9px 12px; }
-    .calendar-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-weight: 700; }
+    .meeting-groups { display: grid; gap: 16px; }
+    .calendar-meeting-group { background: white; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+    .calendar-meeting-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; background: #e7eef0; border-bottom: 1px solid #cbd7dc; font-weight: 700; }
+    .calendar-meeting-group .meeting-table { border: 0; }
+    .calendar-meeting-group .meeting-table tr:last-child td { border-bottom: 0; }
     .meeting-table .when-column { width: 26%; }
     .meeting-table .duration-column { width: 90px; }
     code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
@@ -96,7 +99,7 @@
       tr { border-bottom: 1px solid var(--line); }
       td { border: 0; }
       td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-      .calendar-group-row td::before { display: none; }
+      .calendar-meeting-header { display: block; }
     }
   </style>
 </head>
@@ -225,16 +228,7 @@
 
       <section>
         <h2>Next Meetings By Calendar</h2>
-        <table class="meeting-table">
-          <thead>
-            <tr>
-              <th class="when-column">When</th>
-              <th>Meeting</th>
-              <th class="duration-column">Duration</th>
-            </tr>
-          </thead>
-          <tbody id="meetings"></tbody>
-        </table>
+        <div id="meetings" class="meeting-groups"></div>
       </section>
     </div>
 
@@ -404,21 +398,30 @@
     async function loadMeetings() {
       const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true'));
       if (groups.length === 0) {
-        meetingsBody.innerHTML = '<tr><td colspan="3" class="muted">No upcoming meetings in the cache.</td></tr>';
+        meetingsBody.innerHTML = '<div class="block muted">No upcoming meetings in the cache.</div>';
         return;
       }
-      const rows = [];
+      const calendarTables = [];
       for (const group of groups) {
-        const groupRow = document.createElement('tr');
-        groupRow.className = 'calendar-group-row';
-        groupRow.innerHTML = `
-          <td colspan="3">
-            <div class="calendar-group-title">
-              <span>${escapeHTML(group.calendar_name)}</span>
-              <span class="muted mono">${escapeHTML(group.calendar_id)}</span>
-            </div>
-          </td>`;
-        rows.push(groupRow);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'calendar-meeting-group';
+        wrapper.innerHTML = `
+          <div class="calendar-meeting-header">
+            <span>${escapeHTML(group.calendar_name)}</span>
+            <span class="muted mono">${escapeHTML(group.calendar_id)}</span>
+          </div>
+          <table class="meeting-table">
+            <thead>
+              <tr>
+                <th class="when-column">When</th>
+                <th>Meeting</th>
+                <th class="duration-column">Duration</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>`;
+        const tableBody = wrapper.querySelector('tbody');
+        const rows = [];
         for (const meeting of group.meetings) {
           const row = document.createElement('tr');
           const displayDate = formatMeetingDate(meeting.date);
@@ -429,11 +432,13 @@
           row.innerHTML = `
           <td data-label="When">${marker}<br><span class="muted">${escapeHTML(displayDate)} ${escapeHTML(displayStart)}-${escapeHTML(displayEnd)} ${escapeHTML(meeting.timezone || '')}</span></td>
           <td data-label="Meeting">${escapeHTML(meeting.name)}${flags ? `<br><span class="muted">${escapeHTML(flags)}</span>` : ''}</td>
-          <td data-label="Duration">${meeting.duration_minutes} min</td>`;
+          <td data-label="Duration">${escapeHTML(formatDuration(meeting.duration_minutes))}</td>`;
           rows.push(row);
         }
+        tableBody.replaceChildren(...rows);
+        calendarTables.push(wrapper);
       }
-      meetingsBody.replaceChildren(...rows);
+      meetingsBody.replaceChildren(...calendarTables);
     }
 
     function formatMeetingDate(value) {
@@ -466,6 +471,24 @@
       const suffix = hour24 >= 12 ? 'PM' : 'AM';
       const hour12 = hour24 % 12 || 12;
       return `${hour12}:${minute} ${suffix}`;
+    }
+
+    function formatDuration(minutes) {
+      const totalMinutes = Number(minutes);
+      if (!Number.isFinite(totalMinutes)) return '';
+      if (totalMinutes < 60) return `${totalMinutes} min`;
+      const roundedDays = Math.round(totalMinutes / 1440);
+      if (roundedDays > 0 && Math.abs(totalMinutes - roundedDays * 1440) <= 1) {
+        return `${roundedDays} ${roundedDays === 1 ? 'day' : 'days'}`;
+      }
+      const days = Math.floor(totalMinutes / 1440);
+      const hours = Math.floor((totalMinutes % 1440) / 60);
+      const mins = totalMinutes % 60;
+      const parts = [];
+      if (days > 0) parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
+      if (hours > 0) parts.push(`${hours} hr`);
+      if (mins > 0 && days === 0) parts.push(`${mins} min`);
+      return parts.join(' ');
     }
 
     function renderEndpoints(status = lastStatus) {

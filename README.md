@@ -192,7 +192,7 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-The release workflow runs tests, builds Linux, macOS, and Windows archives/checksums with GoReleaser, and publishes Docker images for `linux/amd64` and `linux/arm64`.
+The release workflow optimizes for wall-clock speed: tests, GoReleaser archives/checksums, and per-architecture Docker images all start in parallel. The `linux/arm64` Docker image uses GitHub's native ARM runner to avoid QEMU emulation, then a final manifest step publishes the multi-architecture image tags.
 
 Release artifacts:
 

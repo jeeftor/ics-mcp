@@ -6,6 +6,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   packages: write
@@ -27,7 +31,6 @@ jobs:
         run: go test ./...
 
   goreleaser:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +44,53 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.16.0
+          args: ${{ github.event_name == 'workflow_dispatch' && 'release --snapshot --clean' || 'release --clean' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Linux binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build \
+            -ldflags "-s -w -X github.com/jeeftor/icsmcp/cmd/icsmcp.Version=${version} -X github.com/jeeftor/icsmcp/cmd/icsmcp.Commit=${GITHUB_SHA} -X github.com/jeeftor/icsmcp/cmd/icsmcp.Date=${date}" \
+            -o icsmcp \
+            ./main.go
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.1.0
 
@@ -51,18 +101,57 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7.2.3
-        with:
-          distribution: goreleaser
-          version: v2.16.0
-          args: ${{ github.event_name == 'workflow_dispatch' && 'release --snapshot --clean' || 'release --clean' }}
+      - name: Build and push Docker image
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARCH: ${{ matrix.arch }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          docker buildx build \
+            --platform="${PLATFORM}" \
+            --push \
+            --tag "ghcr.io/jeeftor/ics-mcp:${version}-${ARCH}" \
+            --label "org.opencontainers.image.title=ics-mcp" \
+            --label "org.opencontainers.image.description=ICS Calendar MCP server" \
+            --label "org.opencontainers.image.url=https://github.com/jeeftor/ics-mcp" \
+            --label "org.opencontainers.image.source=https://github.com/jeeftor/ics-mcp" \
+            --label "org.opencontainers.image.version=${version}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            .
+
+  docker-manifest:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set image version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.1.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Docker manifests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            -t "ghcr.io/jeeftor/ics-mcp:${VERSION}" \
+            -t "ghcr.io/jeeftor/ics-mcp:latest" \
+            "ghcr.io/jeeftor/ics-mcp:${VERSION}-amd64" \
+            "ghcr.io/jeeftor/ics-mcp:${VERSION}-arm64"
 
   release-notes:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: goreleaser
+    needs:
+      - goreleaser
+      - docker-manifest
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
