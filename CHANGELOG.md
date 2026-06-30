@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.77 - 2026-06-30
+
+### Fixed
+- Include long-running meetings in `today_meetings` when they started before the current day but still overlap today.
+
+### Improved
+- Added `end_date` to full-detail meeting output so multi-day events can render clear end dates.
+- Expanded the Calendars tab meeting preview with status, time, meeting, metadata, and duration columns, including ongoing/cancelled/all-day/recurring/join-link badges.
+
 ## v1.4.76 - 2026-06-30
 
 ### Improved

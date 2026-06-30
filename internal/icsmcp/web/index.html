@@ -52,8 +52,18 @@
     .calendar-meeting-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; background: #e7eef0; border-bottom: 1px solid #cbd7dc; font-weight: 700; }
     .calendar-meeting-group .meeting-table { border: 0; }
     .calendar-meeting-group .meeting-table tr:last-child td { border-bottom: 0; }
-    .meeting-table .when-column { width: 26%; }
-    .meeting-table .duration-column { width: 90px; }
+    .meeting-table .status-column { width: 118px; }
+    .meeting-table .time-column { width: 235px; }
+    .meeting-table .meta-column { width: 210px; }
+    .meeting-table .duration-column { width: 96px; text-align: right; }
+    .meeting-table td:last-child, .meeting-table th:last-child { text-align: right; }
+    .meeting-title { font-weight: 500; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .meeting-badge { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid #c7d2d8; border-radius: 999px; background: #f4f7f8; color: #41525d; font-size: 12px; line-height: 1.2; white-space: nowrap; }
+    .meeting-badge.ongoing { border-color: #9bbf9f; background: #edf7ef; color: #1f6b35; font-weight: 650; }
+    .meeting-badge.cancelled { border-color: #d7a1a1; background: #fbefef; color: #9d2f2f; }
+    .meeting-badge.join { border-color: #91b7bd; background: #edf6f7; color: var(--accent-dark); text-decoration: none; }
+    .meeting-badge.empty { color: var(--muted); }
     code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .muted { color: var(--muted); }
     .error { color: var(--danger); max-width: 360px; overflow-wrap: anywhere; }
@@ -405,16 +415,20 @@
       for (const group of groups) {
         const wrapper = document.createElement('div');
         wrapper.className = 'calendar-meeting-group';
+        const groupTimezone = (group.meetings && group.meetings[0] && group.meetings[0].timezone) || '';
         wrapper.innerHTML = `
           <div class="calendar-meeting-header">
             <span>${escapeHTML(group.calendar_name)}</span>
             <span class="muted mono">${escapeHTML(group.calendar_id)}</span>
+            ${groupTimezone ? `<span class="muted">${escapeHTML(groupTimezone)}</span>` : ''}
           </div>
           <table class="meeting-table">
             <thead>
               <tr>
-                <th class="when-column">When</th>
+                <th class="status-column">Status</th>
+                <th class="time-column">When</th>
                 <th>Meeting</th>
+                <th class="meta-column">Meta</th>
                 <th class="duration-column">Duration</th>
               </tr>
             </thead>
@@ -425,13 +439,18 @@
         for (const meeting of group.meetings) {
           const row = document.createElement('tr');
           const displayDate = formatMeetingDate(meeting.date);
+          const displayEndDate = formatMeetingDate(meeting.end_date || meeting.date);
           const displayStart = formatMeetingTime(meeting.start);
           const displayEnd = formatMeetingTime(meeting.end);
           const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(displayStart)}`;
-          const flags = [meeting.all_day ? 'All day' : '', meeting.cancelled ? 'Cancelled' : ''].filter(Boolean).join(' | ');
+          const timeDetail = meeting.ongoing
+            ? `Started ${displayDate} ${displayStart}<br>Ends ${displayEndDate} ${displayEnd}`
+            : `${displayDate} ${displayStart}-${displayEndDate === displayDate ? '' : displayEndDate + ' '}${displayEnd}`;
           row.innerHTML = `
-          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(displayDate)} ${escapeHTML(displayStart)}-${escapeHTML(displayEnd)} ${escapeHTML(meeting.timezone || '')}</span></td>
-          <td data-label="Meeting">${escapeHTML(meeting.name)}${flags ? `<br><span class="muted">${escapeHTML(flags)}</span>` : ''}</td>
+          <td data-label="Status"><div class="badge-row">${meetingStatusBadges(meeting)}</div></td>
+          <td data-label="When">${marker}<br><span class="muted">${timeDetail}</span></td>
+          <td data-label="Meeting"><span class="meeting-title">${escapeHTML(meeting.name)}</span>${meeting.meeting_url ? `<br><a class="meeting-badge join" href="${escapeHTML(meeting.meeting_url)}" target="_blank" rel="noreferrer">Join</a>` : ''}</td>
+          <td data-label="Meta"><div class="badge-row">${meetingMetaBadges(meeting)}</div></td>
           <td data-label="Duration">${escapeHTML(formatDuration(meeting.duration_minutes))}</td>`;
           rows.push(row);
         }
@@ -439,6 +458,23 @@
         calendarTables.push(wrapper);
       }
       meetingsBody.replaceChildren(...calendarTables);
+    }
+
+    function meetingStatusBadges(meeting) {
+      const badges = [];
+      if (meeting.ongoing) badges.push('<span class="meeting-badge ongoing">Ongoing</span>');
+      if (meeting.cancelled) badges.push('<span class="meeting-badge cancelled">Cancelled</span>');
+      if (!meeting.ongoing && !meeting.cancelled) badges.push('<span class="meeting-badge">Upcoming</span>');
+      return badges.join('');
+    }
+
+    function meetingMetaBadges(meeting) {
+      const badges = [];
+      if (meeting.all_day) badges.push('<span class="meeting-badge">All day</span>');
+      if (meeting.recurring) badges.push('<span class="meeting-badge">Recurring</span>');
+      if (meeting.meeting_url_type) badges.push(`<span class="meeting-badge">${escapeHTML(meeting.meeting_url_type)}</span>`);
+      if (badges.length === 0) badges.push('<span class="meeting-badge empty">None</span>');
+      return badges.join('');
     }
 
     function formatMeetingDate(value) {

@@ -99,6 +99,7 @@ type UpcomingQuery struct {
 	Before              time.Time `json:"before,omitempty"`
 	IncludeDescription  bool      `json:"include_description,omitempty"`
 	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
+	OverlapWindow       bool      `json:"-"`
 }
 
 // UnmarshalJSON accepts the legacy only_ongoing option while exposing in_progress_only.
@@ -132,6 +133,7 @@ type Meeting struct {
 	Duration        string    `json:"duration,omitempty"`
 	Day             string    `json:"day,omitempty"`
 	Date            string    `json:"date,omitempty"`
+	EndDate         string    `json:"end_date,omitempty"`
 	Start           string    `json:"start,omitempty"`
 	End             string    `json:"end,omitempty"`
 	Timezone        string    `json:"timezone,omitempty"`
@@ -148,6 +150,7 @@ type Meeting struct {
 	Recurring       bool      `json:"recurring,omitempty"`
 	RecurrenceID    string    `json:"recurrence_id,omitempty"`
 	StartTime       time.Time `json:"-"`
+	EndTime         time.Time `json:"-"`
 	Detail          string    `json:"-"`
 }
 
@@ -157,6 +160,7 @@ func (m Meeting) MarshalJSON() ([]byte, error) {
 		type fullMeeting struct {
 			Day             string `json:"day"`
 			Date            string `json:"date"`
+			EndDate         string `json:"end_date"`
 			Start           string `json:"start"`
 			End             string `json:"end"`
 			Timezone        string `json:"timezone"`
@@ -176,6 +180,7 @@ func (m Meeting) MarshalJSON() ([]byte, error) {
 		return json.Marshal(fullMeeting{
 			Day:             m.Day,
 			Date:            m.Date,
+			EndDate:         m.EndDate,
 			Start:           m.Start,
 			End:             m.End,
 			Timezone:        m.Timezone,

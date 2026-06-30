@@ -953,6 +953,37 @@ func TestTodayMeetingsReportsInvalidTimezone(t *testing.T) {
 	}
 }
 
+func TestTodayMeetingsIncludesOngoingEventStartedBeforeToday(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	denver, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 7, 2, 9, 0, 0, 0, denver).UTC()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		Name:         "Conference",
+		Start:        time.Date(2026, 7, 1, 11, 0, 0, 0, denver).UTC(),
+		End:          time.Date(2026, 7, 2, 22, 0, 0, 0, denver).UTC(),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.TodayMeetings(ctx, UpcomingQuery{Now: now, Timezone: "America/Denver"})
+	if err != nil {
+		t.Fatalf("TodayMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 || meetings[0].Name != "Conference" || !meetings[0].Ongoing {
+		t.Fatalf("today meetings = %#v, want ongoing conference", meetings)
+	}
+}
+
 func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -967,6 +998,7 @@ func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	meeting := Meeting{
 		Day:             "Tue",
 		Date:            "2026-06-30",
+		EndDate:         "2026-06-30",
 		Start:           "09:00",
 		End:             "10:30",
 		Timezone:        "America/Denver",
@@ -1085,7 +1117,7 @@ func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	for _, want := range []string{"day", "date", "start", "end", "timezone", "duration_minutes", "name", "description", "calendar_id", "calendar_name", "recurring", "recurrence_id"} {
+	for _, want := range []string{"day", "date", "end_date", "start", "end", "timezone", "duration_minutes", "name", "description", "calendar_id", "calendar_name", "recurring", "recurrence_id"} {
 		if _, ok := got[want]; !ok {
 			t.Fatalf("full meeting JSON missing %q: %s", want, data)
 		}

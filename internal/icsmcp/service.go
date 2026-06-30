@@ -422,6 +422,7 @@ func (s *Service) TodayMeetings(ctx context.Context, query UpcomingQuery) ([]Mee
 	query.After = localStart.UTC()
 	query.Before = localStart.Add(24 * time.Hour).UTC()
 	query.ExcludeCancelled = true
+	query.OverlapWindow = true
 	return s.UpcomingMeetings(ctx, query)
 }
 
@@ -516,6 +517,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 		meeting := Meeting{
 			Day:             localStart.Format("Mon"),
 			Date:            localStart.Format("2006-01-02"),
+			EndDate:         localEnd.Format("2006-01-02"),
 			Start:           localStart.Format("15:04"),
 			End:             localEnd.Format("15:04"),
 			Timezone:        timezone,
@@ -532,6 +534,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 			Recurring:       event.Recurring,
 			RecurrenceID:    event.RecurrenceID,
 			StartTime:       event.Start,
+			EndTime:         event.End,
 			Detail:          query.Detail,
 		}
 		meeting.When = compactWhen(meeting)
@@ -562,8 +565,14 @@ func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
 		if query.ExcludeCancelled && meeting.Cancelled {
 			continue
 		}
-		if !query.After.IsZero() && meeting.StartTime.Before(query.After) {
-			continue
+		if !query.After.IsZero() {
+			if query.OverlapWindow {
+				if !meeting.EndTime.After(query.After) {
+					continue
+				}
+			} else if meeting.StartTime.Before(query.After) {
+				continue
+			}
 		}
 		if !query.Before.IsZero() && !meeting.StartTime.Before(query.Before) {
 			continue
