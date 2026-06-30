@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.8 - 2026-06-30
+
+### Improved
+- Expanded meeting URL extraction coverage for Webex links, generic join links, escaped newline cleanup, invalid URL skipping, and empty text.
+- Added calendar input validation coverage for missing URLs, missing keys/names, and punctuation-only keys.
+
 ## v1.4.7 - 2026-06-30
 
 ### Improved
