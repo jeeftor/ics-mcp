@@ -60,61 +60,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  raw-binaries:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: goreleaser
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            ext: ""
-          - goos: linux
-            goarch: arm64
-            ext: ""
-          - goos: darwin
-            goarch: amd64
-            ext: ""
-          - goos: darwin
-            goarch: arm64
-            ext: ""
-          - goos: windows
-            goarch: amd64
-            ext: ".exe"
-          - goos: windows
-            goarch: arm64
-            ext: ".exe"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.0
-
-      - name: Set up Go
-        uses: actions/setup-go@v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build raw binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-          VERSION: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          mkdir -p dist/raw
-          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          go build -trimpath -ldflags="-s -w -X github.com/jeeftor/icsmcp/cmd/icsmcp.Version=${VERSION} -X github.com/jeeftor/icsmcp/cmd/icsmcp.Commit=${COMMIT} -X github.com/jeeftor/icsmcp/cmd/icsmcp.Date=${BUILD_DATE}" -o "dist/raw/icsmcp_${GOOS}_${GOARCH}${{ matrix.ext }}" ./main.go
-
-      - name: Upload raw binary to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/raw/* --clobber
-
   release-notes:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: raw-binaries
+    needs: goreleaser
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -150,7 +98,7 @@ jobs:
             echo "### Artifacts"
             echo "- Docker images: \`ghcr.io/jeeftor/ics-mcp:${version}\` and \`ghcr.io/jeeftor/ics-mcp:latest\`"
             echo "- Multi-arch Docker platforms: \`linux/amd64\`, \`linux/arm64\`"
-            echo "- Raw binaries and archives are attached for Linux, macOS, and Windows on amd64/arm64."
+            echo "- Release archives are attached for Linux, macOS, and Windows on amd64/arm64."
           } >> "${notes}"
 
       - name: Update GitHub release notes

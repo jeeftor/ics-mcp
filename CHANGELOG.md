@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.59 - 2026-06-30
+
+### Improved
+- Shortened release workflow runtime by removing the duplicate raw-binary rebuild job and relying on GoReleaser archives plus Docker images.
+- Updated release documentation and generated release-note artifact text to match the current artifact set.
+
 ## v1.4.58 - 2026-06-30
 
 ### Improved

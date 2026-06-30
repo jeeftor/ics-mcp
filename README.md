@@ -192,12 +192,11 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-The release workflow runs tests, builds Linux, macOS, and Windows archives/checksums with GoReleaser, publishes plain raw binaries named `icsmcp_<os>_<arch>`, and publishes Docker images for `linux/amd64` and `linux/arm64`.
+The release workflow runs tests, builds Linux, macOS, and Windows archives/checksums with GoReleaser, and publishes Docker images for `linux/amd64` and `linux/arm64`.
 
 Release artifacts:
 
 - GitHub Release archives: `ics-mcp_<version>_<os>_<arch>.tar.gz` or `.zip`
-- Raw binaries: `icsmcp_linux_amd64`, `icsmcp_darwin_arm64`, `icsmcp_windows_amd64.exe`, etc.
 - Docker images: `ghcr.io/jeeftor/ics-mcp:<semver-without-v>` and `ghcr.io/jeeftor/ics-mcp:latest`, for example `ghcr.io/jeeftor/ics-mcp:1.2.0`
 - Checksums: `checksums.txt`
 
