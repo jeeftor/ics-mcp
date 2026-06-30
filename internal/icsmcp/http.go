@@ -219,6 +219,7 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	query.Query = values.Get("query")
 	query.Timezone = values.Get("timezone")
 	query.Detail = values.Get("detail")
+	query.Sort = values.Get("sort")
 	query.InProgressOnly = parseBoolQuery(values.Get("in_progress_only")) || parseBoolQuery(values.Get("only_ongoing"))
 	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
 	query.ExcludeCancelled = parseBoolQuery(values.Get("exclude_cancelled"))

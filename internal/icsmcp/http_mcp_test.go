@@ -429,13 +429,13 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&detail=full&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
 		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
 	}
-	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" || query.Detail != "full" {
+	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Sort != "agenda" {
 		t.Fatalf("basic query fields = %#v", query)
 	}
 	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
@@ -708,6 +708,31 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 	}
 }
 
+func TestToolPreviewReadToolDefaultArgumentsAreExecutable(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 13, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+	if _, err := PreviewToolCall(ctx, svc, "add_calendar", rawJSON(t, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})); err != nil {
+		t.Fatalf("add_calendar preview error = %v", err)
+	}
+
+	for _, tool := range ToolInfos() {
+		if tool.Category != "read" || !tool.ReadOnly {
+			continue
+		}
+		t.Run(tool.Name, func(t *testing.T) {
+			if _, err := PreviewToolCall(ctx, svc, tool.Name, rawJSON(t, tool.DefaultArguments)); err != nil {
+				t.Fatalf("PreviewToolCall(%s defaults) error = %v", tool.Name, err)
+			}
+		})
+	}
+}
+
 func TestToolPreviewMeetingPresetsApplyFilters(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -917,7 +942,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "detail", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "detail", "sort", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}

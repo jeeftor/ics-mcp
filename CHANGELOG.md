@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.1 - 2026-06-30
+
+### Added
+- Added a `sort` option to meeting queries with `start_time`, `agenda`, `calendar`, and `ongoing_first` modes.
+
+### Changed
+- `today_meetings` now defaults to agenda sorting so ongoing and upcoming timed meetings appear before all-day or multi-day blocks.
+- Updated MCP tool descriptions, debug UI defaults, and README guidance for agent-efficient sorting, search behavior, and free/busy time windows.
+
 ## v1.5.0 - 2026-06-30
 
 ### Release Notes
