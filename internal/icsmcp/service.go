@@ -360,7 +360,11 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	if err != nil {
 		return nil, err
 	}
-	meetings := filterMeetings(s.meetingsFromEvents(events, now, query), query)
+	location, timezone, err := s.queryLocation(query)
+	if err != nil {
+		return nil, err
+	}
+	meetings := filterMeetings(s.meetingsFromEvents(events, now, query, location, timezone), query)
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})
@@ -377,7 +381,11 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	if err != nil {
 		return nil, err
 	}
-	meetings := filterMeetings(s.meetingsFromEvents(events, now, query), query)
+	location, timezone, err := s.queryLocation(query)
+	if err != nil {
+		return nil, err
+	}
+	meetings := filterMeetings(s.meetingsFromEvents(events, now, query, location, timezone), query)
 	limitPerCalendar := query.limit(10)
 	groupIndex := map[string]int{}
 	groups := []CalendarMeetingGroup{}
@@ -414,18 +422,30 @@ func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
 	return now, lookaheadDays
 }
 
-func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery) []Meeting {
+func (s *Service) queryLocation(query UpcomingQuery) (*time.Location, string, error) {
+	timezone := strings.TrimSpace(query.Timezone)
+	if timezone == "" {
+		return s.location, s.timezone, nil
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil, "", fmt.Errorf("load timezone %q: %w", timezone, err)
+	}
+	return location, timezone, nil
+}
+
+func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery, location *time.Location, timezone string) []Meeting {
 	meetings := make([]Meeting, 0, len(events))
 	for _, event := range events {
 		ongoing := event.Start.Before(now) && event.End.After(now)
-		localStart := event.Start.In(s.location)
-		localEnd := event.End.In(s.location)
+		localStart := event.Start.In(location)
+		localEnd := event.End.In(location)
 		meetings = append(meetings, Meeting{
 			Day:             localStart.Format("Mon"),
 			Date:            localStart.Format("2006-01-02"),
 			Start:           localStart.Format("15:04"),
 			End:             localEnd.Format("15:04"),
-			Timezone:        s.timezone,
+			Timezone:        timezone,
 			DurationMinutes: int(event.End.Sub(event.Start).Minutes()),
 			Name:            event.Name,
 			Description:     meetingDescription(event.Description, query),
@@ -538,7 +558,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if limit <= 0 {
 		limit = 10
 	}
-	meetings := s.meetingsFromEvents(events, now, UpcomingQuery{})
+	meetings := s.meetingsFromEvents(events, now, UpcomingQuery{}, s.location, s.timezone)
 	slices.SortFunc(meetings, func(a, b Meeting) int {
 		return a.StartTime.Compare(b.StartTime)
 	})

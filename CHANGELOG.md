@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Meeting query APIs and MCP tools now accept an optional `timezone` parameter for rendering output in a specific IANA timezone without changing server config.
+- The debug Info tab now shows runtime config details and copy buttons for endpoint and setup values.
+
+### Fixed
+- Microsoft Exchange / Outlook feeds using Windows timezone IDs such as `Eastern Standard Time` and `Mountain Standard Time` now parse into the correct UTC instants instead of being treated as UTC.
+
 ## v1.4.0 - 2026-06-29
 
 ### Changed

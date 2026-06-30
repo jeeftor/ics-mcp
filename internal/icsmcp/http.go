@@ -200,6 +200,7 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	}
 	query.CalendarIDs = values["calendar_id"]
 	query.Query = values.Get("query")
+	query.Timezone = values.Get("timezone")
 	query.OnlyOngoing = parseBoolQuery(values.Get("only_ongoing"))
 	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
 	query.ExcludeCancelled = parseBoolQuery(values.Get("exclude_cancelled"))

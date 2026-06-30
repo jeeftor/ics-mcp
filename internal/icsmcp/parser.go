@@ -1,6 +1,7 @@
 package icsmcp
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -8,6 +9,27 @@ import (
 	"github.com/apognu/gocal"
 	"github.com/google/uuid"
 )
+
+var windowsTimezoneMap = map[string]string{
+	"Central Standard Time":      "America/Chicago",
+	"Eastern Standard Time":      "America/New_York",
+	"GMT Standard Time":          "Europe/London",
+	"Mountain Standard Time":     "America/Denver",
+	"Pacific Standard Time":      "America/Los_Angeles",
+	"South Africa Standard Time": "Africa/Johannesburg",
+	"UTC":                        "UTC",
+	"US Mountain Standard Time":  "America/Phoenix",
+	"W. Europe Standard Time":    "Europe/Berlin",
+}
+
+func init() {
+	gocal.SetTZMapper(func(tzid string) (*time.Location, error) {
+		if mapped, ok := windowsTimezoneMap[strings.TrimSpace(tzid)]; ok {
+			return time.LoadLocation(mapped)
+		}
+		return nil, errors.New("unmapped timezone")
+	})
+}
 
 // ParseICS parses event instances between now and now+lookahead.
 func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstance, error) {

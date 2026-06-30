@@ -35,7 +35,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode"} {
+	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -69,6 +69,12 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
 	if len(meetings) != 1 || meetings[0].Name != "Planning" {
 		t.Fatalf("meetings preview = %#v", meetings)
+	}
+
+	var utcMeetings []Meeting
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&timezone=UTC", nil, &utcMeetings)
+	if len(utcMeetings) != 1 || utcMeetings[0].Timezone != "UTC" {
+		t.Fatalf("UTC meetings preview = %#v", utcMeetings)
 	}
 
 	var groups []CalendarMeetingGroup
@@ -507,6 +513,20 @@ func sampleRecurringICS() string {
 		"DTEND:20260630T153000Z\r\n" +
 		"RRULE:FREQ=DAILY;COUNT=3\r\n" +
 		"SUMMARY:Daily Standup\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func sampleExchangeWindowsTimezoneICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"PRODID:Microsoft Exchange Server 2010\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:exchange-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART;TZID=Eastern Standard Time:20260630T090000\r\n" +
+		"DTEND;TZID=Eastern Standard Time:20260630T093000\r\n" +
+		"SUMMARY:Exchange Meeting\r\n" +
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 }

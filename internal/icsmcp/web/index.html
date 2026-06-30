@@ -58,8 +58,9 @@
     .kv { display: grid; gap: 8px; }
     .kv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
     .endpoint-list { display: grid; gap: 8px; }
-    .endpoint-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+    .endpoint-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
     .endpoint-row code, .copy-box { overflow-wrap: anywhere; }
+    .copy-button { padding: 6px 9px; font-size: 12px; white-space: nowrap; }
     .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
     .setup-block { background: white; border: 1px solid var(--line); border-radius: 7px; padding: 14px; min-width: 0; }
     .setup-block pre, .copy-box, .tool-output { margin: 8px 0 0; padding: 11px; overflow: auto; background: var(--code); color: #e6edf3; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -135,11 +136,24 @@
       <section>
         <h2>Endpoints</h2>
         <div class="block endpoint-list">
-          <div class="endpoint-row"><span class="muted">Admin UI</span><code id="admin-url">/</code></div>
-          <div class="endpoint-row"><span class="muted">MCP Server</span><code id="mcp-url">/mcp</code></div>
-          <div class="endpoint-row"><span class="muted">Status API</span><code id="status-url">/api/status</code></div>
-          <div class="endpoint-row"><span class="muted">Health</span><code id="health-url">/healthz</code></div>
-          <div class="endpoint-row"><span class="muted">Metrics</span><code id="metrics-url">/metrics</code></div>
+          <div class="endpoint-row"><span class="muted">Admin UI</span><code id="admin-url" data-copy-value="/">/</code><button class="copy-button" type="button" data-copy-target="admin-url">Copy</button></div>
+          <div class="endpoint-row"><span class="muted">MCP Server</span><code id="mcp-url" data-copy-value="/mcp">/mcp</code><button class="copy-button" type="button" data-copy-target="mcp-url">Copy</button></div>
+          <div class="endpoint-row"><span class="muted">Status API</span><code id="status-url" data-copy-value="/api/status">/api/status</code><button class="copy-button" type="button" data-copy-target="status-url">Copy</button></div>
+          <div class="endpoint-row"><span class="muted">Health</span><code id="health-url" data-copy-value="/healthz">/healthz</code><button class="copy-button" type="button" data-copy-target="health-url">Copy</button></div>
+          <div class="endpoint-row"><span class="muted">Readiness</span><code id="ready-url" data-copy-value="/readyz">/readyz</code><button class="copy-button" type="button" data-copy-target="ready-url">Copy</button></div>
+          <div class="endpoint-row"><span class="muted">Metrics</span><code id="metrics-url" data-copy-value="/metrics">/metrics</code><button class="copy-button" type="button" data-copy-target="metrics-url">Copy</button></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Runtime Config</h2>
+        <div class="block kv">
+          <div class="kv-row"><span class="muted">Build</span><code id="config-build">loading</code></div>
+          <div class="kv-row"><span class="muted">Commit</span><code id="config-commit">loading</code></div>
+          <div class="kv-row"><span class="muted">Build Date</span><code id="config-date">loading</code></div>
+          <div class="kv-row"><span class="muted">Display Timezone</span><code id="config-timezone">loading</code></div>
+          <div class="kv-row"><span class="muted">External URL</span><code id="config-external">None</code></div>
+          <div class="kv-row"><span class="muted">Browser Origin</span><code id="config-origin">loading</code></div>
         </div>
       </section>
 
@@ -155,10 +169,12 @@
           </div>
           <div class="setup-block">
             <h3>HTTP Client Config</h3>
+            <button class="copy-button" type="button" data-copy-target="setup-http-json">Copy</button>
             <pre id="setup-http-json">{}</pre>
           </div>
           <div class="setup-block">
             <h3>Server Run Command</h3>
+            <button class="copy-button" type="button" data-copy-target="setup-command">Copy</button>
             <pre id="setup-command">icsmcp serve</pre>
           </div>
         </div>
@@ -292,6 +308,12 @@
       document.querySelector('#summary-calendars').textContent = calendars.length;
       document.querySelector('#summary-events').textContent = eventCount;
       document.querySelector('#summary-external').textContent = status.external_url || 'None';
+      document.querySelector('#config-build').textContent = version.version || 'dev';
+      document.querySelector('#config-commit').textContent = version.commit || 'unknown';
+      document.querySelector('#config-date').textContent = version.date || 'unknown';
+      document.querySelector('#config-timezone').textContent = status.timezone || 'local';
+      document.querySelector('#config-external').textContent = status.external_url || 'None';
+      document.querySelector('#config-origin').textContent = window.location.origin;
     }
 
     function renderCalendars(calendars) {
@@ -358,11 +380,18 @@
     function renderEndpoints(status = lastStatus) {
       const internal = window.location.origin;
       const external = status && status.external_url;
-      document.querySelector('#admin-url').textContent = endpointLabel(internal, external, '/');
-      document.querySelector('#mcp-url').textContent = endpointLabel(internal, external, '/mcp');
-      document.querySelector('#status-url').textContent = endpointLabel(internal, external, '/api/status');
-      document.querySelector('#health-url').textContent = endpointLabel(internal, external, '/healthz');
-      document.querySelector('#metrics-url').textContent = endpointLabel(internal, external, '/metrics');
+      setEndpoint('#admin-url', internal, external, '/');
+      setEndpoint('#mcp-url', internal, external, '/mcp');
+      setEndpoint('#status-url', internal, external, '/api/status');
+      setEndpoint('#health-url', internal, external, '/healthz');
+      setEndpoint('#ready-url', internal, external, '/readyz');
+      setEndpoint('#metrics-url', internal, external, '/metrics');
+    }
+
+    function setEndpoint(selector, internal, external, path) {
+      const element = document.querySelector(selector);
+      element.textContent = endpointLabel(internal, external, path);
+      element.dataset.copyValue = endpointValue(internal, external, path);
     }
 
     function endpointLabel(internal, external, path) {
@@ -370,6 +399,11 @@
       const internalURL = internal + suffix;
       if (!external) return internalURL;
       return `${internalURL} | external ${external + suffix}`;
+    }
+
+    function endpointValue(internal, external, path) {
+      const suffix = path === '/' ? '/' : path;
+      return (external || internal) + suffix;
     }
 
     function renderSetup(status) {
@@ -442,6 +476,25 @@
     function escapeHTML(value) {
       return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
     }
+
+    async function copyEndpoint(button) {
+      const target = document.querySelector('#' + button.dataset.copyTarget);
+      const value = target.dataset.copyValue || target.textContent;
+      try {
+        await navigator.clipboard.writeText(value);
+        const original = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => { button.textContent = original; }, 1200);
+      } catch (error) {
+        button.textContent = 'Select';
+      }
+    }
+
+    document.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-copy-target]');
+      if (!button) return;
+      await copyEndpoint(button);
+    });
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
