@@ -205,6 +205,76 @@ func TestHTTPAPIValidateCalendarReportsFailures(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "health method", method: http.MethodPost, path: "/healthz", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "meetings invalid limit", method: http.MethodGet, path: "/api/meetings?limit=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
+		{name: "meetings invalid lookahead", method: http.MethodGet, path: "/api/meetings?lookahead_days=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
+		{name: "meetings invalid description max", method: http.MethodGet, path: "/api/meetings?description_max_chars=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
+		{name: "meetings invalid after", method: http.MethodGet, path: "/api/meetings?after=not-a-time", wantStatus: http.StatusBadRequest, wantBody: "cannot parse"},
+		{name: "meetings invalid before", method: http.MethodGet, path: "/api/meetings?before=not-a-time", wantStatus: http.StatusBadRequest, wantBody: "cannot parse"},
+		{name: "calendar add bad json", method: http.MethodPost, path: "/api/calendars", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar validate bad json", method: http.MethodPost, path: "/api/calendars/validate", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar patch bad json", method: http.MethodPatch, path: "/api/calendars/missing", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar refresh method", method: http.MethodGet, path: "/api/calendars/missing/refresh", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "tools bad json", method: http.MethodPost, path: "/api/tools/upcoming_meetings/call", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "tools method", method: http.MethodGet, path: "/api/tools/upcoming_meetings/call", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, server.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("NewRequest() error = %v", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s error = %v", tc.method, tc.path, err)
+			}
+			data, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				t.Fatalf("ReadAll() error = %v", err)
+			}
+			if resp.StatusCode != tc.wantStatus || !strings.Contains(string(data), tc.wantBody) {
+				t.Fatalf("%s %s status=%d body=%s, want status=%d containing %q", tc.method, tc.path, resp.StatusCode, data, tc.wantStatus, tc.wantBody)
+			}
+		})
+	}
+
+	resp, err := http.Post(server.URL+"/api/tools/missing_tool/call", "application/json", strings.NewReader(`{"arguments":{}}`))
+	if err != nil {
+		t.Fatalf("POST unknown tool error = %v", err)
+	}
+	data, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("ReadAll(unknown tool) error = %v", err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(data), `unknown tool \"missing_tool\"`) {
+		t.Fatalf("unknown tool status=%d body=%s", resp.StatusCode, data)
+	}
+
+	notFoundResp, err := http.Post(server.URL+"/api/tools/upcoming_meetings/nope", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST non-call tool route error = %v", err)
+	}
+	_ = notFoundResp.Body.Close()
+	if notFoundResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("non-call tool route status = %d, want 404", notFoundResp.StatusCode)
+	}
+}
+
 func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	svc := newTestService(t)
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)

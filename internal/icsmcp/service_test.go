@@ -56,6 +56,39 @@ func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *tes
 	}
 }
 
+func TestCLIStartupImportNormalizesKeysAndRejectsInvalidAssignments(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	if err := svc.ImportStartupCalendars(ctx, nil, []string{"Team Calendar=https://example.test/team.ics"}); err != nil {
+		t.Fatalf("ImportStartupCalendars(valid CLI) error = %v", err)
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 1 {
+		t.Fatalf("calendars = %#v, want 1", calendars)
+	}
+	if calendars[0].Key != "TEAM_CALENDAR" || calendars[0].Name != "Team Calendar" || calendars[0].URL != "https://example.test/team.ics" {
+		t.Fatalf("CLI calendar = %#v", calendars[0])
+	}
+
+	for _, value := range []string{"missing-separator", "=https://example.test/no-key.ics", "NO_URL="} {
+		if err := svc.ImportStartupCalendars(ctx, nil, []string{value}); err == nil || !strings.Contains(err.Error(), "calendar must be name=url") {
+			t.Fatalf("ImportStartupCalendars(%q) error = %v, want assignment error", value, err)
+		}
+	}
+}
+
+func TestEnvMapIncludesCurrentProcessEnvironment(t *testing.T) {
+	t.Setenv("ICSMCP_TEST_ENV_MAP", "present")
+	env := EnvMap()
+	if env["ICSMCP_TEST_ENV_MAP"] != "present" {
+		t.Fatalf("EnvMap()[ICSMCP_TEST_ENV_MAP] = %q, want present", env["ICSMCP_TEST_ENV_MAP"])
+	}
+}
+
 func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleRecurringICS(), now, 5*24*time.Hour)
