@@ -479,6 +479,8 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 			Ongoing:         ongoing,
 			AllDay:          event.AllDay,
 			Cancelled:       event.Cancelled,
+			Recurring:       event.Recurring,
+			RecurrenceID:    event.RecurrenceID,
 			StartTime:       event.Start,
 		})
 	}

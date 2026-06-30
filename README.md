@@ -137,7 +137,7 @@ The admin tools use one canonical verb-first naming style: `list_calendars`, `ad
 
 `validate_calendar` fetches and parses an ICS feed without saving it. It returns fetch status, event count, and a small upcoming-meeting preview so you can test a URL before adding it.
 
-Meeting outputs include `timezone`, `all_day`, `cancelled`, `meeting_url`, and `meeting_url_type`. `meeting_url` is set when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
+Meeting outputs include `timezone`, `all_day`, `cancelled`, `recurring`, `recurrence_id`, `meeting_url`, and `meeting_url_type`. `recurring` is true for expanded RRULE instances and `RECURRENCE-ID` overrides. Cancelled recurring overrides are preserved with `cancelled: true`, then hidden by default when `exclude_cancelled` is enabled. `meeting_url` is set when an online join link can be extracted from ICS `URL`, `LOCATION`, or `DESCRIPTION` fields. Known providers such as Teams, Zoom, Google Meet, and Webex are preferred over generic links.
 
 MCP tool discovery exposes each tool name, description, and JSON input schema. For example, `upcoming_meetings`, `next_meetings`, and `search_meetings` all advertise the `limit`, `calendar_ids`, `lookahead_days`, `timezone`, description, all-day, cancelled, and time-window options through the official `tools/list` response.
 
