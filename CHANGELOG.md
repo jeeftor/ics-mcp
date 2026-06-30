@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.3 - 2026-06-30
+
+### Improved
+- Added a dedicated GitHub Actions test workflow so pushes to `master` and pull requests run `go test ./...`.
+- Expanded coverage for the debug UI, endpoint rendering, timezone query errors, calendar validation failures, tool previews, and metrics output.
+
 ## v1.4.2 - 2026-06-30
 
 ### Fixed
