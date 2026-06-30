@@ -1294,6 +1294,51 @@ func TestRefreshPreservesLastKnownGoodEventsWhenParseFails(t *testing.T) {
 	}
 }
 
+func TestRefreshPreservesLastKnownGoodEventsWhenCacheReplaceFails(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	if err := svc.RefreshCalendar(ctx, cal.ID, now); err != nil {
+		t.Fatalf("RefreshCalendar(good feed) error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_refresh_event_insert
+		BEFORE INSERT ON events
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked event cache insert');
+		END`); err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	if err := svc.RefreshCalendar(ctx, cal.ID, now.Add(time.Minute)); err == nil || !strings.Contains(err.Error(), "insert event") {
+		t.Fatalf("RefreshCalendar(cache replace failure) error = %v, want insert event", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 5})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 || meetings[0].Name != "Planning" {
+		t.Fatalf("cached meetings after cache replace failure = %#v", meetings)
+	}
+	state, err := svc.store.refreshState(ctx, cal.ID)
+	if err != nil {
+		t.Fatalf("refreshState() error = %v", err)
+	}
+	if state.LastError == "" || state.EventCount != 1 {
+		t.Fatalf("refreshState(cache replace failure) = %#v, want previous event count and cache error", state)
+	}
+}
+
 func TestRefreshCalendarRecordsRequestAndReadErrors(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

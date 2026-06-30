@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.44 - 2026-06-30
+
+### Improved
+- Expanded refresh coverage for event-cache replacement failures and rollback behavior.
+
 ## v1.4.43 - 2026-06-30
 
 ### Improved
