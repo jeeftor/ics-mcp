@@ -82,6 +82,8 @@ func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstan
 			MeetingURLType: meetingURLType,
 			Cancelled:      cancelled,
 			AllDay:         parsed.End.Sub(*parsed.Start) >= 24*time.Hour,
+			Recurring:      parsed.IsRecurring || parsed.RecurrenceID != "",
+			RecurrenceID:   parsed.RecurrenceID,
 			Start:          parsed.Start.UTC(),
 			End:            parsed.End.UTC(),
 		})

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.71 - 2026-06-30
+
+### Added
+- Added `recurring` and `recurrence_id` to cached events and meeting output so agents can tell series instances from one-off events.
+
+### Improved
+- Added parser coverage for recurring ICS events with cancelled `RECURRENCE-ID` overrides, including Outlook `X-MICROSOFT-CDO-*` metadata in the fixture.
+
 ## v1.4.70 - 2026-06-30
 
 ### Changed

@@ -75,6 +75,8 @@ type EventInstance struct {
 	MeetingURLType string    `json:"meeting_url_type"`
 	Cancelled      bool      `json:"cancelled"`
 	AllDay         bool      `json:"all_day"`
+	Recurring      bool      `json:"recurring"`
+	RecurrenceID   string    `json:"recurrence_id"`
 	Start          time.Time `json:"start_time"`
 	End            time.Time `json:"end_time"`
 }
@@ -136,6 +138,8 @@ type Meeting struct {
 	Ongoing         bool      `json:"ongoing"`
 	AllDay          bool      `json:"all_day"`
 	Cancelled       bool      `json:"cancelled"`
+	Recurring       bool      `json:"recurring"`
+	RecurrenceID    string    `json:"recurrence_id,omitempty"`
 	StartTime       time.Time `json:"-"`
 }
 

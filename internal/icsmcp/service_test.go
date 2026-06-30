@@ -163,6 +163,65 @@ func TestOpenStoreReportsMigrationErrors(t *testing.T) {
 	}
 }
 
+func TestOpenStoreMigratesLegacyEventsTableForRecurrenceMetadata(t *testing.T) {
+	path := t.TempDir() + "/icsmcp.sqlite3"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE events (
+		id TEXT PRIMARY KEY,
+		calendar_id TEXT NOT NULL,
+		uid TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL,
+		meeting_url TEXT NOT NULL DEFAULT '',
+		meeting_url_type TEXT NOT NULL DEFAULT '',
+		cancelled INTEGER NOT NULL DEFAULT 0,
+		all_day INTEGER NOT NULL DEFAULT 0,
+		start_time TEXT NOT NULL,
+		end_time TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy events table error = %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close legacy db error = %v", err)
+	}
+
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rows, err := store.db.Query(`PRAGMA table_info(events)`)
+	if err != nil {
+		t.Fatalf("PRAGMA table_info(events) error = %v", err)
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatalf("scan table info error = %v", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate table info error = %v", err)
+	}
+	for _, want := range []string{"recurring", "recurrence_id"} {
+		if !columns[want] {
+			t.Fatalf("legacy events table missing migrated column %q; columns=%#v", want, columns)
+		}
+	}
+}
+
 func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleRecurringICS(), now, 5*24*time.Hour)
@@ -298,6 +357,35 @@ func TestParseICSDetectsCancelledSummaryWithoutStatus(t *testing.T) {
 	}
 	if !events[0].Cancelled {
 		t.Fatalf("cancelled = false, want title-prefixed cancellation")
+	}
+}
+
+func TestParseICSMarksRecurringInstancesAndCancelledOverrides(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleRecurringCancelledOverrideICS(), now, 96*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	slices.SortFunc(events, func(a, b EventInstance) int {
+		return a.Start.Compare(b.Start)
+	})
+	if got := eventNames(events); !slices.Equal(got, []string{"Daily Standup", "Canceled: Daily Standup", "Daily Standup"}) {
+		t.Fatalf("event names = %#v", got)
+	}
+	for _, event := range events {
+		if !event.Recurring {
+			t.Fatalf("%s recurring = false, want true", event.Name)
+		}
+	}
+	cancelled := events[1]
+	if !cancelled.Cancelled {
+		t.Fatalf("cancelled override = false, want true")
+	}
+	if cancelled.RecurrenceID == "" {
+		t.Fatalf("cancelled override recurrence id is empty")
+	}
+	if got := cancelled.Start.Format(time.RFC3339); got != "2026-07-01T15:00:00Z" {
+		t.Fatalf("cancelled override start = %s, want 2026-07-01T15:00:00Z", got)
 	}
 }
 
@@ -819,6 +907,40 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 	if utcMeetings[0].Start != "15:00" || utcMeetings[0].End != "15:30" || utcMeetings[0].Timezone != "UTC" {
 		t.Fatalf("timezone-overridden meeting = %#v", utcMeetings[0])
+	}
+}
+
+func TestUpcomingMeetingsReturnsRecurrenceMetadataFromCache(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		UID:          "daily-1",
+		Name:         "Daily Standup",
+		Recurring:    true,
+		RecurrenceID: "20260701T150000Z",
+		Start:        now.Add(time.Hour),
+		End:          now.Add(90 * time.Minute),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	if len(meetings) != 1 {
+		t.Fatalf("got %d meetings, want 1", len(meetings))
+	}
+	if !meetings[0].Recurring {
+		t.Fatalf("meeting recurring = false, want true")
+	}
+	if meetings[0].RecurrenceID != "20260701T150000Z" {
+		t.Fatalf("meeting recurrence id = %q", meetings[0].RecurrenceID)
 	}
 }
 
@@ -2254,6 +2376,40 @@ func sampleManyOneTimeICS(start time.Time, count int) string {
 	}
 	b.WriteString("END:VCALENDAR\r\n")
 	return b.String()
+}
+
+func sampleRecurringCancelledOverrideICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"PRODID:Microsoft Exchange Server 2010\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:daily-standup-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260630T150000Z\r\n" +
+		"DTEND:20260630T153000Z\r\n" +
+		"RRULE:FREQ=DAILY;COUNT=3\r\n" +
+		"SUMMARY:Daily Standup\r\n" +
+		"X-MICROSOFT-CDO-BUSYSTATUS:BUSY\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:daily-standup-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"RECURRENCE-ID:20260701T150000Z\r\n" +
+		"DTSTART:20260701T150000Z\r\n" +
+		"DTEND:20260701T153000Z\r\n" +
+		"SUMMARY:Canceled: Daily Standup\r\n" +
+		"STATUS:CANCELLED\r\n" +
+		"X-MICROSOFT-CDO-BUSYSTATUS:FREE\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func eventNames(events []EventInstance) []string {
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		names = append(names, event.Name)
+	}
+	return names
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
