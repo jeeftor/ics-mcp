@@ -148,7 +148,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 	if err != nil {
 		return err
 	}
-	printStartupInfo(os.Stdout, httpAddr, status.Timezone, status.ExternalURL)
+	printStartupInfo(os.Stdout, httpAddr, status.Version, status.Timezone, status.ExternalURL)
 	logger.Info("server starting", "version", status.Version.Version, "commit", status.Version.Commit, "build_date", status.Version.Date, "http_addr", httpAddr, "db_path", dbPath, "refresh_interval", refreshInterval.String(), "timezone", status.Timezone, "external_url", status.ExternalURL)
 	go func() {
 		<-ctx.Done()
@@ -177,11 +177,14 @@ func parseLogLevel(value string) (slog.Level, error) {
 	}
 }
 
-func printStartupInfo(w io.Writer, httpAddr string, timezone string, externalURL string) {
+func printStartupInfo(w io.Writer, httpAddr string, buildInfo app.BuildInfo, timezone string, externalURL string) {
 	baseURL := "http://" + httpAddr
 	if _, err := fmt.Fprintf(w, "ICS MCP server listening on %s\n", httpAddr); err != nil {
 		return
 	}
+	_, _ = fmt.Fprintf(w, "Version: %s\n", defaultString(buildInfo.Version, "dev"))
+	_, _ = fmt.Fprintf(w, "Commit: %s\n", defaultString(buildInfo.Commit, "unknown"))
+	_, _ = fmt.Fprintf(w, "Build Date: %s\n", defaultString(buildInfo.Date, "unknown"))
 	_, _ = fmt.Fprintf(w, "Display timezone: %s\n", timezone)
 	_, _ = fmt.Fprintf(w, "Admin UI: %s/\n", baseURL)
 	_, _ = fmt.Fprintf(w, "MCP endpoint: %s/mcp\n", baseURL)
@@ -190,4 +193,11 @@ func printStartupInfo(w io.Writer, httpAddr string, timezone string, externalURL
 		_, _ = fmt.Fprintf(w, "External URL: %s\n", externalURL)
 		_, _ = fmt.Fprintf(w, "External MCP endpoint: %s/mcp\n", externalURL)
 	}
+}
+
+func defaultString(value string, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

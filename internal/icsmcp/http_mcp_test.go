@@ -36,11 +36,13 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
-		if !strings.Contains(string(body), want) {
+	bodyText := string(body)
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-layout", "rest-fields", "rest-field-options", "csv", "summary", "status", "links", "custom", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
 	}
+	assertOrder(t, bodyText, `data-tab="info"`, `data-tab="calendars"`, `data-tab="meetings"`, `data-tab="tools"`, `data-tab="rest"`)
 
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sampleOneTimeICS()))
@@ -331,7 +333,7 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	}
 
 	mdBody, mdContentType := doText(t, http.MethodGet, server.URL+"/api/events/today.md", nil, "")
-	if !strings.Contains(mdContentType, "text/markdown") || !strings.Contains(mdBody, "# Meetings") || !strings.Contains(mdBody, "Planning") {
+	if !strings.Contains(mdContentType, "text/markdown") || !strings.Contains(mdBody, "# Meetings") || !strings.Contains(mdBody, "| When | Calendar | Title | Duration |") || !strings.Contains(mdBody, "Planning") {
 		t.Fatalf("markdown response content-type=%q body=%s", mdContentType, mdBody)
 	}
 
@@ -341,13 +343,18 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	}
 
 	htmlBody, htmlContentType := doText(t, http.MethodGet, server.URL+"/api/events/by-calendar", nil, "text/html")
-	if !strings.Contains(htmlContentType, "text/html") || !strings.Contains(htmlBody, "<html") || !strings.Contains(htmlBody, "Planning") {
+	if !strings.Contains(htmlContentType, "text/html") || !strings.Contains(htmlBody, "<html") || !strings.Contains(htmlBody, "<table>") || !strings.Contains(htmlBody, "Planning") {
 		t.Fatalf("html response content-type=%q body=%s", htmlContentType, htmlBody)
 	}
 
 	asciiBody, asciiContentType := doText(t, http.MethodGet, server.URL+"/api/free-busy.ascii", nil, "")
-	if !strings.Contains(asciiContentType, "text/plain") || !strings.Contains(asciiBody, "Work") {
+	if !strings.Contains(asciiContentType, "text/plain") || !strings.Contains(asciiBody, "+") || !strings.Contains(asciiBody, "When") || !strings.Contains(asciiBody, "Calendar") || !strings.Contains(asciiBody, "Duration") || !strings.Contains(asciiBody, "Work") {
 		t.Fatalf("ascii response content-type=%q body=%s", asciiContentType, asciiBody)
+	}
+
+	csvBody, csvContentType := doText(t, http.MethodGet, server.URL+"/api/events.csv?fields=when,title", nil, "")
+	if !strings.Contains(csvContentType, "text/csv") || !strings.Contains(csvBody, "when,title") || !strings.Contains(csvBody, "Planning") || strings.Contains(csvBody, "calendar") {
+		t.Fatalf("csv response content-type=%q body=%s", csvContentType, csvBody)
 	}
 
 	var spec map[string]any
@@ -1480,6 +1487,18 @@ func doText(t *testing.T, method string, url string, in any, accept string) (str
 		t.Fatalf("%s %s status=%d body=%s", method, url, resp.StatusCode, data)
 	}
 	return string(data), resp.Header.Get("Content-Type")
+}
+
+func assertOrder(t *testing.T, value string, parts ...string) {
+	t.Helper()
+	offset := 0
+	for _, part := range parts {
+		index := strings.Index(value[offset:], part)
+		if index < 0 {
+			t.Fatalf("%q not found after offset %d", part, offset)
+		}
+		offset += index + len(part)
+	}
 }
 
 func decodeStructured(t *testing.T, in any, out any) {
