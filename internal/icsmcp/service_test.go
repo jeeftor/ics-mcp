@@ -683,6 +683,70 @@ func TestServiceMethodsPropagateClosedStoreErrors(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteCalendarReportsTableSpecificErrors(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name      string
+		table     string
+		wantError string
+	}{
+		{name: "events table", table: "events", wantError: "delete events"},
+		{name: "refresh state table", table: "refresh_state", wantError: "delete refresh state"},
+		{name: "calendars table", table: "calendars", wantError: "delete calendar"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t)
+			cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+			if err != nil {
+				t.Fatalf("AddCalendar() error = %v", err)
+			}
+			if _, err := svc.store.db.ExecContext(ctx, "DROP TABLE "+tc.table); err != nil {
+				t.Fatalf("DROP TABLE %s error = %v", tc.table, err)
+			}
+
+			err = svc.store.deleteCalendar(ctx, cal.ID)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("deleteCalendar() error = %v, want %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name      string
+		start     string
+		end       string
+		wantError string
+	}{
+		{name: "start", start: "2026-06-29T16:00:00", end: "2026-06-29T16:30:00Z", wantError: "parse event start"},
+		{name: "end", start: "2026-06-29T16:00:00Z", end: "2026-06-29T16:30:00", wantError: "parse event end"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t)
+			cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+			if err != nil {
+				t.Fatalf("AddCalendar() error = %v", err)
+			}
+			_, err = svc.store.db.ExecContext(ctx, `INSERT INTO events
+				(id, calendar_id, uid, name, description, start_time, end_time)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				"event-1", cal.ID, "uid-1", "Broken cache", "", tc.start, tc.end)
+			if err != nil {
+				t.Fatalf("insert corrupt event error = %v", err)
+			}
+
+			_, err = svc.store.queryEvents(ctx, time.Date(2026, 6, 29, 15, 0, 0, 0, time.UTC), time.Date(2026, 6, 29, 17, 0, 0, 0, time.UTC), nil, 10)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("queryEvents() error = %v, want %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
 func TestMetricsTextIncludesCalendarState(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

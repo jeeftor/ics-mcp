@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.20 - 2026-06-30
+
+### Improved
+- Expanded SQLite store coverage for calendar deletion failures across events, refresh state, and calendar tables.
+- Expanded cached event query coverage for corrupt start and end timestamps.
+
 ## v1.4.19 - 2026-06-30
 
 ### Improved
