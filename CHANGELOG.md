@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.10 - 2026-06-30
+
+### Improved
+- Expanded store and HTTP helper coverage for boolean query parsing, SQLite open failures, duplicate event rollback, and refresh-state timestamp parsing.
+
 ## v1.4.9 - 2026-06-30
 
 ### Improved

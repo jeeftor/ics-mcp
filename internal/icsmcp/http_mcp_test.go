@@ -275,6 +275,19 @@ func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
 	}
 }
 
+func TestParseBoolQueryAcceptedValues(t *testing.T) {
+	for _, value := range []string{"1", "true", "TRUE", " yes ", "on"} {
+		if !parseBoolQuery(value) {
+			t.Fatalf("parseBoolQuery(%q) = false, want true", value)
+		}
+	}
+	for _, value := range []string{"", "0", "false", "no", "off", "anything"} {
+		if parseBoolQuery(value) {
+			t.Fatalf("parseBoolQuery(%q) = true, want false", value)
+		}
+	}
+}
+
 func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	svc := newTestService(t)
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
