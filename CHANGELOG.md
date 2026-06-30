@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.1 - 2026-06-30
 
 ### Added
 - Meeting query APIs and MCP tools now accept an optional `timezone` parameter for rendering output in a specific IANA timezone without changing server config.
