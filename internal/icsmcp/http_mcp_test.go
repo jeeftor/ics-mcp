@@ -971,6 +971,19 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("grouped meetings = %#v", grouped.Calendars)
 	}
 
+	nextOneResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "next_meeting",
+		Arguments: map[string]any{},
+	})
+	if err != nil || nextOneResult.IsError {
+		t.Fatalf("next_meeting result = %#v err = %v", nextOneResult, err)
+	}
+	var nextOne meetingsOutput
+	decodeStructured(t, nextOneResult.StructuredContent, &nextOne)
+	if len(nextOne.Meetings) != 1 || nextOne.Meetings[0].Name != "Planning" {
+		t.Fatalf("next meeting = %#v", nextOne.Meetings)
+	}
+
 	nextResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "next_meetings",
 		Arguments: map[string]any{},
@@ -984,6 +997,19 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("next meetings = %#v", next.Meetings)
 	}
 
+	todayResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "today_meetings",
+		Arguments: map[string]any{},
+	})
+	if err != nil || todayResult.IsError {
+		t.Fatalf("today_meetings result = %#v err = %v", todayResult, err)
+	}
+	var today meetingsOutput
+	decodeStructured(t, todayResult.StructuredContent, &today)
+	if len(today.Meetings) != 1 || today.Meetings[0].Name != "Planning" {
+		t.Fatalf("today meetings = %#v", today.Meetings)
+	}
+
 	currentResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "current_meetings",
 		Arguments: map[string]any{},
@@ -995,6 +1021,19 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	decodeStructured(t, currentResult.StructuredContent, &current)
 	if len(current.Meetings) != 1 || !current.Meetings[0].Ongoing {
 		t.Fatalf("current meetings = %#v", current.Meetings)
+	}
+
+	freeBusyResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "free_busy",
+		Arguments: map[string]any{},
+	})
+	if err != nil || freeBusyResult.IsError {
+		t.Fatalf("free_busy result = %#v err = %v", freeBusyResult, err)
+	}
+	var freeBusy freeBusyOutput
+	decodeStructured(t, freeBusyResult.StructuredContent, &freeBusy)
+	if len(freeBusy.Busy) != 1 || freeBusy.Busy[0].Calendar != "Work" {
+		t.Fatalf("free busy = %#v", freeBusy.Busy)
 	}
 
 	searchResult, err := session.CallTool(ctx, &mcp.CallToolParams{
