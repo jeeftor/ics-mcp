@@ -62,6 +62,16 @@ func TestPrintStartupInfoOmitsExternalURLWhenUnset(t *testing.T) {
 	}
 }
 
+func TestPrintStartupInfoStopsAfterInitialWriteError(t *testing.T) {
+	writer := &errWriter{}
+
+	printStartupInfo(writer, "127.0.0.1:3333", "UTC", "https://ics-mcp.example.net")
+
+	if writer.writes != 1 {
+		t.Fatalf("write count = %d, want exactly one failed write", writer.writes)
+	}
+}
+
 func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
 	oldVersion, oldCommit, oldDate := Version, Commit, Date
 	t.Cleanup(func() {
@@ -363,6 +373,15 @@ func TestSlogHandlerSkipsEmptyAttrsAndClonesSlices(t *testing.T) {
 }
 
 const httpStatusBadGateway = 502
+
+type errWriter struct {
+	writes int
+}
+
+func (w *errWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, io.ErrClosedPipe
+}
 
 func appBuildInfo() app.BuildInfo {
 	return app.BuildInfo{Version: "test", Commit: "test", Date: "test"}

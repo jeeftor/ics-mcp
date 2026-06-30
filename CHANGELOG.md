@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.52 - 2026-06-30
+
+### Improved
+- Expanded startup output coverage for writer failure handling.
+
 ## v1.4.51 - 2026-06-30
 
 ### Improved
