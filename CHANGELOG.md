@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.73 - 2026-06-30
+
+### Improved
+- Expanded parser normalization coverage for skipped nil-time events and generated UID fallbacks.
+
 ## v1.4.72 - 2026-06-30
 
 ### Improved
