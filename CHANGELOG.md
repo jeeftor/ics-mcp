@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.5 - 2026-06-30
+
+### Improved
+- Expanded HTTP API edge-case coverage for bad query parameters, invalid JSON bodies, method errors, unknown debug tools, and missing tool routes.
+- Added startup configuration coverage for repeatable CLI calendars, invalid `name=url` assignments, normalized display names, and process environment loading.
+
 ## v1.4.4 - 2026-06-30
 
 ### Improved
