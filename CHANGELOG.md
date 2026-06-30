@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.41 - 2026-06-30
+
+### Improved
+- Logged version, commit, and build date in the structured server startup log.
+
 ## v1.4.40 - 2026-06-30
 
 ### Improved
