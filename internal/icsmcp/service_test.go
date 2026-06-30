@@ -567,6 +567,59 @@ func TestSetGeneralQueryCalendarsPersistsBulkSelection(t *testing.T) {
 	}
 }
 
+func TestGeneralQueryCalendarSelectionReportsStoreErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if err := svc.store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	if _, err := svc.GeneralQueryCalendars(ctx); err == nil || !strings.Contains(err.Error(), "database is closed") {
+		t.Fatalf("GeneralQueryCalendars() error = %v, want closed database error", err)
+	}
+	if _, err := svc.SetGeneralQueryCalendars(ctx, nil); err == nil || !strings.Contains(err.Error(), "begin calendar selection update") {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v, want begin calendar selection update", err)
+	}
+}
+
+func TestSetGeneralQueryCalendarsRollsBackWhenSaveFails(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	home, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "home", Name: "Home", URL: "https://example.test/home.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(home) error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_selection_save
+		BEFORE UPDATE OF include_in_general_queries ON calendars
+		WHEN NEW.include_in_general_queries = 1
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked selection save');
+		END`); err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	_, err = svc.SetGeneralQueryCalendars(ctx, []string{home.ID})
+	if err == nil || !strings.Contains(err.Error(), "save calendar selection") {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v, want save calendar selection", err)
+	}
+
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	byID := map[string]Calendar{}
+	for _, cal := range calendars {
+		byID[cal.ID] = cal
+	}
+	if !byID[work.ID].IncludeInGeneralQueries || !byID[home.ID].IncludeInGeneralQueries {
+		t.Fatalf("selection after failed save = %#v, want rollback to original inclusion", byID)
+	}
+}
+
 func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

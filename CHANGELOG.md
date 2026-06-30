@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.56 - 2026-06-30
+
+### Improved
+- Expanded calendar-selection coverage for backend failures and transaction rollback.
+
 ## v1.4.55 - 2026-06-30
 
 ### Added
