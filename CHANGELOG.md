@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.35 - 2026-06-30
+
+### Improved
+- Expanded refresh-all coverage for status listing failures.
+- Added parser coverage for ignoring events that have a start time but no end time.
+
 ## v1.4.34 - 2026-06-30
 
 ### Improved
