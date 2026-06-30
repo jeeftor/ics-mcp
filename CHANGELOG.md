@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.2 - 2026-06-30
 
 ### Fixed
 - Release binaries now embed Go timezone data so IANA timezone names such as `America/Denver` work in the scratch Docker image.
