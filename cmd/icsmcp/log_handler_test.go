@@ -2,9 +2,12 @@ package icsmcp
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestColorSlogHandlerColorsLevelMessageKeysAndValues(t *testing.T) {
@@ -58,6 +61,30 @@ func TestColorSlogHandlerFiltersBelowConfiguredLevel(t *testing.T) {
 	}
 }
 
+func TestColorSlogHandlerReturnsWriterErrors(t *testing.T) {
+	handler := newPlainSlogHandler(&errWriter{}, slog.LevelInfo)
+	record := slog.NewRecord(timeNowForLogTest(), slog.LevelInfo, "write fails", 0)
+
+	err := handler.Handle(context.Background(), record)
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		t.Fatalf("Handle() error = %v, want closed pipe", err)
+	}
+}
+
+func TestColorSlogHandlerFillsZeroRecordTimestamp(t *testing.T) {
+	var out bytes.Buffer
+	handler := newPlainSlogHandler(&out, slog.LevelInfo)
+	record := slog.NewRecord(time.Time{}, slog.LevelInfo, "zero timestamp", 0)
+
+	if err := handler.Handle(context.Background(), record); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, `msg="zero timestamp"`) || strings.Contains(got, "time=0001-01-01") {
+		t.Fatalf("zero timestamp log output = %q", got)
+	}
+}
+
 func stripANSI(value string) string {
 	var out strings.Builder
 	inEscape := false
@@ -76,4 +103,8 @@ func stripANSI(value string) string {
 		out.WriteByte(ch)
 	}
 	return out.String()
+}
+
+func timeNowForLogTest() time.Time {
+	return time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 }
