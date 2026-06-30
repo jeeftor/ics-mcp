@@ -84,7 +84,7 @@ func NewRootCommand() *cobra.Command {
 	serve.Flags().String("config-dir", "./data", "Directory for persistent config, SQLite state, and optional .env")
 	serve.Flags().String("db-path", "", "SQLite database path override")
 	serve.Flags().Duration("refresh-interval", 5*time.Minute, "Feed refresh interval")
-	serve.Flags().String("timezone", "", "Display timezone for meeting output, for example America/Denver; defaults to ICSMCP_TIMEZONE, TZ, or local time")
+	serve.Flags().String("timezone", "", "Display timezone for meeting output, for example America/Denver; defaults to ICSMCP_TIMEZONE or local time")
 	serve.Flags().String("external-url", "", "External base URL shown in the admin setup UI, for example https://ics-mcp.example.net")
 	serve.Flags().String("log-level", "info", "Log level: debug, info, warn, or error")
 	serve.Flags().Bool("log-color", true, "Colorize slog output")
