@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.22 - 2026-06-30
+
+### Improved
+- Expanded SQLite mutation coverage for calendar update execution failures, refresh-state insert failures, and duplicate cached-event insert failures.
+
 ## v1.4.21 - 2026-06-30
 
 ### Improved
