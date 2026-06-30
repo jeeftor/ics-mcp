@@ -1270,12 +1270,20 @@ func TestValidateCalendarReportsRequestAndReadErrors(t *testing.T) {
 	}
 
 	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("dial failed")
+	})}
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: "https://example.test/feed.ics"})
+	if err == nil || result.OK || !strings.Contains(result.Error, "dial failed") {
+		t.Fatalf("ValidateCalendar(transport error) result=%#v error=%v, want transport error", result, err)
+	}
+
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       errReadCloser{err: errors.New("read failed")},
 		}, nil
 	})}
-	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: "https://example.test/feed.ics"})
+	result, err = svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: "https://example.test/feed.ics"})
 	if err == nil || result.OK || !strings.Contains(result.Error, "read failed") {
 		t.Fatalf("ValidateCalendar(read error) result=%#v error=%v, want read error", result, err)
 	}
