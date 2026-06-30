@@ -429,7 +429,7 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&only_ongoing=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
@@ -441,7 +441,7 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
 		t.Fatalf("calendar ids = %#v", query.CalendarIDs)
 	}
-	if !query.OnlyOngoing || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription {
+	if !query.InProgressOnly || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription {
 		t.Fatalf("boolean filters = %#v", query)
 	}
 	if query.DescriptionMaxChars != 42 {
@@ -452,6 +452,18 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	}
 	if got := query.Before.Format(time.RFC3339); got != "2026-06-30T15:00:00Z" {
 		t.Fatalf("before = %s", got)
+	}
+}
+
+func TestUpcomingQueryFromRequestSupportsLegacyOnlyOngoingFilter(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?only_ongoing=yes", nil)
+
+	query, err := upcomingQueryFromRequest(req)
+	if err != nil {
+		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
+	}
+	if !query.InProgressOnly {
+		t.Fatalf("in_progress_only = false for legacy only_ongoing query: %#v", query)
 	}
 }
 
@@ -697,6 +709,18 @@ func TestToolPreviewMeetingPresetsApplyFilters(t *testing.T) {
 		t.Fatalf("current_meetings names = %#v, want only ongoing meeting", got)
 	}
 
+	legacyResp, err := PreviewToolCall(ctx, svc, "upcoming_meetings", json.RawMessage(`{"limit":10,"only_ongoing":true}`))
+	if err != nil {
+		t.Fatalf("upcoming_meetings legacy only_ongoing preview error = %v", err)
+	}
+	legacyOut, ok := legacyResp.Result.(meetingsOutput)
+	if !ok {
+		t.Fatalf("upcoming_meetings legacy result type = %T", legacyResp.Result)
+	}
+	if got := meetingNames(legacyOut.Meetings); !slices.Equal(got, []string{"Current Planning"}) {
+		t.Fatalf("upcoming_meetings legacy only_ongoing names = %#v, want only in-progress meeting", got)
+	}
+
 	searchResp, err := PreviewToolCall(ctx, svc, "search_meetings", json.RawMessage(`{"query":"future","limit":10}`))
 	if err != nil {
 		t.Fatalf("search_meetings preview error = %v", err)
@@ -846,10 +870,13 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "include_description", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}
+	}
+	if strings.Contains(string(schemaData), "only_ongoing") {
+		t.Fatalf("upcoming_meetings schema still exposes legacy only_ongoing: %s", schemaData)
 	}
 
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

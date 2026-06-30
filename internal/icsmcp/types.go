@@ -1,6 +1,9 @@
 package icsmcp
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Calendar is a configured ICS feed.
 type Calendar struct {
@@ -84,13 +87,28 @@ type UpcomingQuery struct {
 	LookaheadDays       int       `json:"lookahead_days,omitempty"`
 	Query               string    `json:"query,omitempty"`
 	Timezone            string    `json:"timezone,omitempty"`
-	OnlyOngoing         bool      `json:"only_ongoing,omitempty"`
+	InProgressOnly      bool      `json:"in_progress_only,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
 	ExcludeCancelled    bool      `json:"exclude_cancelled,omitempty"`
 	After               time.Time `json:"after,omitempty"`
 	Before              time.Time `json:"before,omitempty"`
 	IncludeDescription  bool      `json:"include_description,omitempty"`
 	DescriptionMaxChars int       `json:"description_max_chars,omitempty"`
+}
+
+// UnmarshalJSON accepts the legacy only_ongoing option while exposing in_progress_only.
+func (q *UpcomingQuery) UnmarshalJSON(data []byte) error {
+	type upcomingQuery UpcomingQuery
+	var decoded struct {
+		upcomingQuery
+		LegacyOnlyOngoing bool `json:"only_ongoing,omitempty"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*q = UpcomingQuery(decoded.upcomingQuery)
+	q.InProgressOnly = q.InProgressOnly || decoded.LegacyOnlyOngoing
+	return nil
 }
 
 // upcomingDefaults resolves default query limits.

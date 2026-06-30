@@ -486,7 +486,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 }
 
 func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
-	if query.Query == "" && !query.OnlyOngoing && !query.ExcludeAllDay && !query.ExcludeCancelled && query.After.IsZero() && query.Before.IsZero() {
+	if query.Query == "" && !query.InProgressOnly && !query.ExcludeAllDay && !query.ExcludeCancelled && query.After.IsZero() && query.Before.IsZero() {
 		return meetings
 	}
 	search := strings.ToLower(strings.TrimSpace(query.Query))
@@ -495,7 +495,7 @@ func filterMeetings(meetings []Meeting, query UpcomingQuery) []Meeting {
 		if search != "" && !strings.Contains(strings.ToLower(meeting.Name+" "+meeting.Description+" "+meeting.CalendarName), search) {
 			continue
 		}
-		if query.OnlyOngoing && !meeting.Ongoing {
+		if query.InProgressOnly && !meeting.Ongoing {
 			continue
 		}
 		if query.ExcludeAllDay && meeting.AllDay {

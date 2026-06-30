@@ -73,7 +73,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
-			in.OnlyOngoing = true
+			in.InProgressOnly = true
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
