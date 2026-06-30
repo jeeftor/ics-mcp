@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.26 - 2026-06-30
+
+### Changed
+- Defaulted display timezone to UTC when `ICSMCP_TIMEZONE` and `--timezone` are unset, making container-level `TZ` unnecessary and ignored.
+
 ## v1.4.25 - 2026-06-30
 
 ### Improved

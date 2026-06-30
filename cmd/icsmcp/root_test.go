@@ -108,7 +108,7 @@ func TestServeCommandTimezoneHelpMentionsOnlyAppTimezoneConfig(t *testing.T) {
 		t.Fatalf("Execute(serve --help) error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "defaults to ICSMCP_TIMEZONE or local time") {
+	if !strings.Contains(got, "defaults to ICSMCP_TIMEZONE or UTC") {
 		t.Fatalf("serve help missing app timezone default:\n%s", got)
 	}
 	if strings.Contains(got, "TZ") {
