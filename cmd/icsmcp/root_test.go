@@ -215,6 +215,40 @@ func TestRunServeCreatesDatabaseDirAndReturnsStartupImportError(t *testing.T) {
 	}
 }
 
+func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
+	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- runServe(ctx, "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	}()
+
+	timer := time.NewTimer(50 * time.Millisecond)
+	select {
+	case err := <-errCh:
+		timer.Stop()
+		t.Fatalf("runServe() returned before cancellation: %v", err)
+	case <-timer.C:
+		cancel()
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("runServe() error = %v, want clean shutdown", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("runServe() did not exit after context cancellation")
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("database was not created: %v", err)
+	}
+}
+
 func TestPlainSlogHandlerIncludesAttrsGroupsAndFormattedValues(t *testing.T) {
 	var out bytes.Buffer
 	handler := newPlainSlogHandler(&out, slog.LevelDebug).
