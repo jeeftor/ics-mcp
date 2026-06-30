@@ -337,6 +337,9 @@ func TestMeetingDescriptionHonorsOptInAndLengthBounds(t *testing.T) {
 	if got := meetingDescription(description, UpcomingQuery{IncludeDescription: true, DescriptionMaxChars: len([]rune(description))}); got != description {
 		t.Fatalf("meetingDescription(exact length) = %q, want original", got)
 	}
+	if got := meetingDescription(strings.Repeat("a", 301), UpcomingQuery{IncludeDescription: true}); got != strings.Repeat("a", 300)+"..." {
+		t.Fatalf("meetingDescription(default max) length = %d, want 303", len([]rune(got)))
+	}
 	if got := meetingDescription("abcdef", UpcomingQuery{IncludeDescription: true, DescriptionMaxChars: 3}); got != "abc..." {
 		t.Fatalf("meetingDescription(truncated) = %q, want abc...", got)
 	}

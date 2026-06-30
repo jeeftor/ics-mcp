@@ -300,6 +300,33 @@ func TestParseBoolQueryAcceptedValues(t *testing.T) {
 	}
 }
 
+func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&only_ongoing=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+
+	query, err := upcomingQueryFromRequest(req)
+	if err != nil {
+		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
+	}
+	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" {
+		t.Fatalf("basic query fields = %#v", query)
+	}
+	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
+		t.Fatalf("calendar ids = %#v", query.CalendarIDs)
+	}
+	if !query.OnlyOngoing || !query.ExcludeAllDay || !query.ExcludeCancelled || !query.IncludeDescription {
+		t.Fatalf("boolean filters = %#v", query)
+	}
+	if query.DescriptionMaxChars != 42 {
+		t.Fatalf("description max chars = %d, want 42", query.DescriptionMaxChars)
+	}
+	if got := query.After.Format(time.RFC3339); got != "2026-06-29T15:00:00Z" {
+		t.Fatalf("after = %s", got)
+	}
+	if got := query.Before.Format(time.RFC3339); got != "2026-06-30T15:00:00Z" {
+		t.Fatalf("before = %s", got)
+	}
+}
+
 func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	svc := newTestService(t)
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
