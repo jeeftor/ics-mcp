@@ -751,6 +751,23 @@ func TestStoreQueryEventsReportsCorruptCachedTimes(t *testing.T) {
 	}
 }
 
+func TestPlaceholdersFormatsSQLParameterLists(t *testing.T) {
+	for _, tc := range []struct {
+		count int
+		want  string
+	}{
+		{count: 1, want: "?"},
+		{count: 2, want: "?,?"},
+		{count: 4, want: "?,?,?,?"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			if got := placeholders(tc.count); got != tc.want {
+				t.Fatalf("placeholders(%d) = %q, want %q", tc.count, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestStoreUpsertCalendarReportsRefreshStateInsertFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.34 - 2026-06-30
+
+### Improved
+- Expanded SQL placeholder helper coverage for single and repeated parameter lists.
+
 ## v1.4.33 - 2026-06-30
 
 ### Improved
