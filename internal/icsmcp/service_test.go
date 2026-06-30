@@ -1,10 +1,13 @@
 package icsmcp
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,6 +87,50 @@ func TestParseICSMapsExchangeWindowsTimezones(t *testing.T) {
 	}
 	if got := events[0].End.Format(time.RFC3339); got != "2026-06-30T13:30:00Z" {
 		t.Fatalf("end = %s, want Eastern daylight converted to 13:30Z", got)
+	}
+}
+
+func TestParseICSHandlesMultipleTimezoneFormats(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		ics       string
+		wantStart string
+	}{
+		{
+			name:      "utc suffix",
+			ics:       sampleTimezoneICS("20260630T150000Z", "20260630T153000Z"),
+			wantStart: "2026-06-30T15:00:00Z",
+		},
+		{
+			name:      "iana timezone",
+			ics:       sampleTimezoneICS("TZID=America/Denver:20260630T090000", "TZID=America/Denver:20260630T093000"),
+			wantStart: "2026-06-30T15:00:00Z",
+		},
+		{
+			name:      "windows mountain timezone",
+			ics:       sampleTimezoneICS("TZID=Mountain Standard Time:20260630T090000", "TZID=Mountain Standard Time:20260630T093000"),
+			wantStart: "2026-06-30T15:00:00Z",
+		},
+		{
+			name:      "windows eastern timezone",
+			ics:       sampleTimezoneICS("TZID=Eastern Standard Time:20260630T090000", "TZID=Eastern Standard Time:20260630T093000"),
+			wantStart: "2026-06-30T13:00:00Z",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events, err := ParseICS(tt.ics, now, 48*time.Hour)
+			if err != nil {
+				t.Fatalf("ParseICS() error = %v", err)
+			}
+			if len(events) != 1 {
+				t.Fatalf("got %d events, want 1", len(events))
+			}
+			if got := events[0].Start.Format(time.RFC3339); got != tt.wantStart {
+				t.Fatalf("start = %s, want %s", got, tt.wantStart)
+			}
+		})
 	}
 }
 
@@ -328,6 +375,60 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 	if utcMeetings[0].Start != "15:00" || utcMeetings[0].End != "15:30" || utcMeetings[0].Timezone != "UTC" {
 		t.Fatalf("timezone-overridden meeting = %#v", utcMeetings[0])
+	}
+}
+
+func TestServiceResolvesTimezoneFormats(t *testing.T) {
+	tests := []struct {
+		name         string
+		timezone     string
+		wantTimezone string
+	}{
+		{name: "iana", timezone: "America/Denver", wantTimezone: "America/Denver"},
+		{name: "utc", timezone: "UTC", wantTimezone: "UTC"},
+		{name: "windows", timezone: "Mountain Standard Time", wantTimezone: "America/Denver"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			svc := NewService(store, ServiceOptions{Timezone: tt.timezone})
+			status, err := svc.Status(context.Background())
+			if err != nil {
+				t.Fatalf("Status() error = %v", err)
+			}
+			if status.Timezone != tt.wantTimezone {
+				t.Fatalf("timezone = %q, want %q", status.Timezone, tt.wantTimezone)
+			}
+		})
+	}
+}
+
+func TestServiceWarnsAndDefaultsUTCForInvalidTimezone(t *testing.T) {
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	svc := NewService(store, ServiceOptions{Timezone: "America/Denbver", Logger: logger})
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Timezone != "UTC" {
+		t.Fatalf("timezone = %q, want UTC", status.Timezone)
+	}
+	gotLogs := logs.String()
+	for _, want := range []string{"timezone not recognized, defaulting to UTC", "America/Denbver"} {
+		if !strings.Contains(gotLogs, want) {
+			t.Fatalf("logs missing %q:\n%s", want, gotLogs)
+		}
 	}
 }
 

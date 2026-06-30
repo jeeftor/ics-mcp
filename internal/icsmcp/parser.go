@@ -24,11 +24,22 @@ var windowsTimezoneMap = map[string]string{
 
 func init() {
 	gocal.SetTZMapper(func(tzid string) (*time.Location, error) {
-		if mapped, ok := windowsTimezoneMap[strings.TrimSpace(tzid)]; ok {
-			return time.LoadLocation(mapped)
+		location, _, err := loadLocation(tzid)
+		if err != nil {
+			return nil, errors.New("unmapped timezone")
 		}
-		return nil, errors.New("unmapped timezone")
+		return location, nil
 	})
+}
+
+func loadLocation(value string) (*time.Location, string, error) {
+	value = strings.TrimSpace(value)
+	if mapped, ok := windowsTimezoneMap[value]; ok {
+		location, err := time.LoadLocation(mapped)
+		return location, mapped, err
+	}
+	location, err := time.LoadLocation(value)
+	return location, value, err
 }
 
 // ParseICS parses event instances between now and now+lookahead.

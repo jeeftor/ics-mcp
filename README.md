@@ -70,6 +70,8 @@ After startup, SQLite is the runtime source of truth for display names, enabled 
 
 Outlook / Exchange feeds commonly use Windows timezone IDs such as `Eastern Standard Time`, `Mountain Standard Time`, and `Pacific Standard Time`; those are mapped to IANA zones during parsing before events are cached.
 
+`ICSMCP_TIMEZONE` accepts IANA names such as `America/Denver`, `UTC`, and common Outlook / Windows timezone IDs such as `Mountain Standard Time`. If a configured timezone is not recognized, startup logs a warning and falls back to `UTC`.
+
 Local config-directory smoke test:
 
 ```bash

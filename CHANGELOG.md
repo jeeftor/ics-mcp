@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Release binaries now embed Go timezone data so IANA timezone names such as `America/Denver` work in the scratch Docker image.
+- Invalid configured timezones now log a warning and explicitly fall back to UTC instead of silently appearing as UTC.
+
 ## v1.4.1 - 2026-06-30
 
 ### Added

@@ -531,6 +531,26 @@ func sampleExchangeWindowsTimezoneICS() string {
 		"END:VCALENDAR\r\n"
 }
 
+func sampleTimezoneICS(start string, end string) string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:timezone-1\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		icsDateLine("DTSTART", start) +
+		icsDateLine("DTEND", end) +
+		"SUMMARY:Timezone Meeting\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func icsDateLine(name string, value string) string {
+	if strings.Contains(value, "=") {
+		return name + ";" + value + "\r\n"
+	}
+	return name + ":" + value + "\r\n"
+}
+
 func sampleTeamsICS() string {
 	return "BEGIN:VCALENDAR\r\n" +
 		"VERSION:2.0\r\n" +
