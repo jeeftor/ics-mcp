@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.50 - 2026-06-30
+
+### Improved
+- Expanded HTTP API coverage for unsupported methods on the meeting preview endpoint.
+
 ## v1.4.49 - 2026-06-30
 
 ### Improved
