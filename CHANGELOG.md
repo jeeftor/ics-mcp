@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.39 - 2026-06-30
+
+### Improved
+- Expanded HTTP API coverage for successful manual calendar refreshes.
+
 ## v1.4.38 - 2026-06-30
 
 ### Improved
