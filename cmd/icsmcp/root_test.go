@@ -277,6 +277,17 @@ func TestRunServeReportsOpenStoreErrors(t *testing.T) {
 	}
 }
 
+func TestRunServeReportsListenErrors(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "icsmcp.sqlite3")
+	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+
+	err := runServe(context.Background(), "not-a-valid-listen-address", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	if err == nil || !strings.Contains(err.Error(), "serve http") {
+		t.Fatalf("runServe() error = %v, want serve http context", err)
+	}
+}
+
 func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
