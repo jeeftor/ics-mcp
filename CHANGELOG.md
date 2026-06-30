@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.31 - 2026-06-30
+
+### Improved
+- Expanded add-and-refresh coverage for calendar validation failures.
+
 ## v1.4.30 - 2026-06-30
 
 ### Improved

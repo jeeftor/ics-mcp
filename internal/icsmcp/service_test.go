@@ -1001,6 +1001,23 @@ func TestAddCalendarAndRefreshKeepsCalendarWhenRefreshFails(t *testing.T) {
 	}
 }
 
+func TestAddCalendarAndRefreshReturnsValidationErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	_, err := svc.AddCalendarAndRefresh(ctx, AddCalendarInput{Key: "work", Name: "Work"})
+	if err == nil || !strings.Contains(err.Error(), "calendar URL is required") {
+		t.Fatalf("AddCalendarAndRefresh() error = %v, want missing URL", err)
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 0 {
+		t.Fatalf("calendars after failed add-and-refresh = %#v, want none", calendars)
+	}
+}
+
 func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
