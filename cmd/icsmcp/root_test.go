@@ -1,12 +1,34 @@
 package icsmcp
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	app "github.com/jeeftor/icsmcp/internal/icsmcp"
 )
+
+func TestCalendarFlagsCollectRepeatableValues(t *testing.T) {
+	var flags calendarFlags
+	if got := flags.Type(); got != "name=url" {
+		t.Fatalf("Type() = %q, want name=url", got)
+	}
+	if err := flags.Set("WORK=https://example.test/work.ics"); err != nil {
+		t.Fatalf("Set(first) error = %v", err)
+	}
+	if err := flags.Set("HOME=https://example.test/home.ics"); err != nil {
+		t.Fatalf("Set(second) error = %v", err)
+	}
+	if got := flags.String(); !strings.Contains(got, "WORK=https://example.test/work.ics") || !strings.Contains(got, "HOME=https://example.test/home.ics") {
+		t.Fatalf("String() = %q, want both assignments", got)
+	}
+}
 
 func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 	var out strings.Builder
@@ -26,6 +48,17 @@ func TestPrintStartupInfoIncludesAdminAndMCPURLs(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("startup output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestPrintStartupInfoOmitsExternalURLWhenUnset(t *testing.T) {
+	var out strings.Builder
+
+	printStartupInfo(&out, "0.0.0.0:3333", "UTC", "")
+
+	got := out.String()
+	if strings.Contains(got, "External URL") || strings.Contains(got, "External MCP endpoint") {
+		t.Fatalf("startup output included external URL unexpectedly:\n%s", got)
 	}
 }
 
@@ -51,6 +84,16 @@ func TestVersionCommandPrintsBuildMetadata(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("version output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestServeCommandRejectsInvalidLogLevelBeforeStarting(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"serve", "--log-level", "verbose"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `invalid log level "verbose"`) {
+		t.Fatalf("Execute(serve invalid log-level) error = %v, want invalid log level", err)
 	}
 }
 
@@ -86,6 +129,14 @@ func TestResolveDBPathUsesConfigDirByDefault(t *testing.T) {
 
 	if got != "/config/icsmcp.sqlite3" {
 		t.Fatalf("resolveDBPath() = %q, want /config/icsmcp.sqlite3", got)
+	}
+}
+
+func TestResolveDBPathFallsBackToCurrentDirectoryWhenConfigDirEmpty(t *testing.T) {
+	got := resolveDBPath("", "")
+
+	if got != "icsmcp.sqlite3" {
+		t.Fatalf("resolveDBPath() = %q, want icsmcp.sqlite3", got)
 	}
 }
 
@@ -129,4 +180,70 @@ func TestLoadEnvFilesPrefersConfigDir(t *testing.T) {
 	if got := os.Getenv(key); got != "config" {
 		t.Fatalf("%s = %q, want config", key, got)
 	}
+}
+
+func TestRunServeCreatesDatabaseDirAndReturnsStartupImportError(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
+	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, []string{"missing-separator"}, logger, appBuildInfo(), "UTC", "")
+	if err == nil || !strings.Contains(err.Error(), "calendar must be name=url") {
+		t.Fatalf("runServe() error = %v, want startup calendar import error", err)
+	}
+	if _, err := os.Stat(filepath.Dir(dbPath)); err != nil {
+		t.Fatalf("database directory was not created: %v", err)
+	}
+}
+
+func TestPlainSlogHandlerIncludesAttrsGroupsAndFormattedValues(t *testing.T) {
+	var out bytes.Buffer
+	handler := newPlainSlogHandler(&out, slog.LevelDebug).
+		WithAttrs([]slog.Attr{slog.String("component", "calendar worker")}).
+		WithGroup("request")
+	logger := slog.New(handler)
+	when := time.Date(2026, 6, 30, 4, 0, 0, 0, time.UTC)
+
+	logger.LogAttrs(context.Background(), slog.LevelWarn, "refresh failed",
+		slog.String("calendar_id", "abc123"),
+		slog.Time("at", when),
+		slog.Duration("retry_in", 5*time.Minute),
+		slog.Group("http", slog.Int("status", httpStatusBadGateway)),
+	)
+
+	got := out.String()
+	for _, want := range []string{
+		`level=WARN`,
+		`msg="refresh failed"`,
+		`component="calendar worker"`,
+		`request.calendar_id=abc123`,
+		`request.at=2026-06-30T04:00:00Z`,
+		`request.retry_in=5m0s`,
+		`request.http={status=502}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestPlainSlogHandlerWithEmptyGroupAndEmptyAttrs(t *testing.T) {
+	var out bytes.Buffer
+	handler := newPlainSlogHandler(&out, slog.LevelInfo).WithGroup("").WithAttrs(nil)
+	logger := slog.New(handler)
+
+	logger.Info("ready", slog.String("empty", ""), slog.Bool("ok", true))
+
+	got := out.String()
+	for _, want := range []string{`msg="ready"`, `empty=""`, `ok=true`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+const httpStatusBadGateway = 502
+
+func appBuildInfo() app.BuildInfo {
+	return app.BuildInfo{Version: "test", Commit: "test", Date: "test"}
 }
