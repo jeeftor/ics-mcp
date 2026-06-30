@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.40 - 2026-06-30
+
+### Improved
+- Expanded HTTP API coverage for readiness and metrics backend error responses.
+- Changed the debug UI upcoming-meetings preview to show friendly dates and 12-hour AM/PM times.
+
 ## v1.4.39 - 2026-06-30
 
 ### Improved

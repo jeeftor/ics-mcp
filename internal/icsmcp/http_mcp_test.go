@@ -36,7 +36,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
-	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode"} {
+	for _, want := range []string{"ICS MCP", "Info", "Calendars", "Tools", "MCP Server", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "Next Meetings By Calendar", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -284,6 +284,38 @@ func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
 	_ = notFoundResp.Body.Close()
 	if notFoundResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("non-call tool route status = %d, want 404", notFoundResp.StatusCode)
+	}
+}
+
+func TestHTTPAPIReadinessAndMetricsReportStoreErrors(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "readiness", path: "/readyz"},
+		{name: "metrics", path: "/metrics"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Get(server.URL + tc.path)
+			if err != nil {
+				t.Fatalf("GET %s error = %v", tc.path, err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				t.Fatalf("ReadAll(%s) error = %v", tc.path, err)
+			}
+			if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "database is closed") {
+				t.Fatalf("GET %s status=%d body=%s, want 500 database is closed", tc.path, resp.StatusCode, body)
+			}
+		})
 	}
 }
 

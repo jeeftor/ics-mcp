@@ -374,17 +374,52 @@
       for (const group of groups) {
         for (const [index, meeting] of group.meetings.entries()) {
           const row = document.createElement('tr');
-          const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(meeting.start)}`;
+          const displayDate = formatMeetingDate(meeting.date);
+          const displayStart = formatMeetingTime(meeting.start);
+          const displayEnd = formatMeetingTime(meeting.end);
+          const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(displayStart)}`;
           const flags = [meeting.all_day ? 'All day' : '', meeting.cancelled ? 'Cancelled' : ''].filter(Boolean).join(' | ');
           row.innerHTML = `
           <td data-label="Calendar">${index === 0 ? `${escapeHTML(group.calendar_name)}<br><span class="muted mono">${escapeHTML(group.calendar_id)}</span>` : ''}</td>
-          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(meeting.date)} ${escapeHTML(meeting.start)}-${escapeHTML(meeting.end)} ${escapeHTML(meeting.timezone || '')}</span></td>
+          <td data-label="When">${marker}<br><span class="muted">${escapeHTML(displayDate)} ${escapeHTML(displayStart)}-${escapeHTML(displayEnd)} ${escapeHTML(meeting.timezone || '')}</span></td>
           <td data-label="Meeting">${escapeHTML(meeting.name)}${flags ? `<br><span class="muted">${escapeHTML(flags)}</span>` : ''}</td>
           <td data-label="Duration">${meeting.duration_minutes} min</td>`;
           rows.push(row);
         }
       }
       meetingsBody.replaceChildren(...rows);
+    }
+
+    function formatMeetingDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+      if (!match) return value || '';
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return value;
+      return `${monthNames[month - 1]} ${day}${ordinalSuffix(day)}`;
+    }
+
+    function ordinalSuffix(day) {
+      const mod100 = day % 100;
+      if (mod100 >= 11 && mod100 <= 13) return 'th';
+      switch (day % 10) {
+        case 1: return 'st';
+        case 2: return 'nd';
+        case 3: return 'rd';
+        default: return 'th';
+      }
+    }
+
+    function formatMeetingTime(value) {
+      const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+      if (!match) return value || '';
+      const hour24 = Number(match[1]);
+      const minute = match[2];
+      if (hour24 < 0 || hour24 > 23) return value;
+      const suffix = hour24 >= 12 ? 'PM' : 'AM';
+      const hour12 = hour24 % 12 || 12;
+      return `${hour12}:${minute} ${suffix}`;
     }
 
     function renderEndpoints(status = lastStatus) {
