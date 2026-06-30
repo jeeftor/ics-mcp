@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.51 - 2026-06-30
+
+### Improved
+- Expanded startup coverage for database directory creation failures.
+
 ## v1.4.50 - 2026-06-30
 
 ### Improved

@@ -215,6 +215,21 @@ func TestRunServeCreatesDatabaseDirAndReturnsStartupImportError(t *testing.T) {
 	}
 }
 
+func TestRunServeReportsDatabaseDirectoryCreationErrors(t *testing.T) {
+	dir := t.TempDir()
+	parentFile := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(parentFile, []byte("file"), 0o600); err != nil {
+		t.Fatalf("write parent fixture: %v", err)
+	}
+	dbPath := filepath.Join(parentFile, "icsmcp.sqlite3")
+	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
+
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	if err == nil || !strings.Contains(err.Error(), "create database directory") {
+		t.Fatalf("runServe() error = %v, want database directory context", err)
+	}
+}
+
 func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
