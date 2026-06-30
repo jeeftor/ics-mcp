@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.6 - 2026-06-30
+
+### Improved
+- Expanded refresh behavior coverage for conditional `ETag` / `Last-Modified` requests, `304 Not Modified` refreshes, due-calendar scheduling, future refresh skips, and disabled calendar skips.
+
 ## v1.4.5 - 2026-06-30
 
 ### Improved

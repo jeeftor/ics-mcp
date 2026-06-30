@@ -580,3 +580,113 @@ func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 		t.Fatalf("status after failed refresh = %#v", status.Calendars[0])
 	}
 }
+
+func TestRefreshCalendarSendsConditionalHeadersAndHandlesNotModified(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	requests := 0
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 2 {
+			if got := r.Header.Get("If-None-Match"); got != `"v1"` {
+				t.Fatalf("If-None-Match = %q, want ETag", got)
+			}
+			if got := r.Header.Get("If-Modified-Since"); got != "Mon, 29 Jun 2026 12:00:00 GMT" {
+				t.Fatalf("If-Modified-Since = %q, want Last-Modified", got)
+			}
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		w.Header().Set("Last-Modified", "Mon, 29 Jun 2026 12:00:00 GMT")
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.RefreshCalendar(ctx, cal.ID, now); err != nil {
+		t.Fatalf("RefreshCalendar(first) error = %v", err)
+	}
+	if err := svc.RefreshCalendar(ctx, cal.ID, now.Add(5*time.Minute)); err != nil {
+		t.Fatalf("RefreshCalendar(not modified) error = %v", err)
+	}
+
+	statuses, err := svc.ListCalendarStatus(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendarStatus() error = %v", err)
+	}
+	if requests != 2 || statuses[0].LastError != "" || statuses[0].EventCount != 1 {
+		t.Fatalf("requests=%d status=%#v", requests, statuses[0])
+	}
+	if statuses[0].LastSuccess == nil || !statuses[0].LastSuccess.Equal(now.Add(5*time.Minute)) {
+		t.Fatalf("last success = %v, want second attempt", statuses[0].LastSuccess)
+	}
+}
+
+func TestRefreshDueCalendarsRefreshesDueAndSkipsFutureOrDisabled(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	requestsByPath := map[string]int{}
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestsByPath[r.URL.Path]++
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	due, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "due", Name: "Due", URL: feed.URL + "/due.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(due) error = %v", err)
+	}
+	future, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "future", Name: "Future", URL: feed.URL + "/future.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(future) error = %v", err)
+	}
+	disabled, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "disabled", Name: "Disabled", URL: feed.URL + "/disabled.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(disabled) error = %v", err)
+	}
+	if _, err := svc.UpdateCalendar(ctx, disabled.ID, UpdateCalendarInput{Enabled: ptr(false)}); err != nil {
+		t.Fatalf("UpdateCalendar(disabled) error = %v", err)
+	}
+	if err := svc.RefreshCalendar(ctx, future.ID, now); err != nil {
+		t.Fatalf("RefreshCalendar(future) error = %v", err)
+	}
+	requestsByPath = map[string]int{}
+
+	svc.RefreshDueCalendars(ctx)
+
+	if requestsByPath["/due.ics"] != 1 {
+		t.Fatalf("due refresh count = %d, want 1", requestsByPath["/due.ics"])
+	}
+	if requestsByPath["/future.ics"] != 0 {
+		t.Fatalf("future refresh count = %d, want 0", requestsByPath["/future.ics"])
+	}
+	if requestsByPath["/disabled.ics"] != 0 {
+		t.Fatalf("disabled refresh count = %d, want 0", requestsByPath["/disabled.ics"])
+	}
+	statuses, err := svc.ListCalendarStatus(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendarStatus() error = %v", err)
+	}
+	statusByID := map[string]CalendarStatus{}
+	for _, status := range statuses {
+		statusByID[status.ID] = status
+	}
+	if statusByID[due.ID].EventCount != 1 || statusByID[due.ID].LastSuccess == nil {
+		t.Fatalf("due status = %#v", statusByID[due.ID])
+	}
+	if statusByID[disabled.ID].LastAttempt != nil {
+		t.Fatalf("disabled status = %#v, want no refresh attempt", statusByID[disabled.ID])
+	}
+}
+
+func ptr[T any](value T) *T {
+	return &value
+}
