@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.21 - 2026-06-30
+
+### Improved
+- Expanded HTTP meeting query coverage for all supported filters, time windows, description options, calendar IDs, and timezone parsing.
+- Expanded meeting description coverage for the default 300-character truncation path.
+
 ## v1.4.20 - 2026-06-30
 
 ### Improved
