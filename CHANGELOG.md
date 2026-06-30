@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.4 - 2026-06-30
+
+### Improved
+- Expanded debug tool-preview test coverage across read tools, admin tools, validation, refresh, calendar updates, removal, argument decoding, and unknown-tool errors.
+
 ## v1.4.3 - 2026-06-30
 
 ### Improved

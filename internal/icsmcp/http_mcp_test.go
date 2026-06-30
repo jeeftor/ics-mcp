@@ -239,6 +239,135 @@ func TestToolPreviewRejectsInvalidTimezone(t *testing.T) {
 	}
 }
 
+func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 13, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(sampleOneTimeICS()))
+	}))
+	defer feed.Close()
+
+	addResp, err := PreviewToolCall(ctx, svc, "add_calendar", rawJSON(t, AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL}))
+	if err != nil {
+		t.Fatalf("add_calendar preview error = %v", err)
+	}
+	addOut, ok := addResp.Result.(calendarOutput)
+	if !ok || addOut.Calendar.ID == "" || addOut.Calendar.Name != "Work" {
+		t.Fatalf("add_calendar preview = %#v", addResp)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args json.RawMessage
+		want string
+	}{
+		{name: "upcoming_meetings", args: json.RawMessage(`{"limit":10}`), want: "Planning"},
+		{name: "next_meetings", args: json.RawMessage(`{}`), want: "Planning"},
+		{name: "current_meetings", args: json.RawMessage(`{}`), want: "Planning"},
+		{name: "search_meetings", args: json.RawMessage(`{"query":"plan"}`), want: "Planning"},
+	} {
+		resp, err := PreviewToolCall(ctx, svc, tc.name, tc.args)
+		if err != nil {
+			t.Fatalf("%s preview error = %v", tc.name, err)
+		}
+		out, ok := resp.Result.(meetingsOutput)
+		if !ok || len(out.Meetings) != 1 || out.Meetings[0].Name != tc.want {
+			t.Fatalf("%s preview = %#v", tc.name, resp)
+		}
+	}
+
+	groupResp, err := PreviewToolCall(ctx, svc, "upcoming_meetings_by_calendar", json.RawMessage(`{"limit":10}`))
+	if err != nil {
+		t.Fatalf("upcoming_meetings_by_calendar preview error = %v", err)
+	}
+	groupOut, ok := groupResp.Result.(groupedMeetingsOutput)
+	if !ok || len(groupOut.Calendars) != 1 || groupOut.Calendars[0].CalendarName != "Work" {
+		t.Fatalf("upcoming_meetings_by_calendar preview = %#v", groupResp)
+	}
+
+	statusResp, err := PreviewToolCall(ctx, svc, "server_status", nil)
+	if err != nil {
+		t.Fatalf("server_status preview error = %v", err)
+	}
+	statusOut, ok := statusResp.Result.(statusOutput)
+	if !ok || len(statusOut.Status.Calendars) != 1 {
+		t.Fatalf("server_status preview = %#v", statusResp)
+	}
+
+	listResp, err := PreviewToolCall(ctx, svc, "list_calendars", nil)
+	if err != nil {
+		t.Fatalf("list_calendars preview error = %v", err)
+	}
+	listOut, ok := listResp.Result.(calendarsOutput)
+	if !ok || len(listOut.Calendars) != 1 {
+		t.Fatalf("list_calendars preview = %#v", listResp)
+	}
+
+	refreshResp, err := PreviewToolCall(ctx, svc, "refresh_calendar", rawJSON(t, refreshInput{ID: addOut.Calendar.ID}))
+	if err != nil {
+		t.Fatalf("refresh_calendar preview error = %v", err)
+	}
+	refreshOut, ok := refreshResp.Result.(okOutput)
+	if !ok || !refreshOut.OK {
+		t.Fatalf("refresh_calendar preview = %#v", refreshResp)
+	}
+
+	refreshAllResp, err := PreviewToolCall(ctx, svc, "refresh_all_calendars", nil)
+	if err != nil {
+		t.Fatalf("refresh_all_calendars preview error = %v", err)
+	}
+	refreshAllOut, ok := refreshAllResp.Result.(refreshAllOutput)
+	if !ok || len(refreshAllOut.Results) != 1 || !refreshAllOut.Results[0].OK {
+		t.Fatalf("refresh_all_calendars preview = %#v", refreshAllResp)
+	}
+
+	validateResp, err := PreviewToolCall(ctx, svc, "validate_calendar", rawJSON(t, ValidateCalendarInput{URL: feed.URL, Limit: 1}))
+	if err != nil {
+		t.Fatalf("validate_calendar preview error = %v", err)
+	}
+	validateOut, ok := validateResp.Result.(ValidateCalendarResult)
+	if !ok || !validateOut.OK || validateOut.EventCount != 1 {
+		t.Fatalf("validate_calendar preview = %#v", validateResp)
+	}
+
+	updateResp, err := PreviewToolCall(ctx, svc, "update_calendar", rawJSON(t, updateInput{ID: addOut.Calendar.ID, Name: "Renamed"}))
+	if err != nil {
+		t.Fatalf("update_calendar preview error = %v", err)
+	}
+	updateOut, ok := updateResp.Result.(calendarOutput)
+	if !ok || updateOut.Calendar.Name != "Renamed" {
+		t.Fatalf("update_calendar preview = %#v", updateResp)
+	}
+
+	removeResp, err := PreviewToolCall(ctx, svc, "remove_calendar", rawJSON(t, removeInput{ID: addOut.Calendar.ID}))
+	if err != nil {
+		t.Fatalf("remove_calendar preview error = %v", err)
+	}
+	removeOut, ok := removeResp.Result.(okOutput)
+	if !ok || !removeOut.OK {
+		t.Fatalf("remove_calendar preview = %#v", removeResp)
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 0 {
+		t.Fatalf("calendars after preview remove = %#v", calendars)
+	}
+}
+
+func TestToolPreviewReportsDecodeAndUnknownToolErrors(t *testing.T) {
+	svc := newTestService(t)
+	if _, err := PreviewToolCall(context.Background(), svc, "upcoming_meetings", json.RawMessage(`{`)); err == nil || !strings.Contains(err.Error(), "decode tool arguments") {
+		t.Fatalf("invalid JSON error = %v, want decode error", err)
+	}
+	if _, err := PreviewToolCall(context.Background(), svc, "missing_tool", nil); err == nil || !strings.Contains(err.Error(), `unknown tool "missing_tool"`) {
+		t.Fatalf("unknown tool error = %v, want unknown tool error", err)
+	}
+}
+
 func TestHTTPAPIEmptyCollectionsEncodeAsArrays(t *testing.T) {
 	svc := newTestService(t)
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
@@ -535,6 +664,15 @@ func decodeStructured(t *testing.T, in any, out any) {
 	if err := json.Unmarshal(data, out); err != nil {
 		t.Fatalf("Unmarshal structured content error = %v", err)
 	}
+}
+
+func rawJSON(t *testing.T, in any) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal raw JSON error = %v", err)
+	}
+	return data
 }
 
 func contains(values []string, want string) bool {
