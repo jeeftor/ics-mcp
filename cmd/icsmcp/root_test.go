@@ -107,6 +107,33 @@ func TestServeCommandRejectsInvalidLogLevelBeforeStarting(t *testing.T) {
 	}
 }
 
+func TestServeCommandRunsStartupPathAndReportsCalendarErrors(t *testing.T) {
+	cmd := NewRootCommand()
+	var out strings.Builder
+	configDir := t.TempDir()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{
+		"serve",
+		"--config-dir", configDir,
+		"--http-addr", "127.0.0.1:0",
+		"--refresh-interval", "1m",
+		"--timezone", "UTC",
+		"--external-url", "https://ics-mcp.example.net",
+		"--log-level", "debug",
+		"--log-color=false",
+		"--calendar", "missing-separator",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "calendar must be name=url") {
+		t.Fatalf("Execute(serve invalid calendar) error = %v, want startup calendar error", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(configDir, "icsmcp.sqlite3")); statErr != nil {
+		t.Fatalf("serve command did not create default config DB: %v", statErr)
+	}
+}
+
 func TestServeCommandTimezoneHelpMentionsOnlyAppTimezoneConfig(t *testing.T) {
 	cmd := NewRootCommand()
 	var out strings.Builder

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.63 - 2026-06-30
+
+### Improved
+- Expanded Cobra `serve` command coverage for startup configuration, logging flags, and startup calendar validation failures.
+
 ## v1.4.62 - 2026-06-30
 
 ### Improved
