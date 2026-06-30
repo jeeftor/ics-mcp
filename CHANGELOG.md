@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.9 - 2026-06-30
+
+### Improved
+- Expanded service persistence coverage for calendar removal, disabled-calendar query behavior, and calendar validation parse failures.
+- Clarified Docker timezone configuration: use `ICSMCP_TIMEZONE` for ics-mcp display times; the app container does not need `TZ`.
+
 ## v1.4.8 - 2026-06-30
 
 ### Improved
