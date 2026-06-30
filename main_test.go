@@ -9,11 +9,9 @@ import (
 )
 
 func TestMainRunsVersionCommand(t *testing.T) {
-	oldArgs := os.Args
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
 	t.Cleanup(func() {
-		os.Args = oldArgs
 		os.Stdout = oldStdout
 		os.Stderr = oldStderr
 	})
@@ -22,11 +20,13 @@ func TestMainRunsVersionCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create stdout pipe: %v", err)
 	}
-	os.Args = []string{"icsmcp", "version"}
 	os.Stdout = writer
 	os.Stderr = writer
 
-	main()
+	code := mainWithExit([]string{"version"}, os.Stdout, os.Stderr)
+	if code != 0 {
+		t.Fatalf("mainWithExit(version) = %d, want 0", code)
+	}
 
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stdout writer: %v", err)
@@ -40,6 +40,38 @@ func TestMainRunsVersionCommand(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("main version output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestMainWithExitReturnsZeroForSuccessfulCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := mainWithExit([]string{"version"}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("mainWithExit(version) = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "version:") {
+		t.Fatalf("stdout = %q, want version output", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestMainWithExitReturnsOneAndPrintsErrors(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := mainWithExit([]string{"does-not-exist"}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("mainWithExit(invalid) = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("stderr = %q, want unknown command", stderr.String())
 	}
 }
 

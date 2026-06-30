@@ -11,10 +11,15 @@ import (
 )
 
 func main() {
-	if err := executeCommand(os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	os.Exit(mainWithExit(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func mainWithExit(args []string, stdout io.Writer, stderr io.Writer) int {
+	if err := executeCommand(args, stdout, stderr); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
+	return 0
 }
 
 func executeCommand(args []string, stdout io.Writer, stderr io.Writer) error {
