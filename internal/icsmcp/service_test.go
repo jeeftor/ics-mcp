@@ -686,6 +686,20 @@ func TestSetGeneralQueryCalendarsReportsClearFailures(t *testing.T) {
 	}
 }
 
+func TestSetGeneralQueryCalendarsReportsCalendarIDListFailures(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if _, err := svc.store.db.ExecContext(ctx, "DROP TABLE calendars"); err != nil {
+		t.Fatalf("DROP TABLE calendars error = %v", err)
+	}
+
+	_, err := svc.SetGeneralQueryCalendars(ctx, nil)
+
+	if err == nil || !strings.Contains(err.Error(), "list calendar ids") {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v, want list calendar ids", err)
+	}
+}
+
 func TestReplaceEventsReportsClosedStoreErrors(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
