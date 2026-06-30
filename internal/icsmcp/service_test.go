@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -595,6 +596,25 @@ func TestValidateCalendarReportsParseFailuresWithoutSaving(t *testing.T) {
 	}
 }
 
+func TestValidateCalendarReportsRequestAndReadErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: "http://[::1"}); err == nil || result.OK || result.Error == "" {
+		t.Fatalf("ValidateCalendar(invalid URL) result=%#v error=%v, want request error", result, err)
+	}
+
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       errReadCloser{err: errors.New("read failed")},
+		}, nil
+	})}
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: "https://example.test/feed.ics"})
+	if err == nil || result.OK || !strings.Contains(result.Error, "read failed") {
+		t.Fatalf("ValidateCalendar(read error) result=%#v error=%v, want read error", result, err)
+	}
+}
+
 func TestAddCalendarAndRefreshKeepsCalendarWhenRefreshFails(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -662,6 +682,47 @@ func TestRefreshPreservesLastKnownGoodEventsWhenFetchFails(t *testing.T) {
 	}
 	if status.Calendars[0].LastError == "" || status.Calendars[0].EventCount != 1 {
 		t.Fatalf("status after failed refresh = %#v", status.Calendars[0])
+	}
+}
+
+func TestRefreshCalendarRecordsRequestAndReadErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	badURL, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "bad-url", Name: "Bad URL", URL: "http://[::1"})
+	if err != nil {
+		t.Fatalf("AddCalendar(bad URL) error = %v", err)
+	}
+	if err := svc.RefreshCalendar(ctx, badURL.ID, now); err == nil {
+		t.Fatalf("RefreshCalendar(invalid URL) error = nil, want request error")
+	}
+	state, err := svc.store.refreshState(ctx, badURL.ID)
+	if err != nil {
+		t.Fatalf("refreshState(bad URL) error = %v", err)
+	}
+	if state.LastAttempt == nil || state.LastError == "" {
+		t.Fatalf("refreshState(bad URL) = %#v, want recorded request error", state)
+	}
+
+	readError, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "read-error", Name: "Read Error", URL: "https://example.test/read.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(read error) error = %v", err)
+	}
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       errReadCloser{err: errors.New("read failed")},
+		}, nil
+	})}
+	if err := svc.RefreshCalendar(ctx, readError.ID, now); err == nil {
+		t.Fatalf("RefreshCalendar(read error) error = nil, want read error")
+	}
+	state, err = svc.store.refreshState(ctx, readError.ID)
+	if err != nil {
+		t.Fatalf("refreshState(read error) error = %v", err)
+	}
+	if state.LastAttempt == nil || !strings.Contains(state.LastError, "read failed") {
+		t.Fatalf("refreshState(read error) = %#v, want recorded read error", state)
 	}
 }
 
@@ -1047,4 +1108,22 @@ func TestUpcomingMeetingsFiltersByCalendarIDs(t *testing.T) {
 
 func ptr[T any](value T) *T {
 	return &value
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type errReadCloser struct {
+	err error
+}
+
+func (e errReadCloser) Read([]byte) (int, error) {
+	return 0, e.err
+}
+
+func (e errReadCloser) Close() error {
+	return nil
 }

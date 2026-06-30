@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.12 - 2026-06-30
+
+### Improved
+- Expanded debug tool-preview coverage for meeting preset filters and service error coverage for validation and refresh request/read failures.
+
 ## v1.4.11 - 2026-06-30
 
 ### Improved

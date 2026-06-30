@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -441,6 +442,61 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 	}
 }
 
+func TestToolPreviewMeetingPresetsApplyFilters(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{
+		{ID: "current", UID: "current", Name: "Current Planning", Start: now.Add(-30 * time.Minute), End: now.Add(30 * time.Minute)},
+		{ID: "future", UID: "future", Name: "Future Planning", Start: now.Add(time.Hour), End: now.Add(2 * time.Hour)},
+		{ID: "all-day", UID: "all-day", Name: "All Day Hold", Start: now.Add(3 * time.Hour), End: now.Add(27 * time.Hour), AllDay: true},
+		{ID: "cancelled", UID: "cancelled", Name: "Cancelled Planning", Start: now.Add(4 * time.Hour), End: now.Add(5 * time.Hour), Cancelled: true},
+	}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	nextResp, err := PreviewToolCall(ctx, svc, "next_meetings", json.RawMessage(`{"limit":10}`))
+	if err != nil {
+		t.Fatalf("next_meetings preview error = %v", err)
+	}
+	nextOut, ok := nextResp.Result.(meetingsOutput)
+	if !ok {
+		t.Fatalf("next_meetings result type = %T", nextResp.Result)
+	}
+	if got := meetingNames(nextOut.Meetings); !slices.Equal(got, []string{"Current Planning", "Future Planning"}) {
+		t.Fatalf("next_meetings names = %#v, want current and future non-all-day non-cancelled meetings", got)
+	}
+
+	currentResp, err := PreviewToolCall(ctx, svc, "current_meetings", json.RawMessage(`{"limit":10}`))
+	if err != nil {
+		t.Fatalf("current_meetings preview error = %v", err)
+	}
+	currentOut, ok := currentResp.Result.(meetingsOutput)
+	if !ok {
+		t.Fatalf("current_meetings result type = %T", currentResp.Result)
+	}
+	if got := meetingNames(currentOut.Meetings); !slices.Equal(got, []string{"Current Planning"}) {
+		t.Fatalf("current_meetings names = %#v, want only ongoing meeting", got)
+	}
+
+	searchResp, err := PreviewToolCall(ctx, svc, "search_meetings", json.RawMessage(`{"query":"future","limit":10}`))
+	if err != nil {
+		t.Fatalf("search_meetings preview error = %v", err)
+	}
+	searchOut, ok := searchResp.Result.(meetingsOutput)
+	if !ok {
+		t.Fatalf("search_meetings result type = %T", searchResp.Result)
+	}
+	if got := meetingNames(searchOut.Meetings); !slices.Equal(got, []string{"Future Planning"}) {
+		t.Fatalf("search_meetings names = %#v, want query-matched meeting", got)
+	}
+}
+
 func TestToolPreviewReportsDecodeAndUnknownToolErrors(t *testing.T) {
 	svc := newTestService(t)
 	if _, err := PreviewToolCall(context.Background(), svc, "upcoming_meetings", json.RawMessage(`{`)); err == nil || !strings.Contains(err.Error(), "decode tool arguments") {
@@ -694,6 +750,14 @@ func containsTool(values []ToolInfo, want string) bool {
 		}
 	}
 	return false
+}
+
+func meetingNames(meetings []Meeting) []string {
+	names := make([]string, 0, len(meetings))
+	for _, meeting := range meetings {
+		names = append(names, meeting.Name)
+	}
+	return names
 }
 
 func newTestService(t *testing.T) *Service {
