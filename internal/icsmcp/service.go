@@ -58,7 +58,7 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	location, timezone := resolveLocation(opts.Timezone)
+	location, timezone := resolveLocation(opts.Timezone, opts.Logger)
 	return &Service{
 		store:           store,
 		refreshInterval: opts.RefreshInterval,
@@ -77,7 +77,7 @@ func normalizeExternalURL(value string) string {
 	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
-func resolveLocation(value string) (*time.Location, string) {
+func resolveLocation(value string, logger *slog.Logger) (*time.Location, string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		value = strings.TrimSpace(os.Getenv("TZ"))
@@ -85,11 +85,12 @@ func resolveLocation(value string) (*time.Location, string) {
 	if value == "" {
 		return time.Local, time.Local.String()
 	}
-	location, err := time.LoadLocation(value)
+	location, timezone, err := loadLocation(value)
 	if err != nil {
-		return time.Local, time.Local.String()
+		logger.Warn("timezone not recognized, defaulting to UTC", "timezone", value, "error", err)
+		return time.UTC, "UTC"
 	}
-	return location, value
+	return location, timezone
 }
 
 func normalizeBuildInfo(in BuildInfo) BuildInfo {
@@ -427,11 +428,11 @@ func (s *Service) queryLocation(query UpcomingQuery) (*time.Location, string, er
 	if timezone == "" {
 		return s.location, s.timezone, nil
 	}
-	location, err := time.LoadLocation(timezone)
+	location, resolvedTimezone, err := loadLocation(timezone)
 	if err != nil {
 		return nil, "", fmt.Errorf("load timezone %q: %w", timezone, err)
 	}
-	return location, timezone, nil
+	return location, resolvedTimezone, nil
 }
 
 func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, query UpcomingQuery, location *time.Location, timezone string) []Meeting {
