@@ -811,6 +811,48 @@ func TestStoreReplaceEventsReportsInsertFailure(t *testing.T) {
 	}
 }
 
+func TestStoreReplaceEventsReportsClearEventsFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, "DROP TABLE events"); err != nil {
+		t.Fatalf("DROP TABLE events error = %v", err)
+	}
+
+	err = svc.store.replaceEvents(ctx, cal.ID, nil)
+	if err == nil || !strings.Contains(err.Error(), "clear events") {
+		t.Fatalf("replaceEvents() error = %v, want clear events", err)
+	}
+}
+
+func TestStoreReplaceEventsRollsBackPartialInsertFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	start := time.Date(2026, 6, 29, 16, 0, 0, 0, time.UTC)
+	events := []EventInstance{
+		{ID: "duplicate", UID: "uid-1", Name: "One", Start: start, End: start.Add(30 * time.Minute)},
+		{ID: "duplicate", UID: "uid-2", Name: "Two", Start: start, End: start.Add(30 * time.Minute)},
+	}
+
+	if err := svc.store.replaceEvents(ctx, cal.ID, events); err == nil {
+		t.Fatalf("replaceEvents() error = nil, want duplicate insert error")
+	}
+	cached, err := svc.store.queryEvents(ctx, start.Add(-time.Hour), start.Add(time.Hour), []string{cal.ID}, 10)
+	if err != nil {
+		t.Fatalf("queryEvents() error = %v", err)
+	}
+	if len(cached) != 0 {
+		t.Fatalf("cached events after rolled back replace = %#v, want none", cached)
+	}
+}
+
 func TestMetricsTextIncludesCalendarState(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
