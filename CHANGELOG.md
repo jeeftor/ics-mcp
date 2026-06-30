@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.70 - 2026-06-30
+
+### Changed
+- Renamed the ongoing-only meeting filter to `in_progress_only` in HTTP docs, MCP tool schemas, and debug UI defaults.
+
+### Compatibility
+- Continued accepting the legacy `only_ongoing` HTTP query parameter and MCP JSON input field.
+
 ## v1.4.69 - 2026-06-30
 
 ### Improved

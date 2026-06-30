@@ -755,7 +755,7 @@ func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	got, err := svc.UpcomingMeetings(ctx, UpcomingQuery{
 		Now:              now,
 		Query:            "planning",
-		OnlyOngoing:      true,
+		InProgressOnly:   true,
 		ExcludeAllDay:    true,
 		ExcludeCancelled: true,
 	})

@@ -101,7 +101,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `after` and `before` use RFC3339 timestamps.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `timezone`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
 
 `/healthz` is the liveness endpoint and `/readyz` is the readiness endpoint. The `z` suffix is a common convention from Kubernetes-style health checks.
 
@@ -121,7 +121,7 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 - `refresh_calendar`
 - `refresh_all_calendars`
 
-`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `only_ongoing`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`.
+`upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time. It defaults to 10 meetings and a 30 day lookahead. Day labels are compact (`Mon`, `Tue`, etc.), display times are rendered in the configured timezone, and descriptions are omitted by default. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Use `include_description: true` and optional `description_max_chars` when details are needed. Optional filters include `query`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
 
 `upcoming_meetings_by_calendar` returns the same meeting fields grouped by calendar for clients that prefer a calendar-first view. Its `limit` applies per calendar, so the default is 10 meetings per calendar.
 
