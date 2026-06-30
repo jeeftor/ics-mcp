@@ -397,6 +397,55 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	return meetings, nil
 }
 
+// NextMeeting returns the next meeting-focused event.
+func (s *Service) NextMeeting(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
+	query.Limit = 1
+	query.ExcludeAllDay = true
+	query.ExcludeCancelled = true
+	return s.UpcomingMeetings(ctx, query)
+}
+
+// TodayMeetings returns meetings for the current day in the requested display timezone.
+func (s *Service) TodayMeetings(ctx context.Context, query UpcomingQuery) ([]Meeting, error) {
+	location, _, err := s.queryLocation(query)
+	if err != nil {
+		return nil, err
+	}
+	now := query.Now
+	if now.IsZero() {
+		now = s.now()
+	}
+	localNow := now.In(location)
+	localStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	query.Now = now
+	query.LookaheadDays = 1
+	query.After = localStart.UTC()
+	query.Before = localStart.Add(24 * time.Hour).UTC()
+	query.ExcludeCancelled = true
+	return s.UpcomingMeetings(ctx, query)
+}
+
+// FreeBusy returns busy blocks without meeting titles or descriptions.
+func (s *Service) FreeBusy(ctx context.Context, query UpcomingQuery) ([]BusyBlock, error) {
+	query.IncludeDescription = false
+	meetings, err := s.UpcomingMeetings(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	busy := make([]BusyBlock, 0, len(meetings))
+	for _, meeting := range meetings {
+		busy = append(busy, BusyBlock{
+			When:            meeting.When,
+			Calendar:        meeting.Calendar,
+			Duration:        meeting.Duration,
+			DurationMinutes: meeting.DurationMinutes,
+			Ongoing:         meeting.Ongoing,
+			AllDay:          meeting.AllDay,
+		})
+	}
+	return busy, nil
+}
+
 // UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
 func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)
@@ -418,6 +467,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 			index = len(groups)
 			groupIndex[meeting.CalendarID] = index
 			groups = append(groups, CalendarMeetingGroup{
+				Calendar:     meeting.CalendarName,
 				CalendarID:   meeting.CalendarID,
 				CalendarName: meeting.CalendarName,
 			})
@@ -463,7 +513,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 		ongoing := event.Start.Before(now) && event.End.After(now)
 		localStart := event.Start.In(location)
 		localEnd := event.End.In(location)
-		meetings = append(meetings, Meeting{
+		meeting := Meeting{
 			Day:             localStart.Format("Mon"),
 			Date:            localStart.Format("2006-01-02"),
 			Start:           localStart.Format("15:04"),
@@ -482,7 +532,13 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 			Recurring:       event.Recurring,
 			RecurrenceID:    event.RecurrenceID,
 			StartTime:       event.Start,
-		})
+			Detail:          query.Detail,
+		}
+		meeting.When = compactWhen(meeting)
+		meeting.Title = meeting.Name
+		meeting.Calendar = meeting.CalendarName
+		meeting.Duration = durationText(meeting.DurationMinutes)
+		meetings = append(meetings, meeting)
 	}
 	return meetings
 }

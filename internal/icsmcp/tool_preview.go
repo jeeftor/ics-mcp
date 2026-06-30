@@ -31,11 +31,14 @@ type ToolCallResponse struct {
 // ToolInfos returns the MCP tools exposed by this server.
 func ToolInfos() []ToolInfo {
 	return []ToolInfo{
-		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings by time. Supports query, timezone, time, in-progress, all-day, and cancelled filters; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","query":"","in_progress_only":false,"exclude_all_day":false,"exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "query": "", "in_progress_only": false, "exclude_all_day": false, "exclude_cancelled": true, "include_description": false}},
-		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","query":"","exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "query": "", "exclude_cancelled": true, "include_description": false}},
-		{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "include_description": false}},
+		{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings by time. Compact output is default; pass detail=full for verbose fields. Descriptions are opt-in.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","query":"","in_progress_only":false,"exclude_all_day":false,"exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "query": "", "in_progress_only": false, "exclude_all_day": false, "exclude_cancelled": true, "include_description": false}},
+		{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Compact output is default; limit applies per calendar.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","query":"","exclude_cancelled":true,"include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "query": "", "exclude_cancelled": true, "include_description": false}},
+		{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting.", Category: "read", ReadOnly: true, InputExample: `{"timezone":""}`, DefaultArguments: map[string]any{"timezone": ""}},
+		{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events, using compact output by default.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"lookahead_days":30,"timezone":"","include_description":false}`, DefaultArguments: map[string]any{"limit": 10, "lookahead_days": 30, "timezone": "", "include_description": false}},
+		{Name: "today_meetings", Description: "List meetings for the current display day.", Category: "read", ReadOnly: true, InputExample: `{"timezone":"","include_description":false}`, DefaultArguments: map[string]any{"timezone": "", "include_description": false}},
 		{Name: "current_meetings", Description: "List meetings currently in progress.", Category: "read", ReadOnly: true, InputExample: `{"exclude_all_day":true,"exclude_cancelled":true}`, DefaultArguments: map[string]any{"exclude_all_day": true, "exclude_cancelled": true}},
 		{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings.", Category: "read", ReadOnly: true, InputExample: `{"query":"planning","limit":10,"exclude_cancelled":true}`, DefaultArguments: map[string]any{"query": "", "limit": 10, "exclude_cancelled": true}},
+		{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions.", Category: "read", ReadOnly: true, InputExample: `{"limit":10,"exclude_cancelled":true}`, DefaultArguments: map[string]any{"limit": 10, "exclude_cancelled": true}},
 		{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
@@ -64,6 +67,13 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 		return ToolCallResponse{Tool: name, Result: groupedMeetingsOutput{Calendars: groups}}, err
+	case "next_meeting":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		meetings, err := svc.NextMeeting(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
 	case "next_meetings":
 		var in UpcomingQuery
 		if err := decodeToolArgs(raw, &in); err != nil {
@@ -72,6 +82,13 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		in.ExcludeAllDay = true
 		in.ExcludeCancelled = true
 		meetings, err := svc.UpcomingMeetings(ctx, in)
+		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "today_meetings":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		meetings, err := svc.TodayMeetings(ctx, in)
 		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
 	case "current_meetings":
 		var in UpcomingQuery
@@ -88,6 +105,13 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		meetings, err := svc.UpcomingMeetings(ctx, in)
 		return ToolCallResponse{Tool: name, Result: meetingsOutput{Meetings: meetings}}, err
+	case "free_busy":
+		var in UpcomingQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		busy, err := svc.FreeBusy(ctx, in)
+		return ToolCallResponse{Tool: name, Result: freeBusyOutput{Busy: busy}}, err
 	case "server_status":
 		status, err := svc.Status(ctx)
 		return ToolCallResponse{Tool: name, Result: statusOutput{Status: status}}, err

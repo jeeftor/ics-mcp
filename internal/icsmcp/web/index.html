@@ -396,7 +396,7 @@
     }
 
     async function loadMeetings() {
-      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true'));
+      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true&detail=full'));
       if (groups.length === 0) {
         meetingsBody.innerHTML = '<div class="block muted">No upcoming meetings in the cache.</div>';
         return;
