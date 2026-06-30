@@ -475,6 +475,28 @@ func TestServiceResolvesTimezoneFormats(t *testing.T) {
 	}
 }
 
+func TestServiceDefaultTimezoneIgnoresContainerTZ(t *testing.T) {
+	t.Setenv("TZ", "America/Denver")
+	originalLocal := time.Local
+	time.Local = time.FixedZone("Test/Local", 0)
+	t.Cleanup(func() { time.Local = originalLocal })
+
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{})
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Timezone != "Test/Local" {
+		t.Fatalf("timezone = %q, want Test/Local", status.Timezone)
+	}
+}
+
 func TestServiceWarnsAndDefaultsUTCForInvalidTimezone(t *testing.T) {
 	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
 	if err != nil {
