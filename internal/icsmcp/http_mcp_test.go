@@ -37,7 +37,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-layout", "rest-fields", "rest-field-options", "csv", "summary", "status", "links", "custom", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "csv", "summary", "status", "links", "custom", "day date range", "day start", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -355,6 +355,19 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	csvBody, csvContentType := doText(t, http.MethodGet, server.URL+"/api/events.csv?fields=when,title", nil, "")
 	if !strings.Contains(csvContentType, "text/csv") || !strings.Contains(csvBody, "when,title") || !strings.Contains(csvBody, "Planning") || strings.Contains(csvBody, "calendar") {
 		t.Fatalf("csv response content-type=%q body=%s", csvContentType, csvBody)
+	}
+	if strings.Contains(csvBody, "UTC") {
+		t.Fatalf("csv response should hide timezone by default: %s", csvBody)
+	}
+
+	startOnlyBody, _ := doText(t, http.MethodGet, server.URL+"/api/events.csv?fields=when,title&time_style=start", nil, "")
+	if !strings.Contains(startOnlyBody, "Mon 1:00 PM,Planning") || strings.Contains(startOnlyBody, "2:00") || strings.Contains(startOnlyBody, "Jun 29") {
+		t.Fatalf("start-only csv response body=%s", startOnlyBody)
+	}
+
+	withTimezoneBody, _ := doText(t, http.MethodGet, server.URL+"/api/events.csv?fields=when,title&show_timezone=true", nil, "")
+	if !strings.Contains(withTimezoneBody, "UTC") {
+		t.Fatalf("csv response should include timezone when requested: %s", withTimezoneBody)
 	}
 
 	var spec map[string]any

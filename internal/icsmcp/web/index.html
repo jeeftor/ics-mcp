@@ -294,6 +294,18 @@
                 <label><input type="checkbox" value="end"> end</label>
               </div>
               <div class="rest-control-row"><label for="rest-fields">Fields</label><input id="rest-fields" value="when,calendar,title,duration"></div>
+              <div class="rest-control-row">
+                <label for="rest-time-style">Time</label>
+                <select id="rest-time-style">
+                  <option value="date_range">day date range</option>
+                  <option value="range">day range</option>
+                  <option value="start">day start</option>
+                  <option value="date_start">day date start</option>
+                  <option value="time_range">time range</option>
+                  <option value="time_start">time start</option>
+                </select>
+              </div>
+              <label><input id="rest-show-timezone" type="checkbox"> show timezone</label>
             </div>
             <div class="rest-control-row"><label for="rest-limit">Limit</label><input id="rest-limit" type="number" min="1" value="10"></div>
             <div class="rest-control-row"><label for="rest-window">Window</label><select id="rest-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></div>
@@ -414,6 +426,8 @@
     const restLayout = document.querySelector('#rest-layout');
     const restFields = document.querySelector('#rest-fields');
     const restFieldOptions = document.querySelector('#rest-field-options');
+    const restTimeStyle = document.querySelector('#rest-time-style');
+    const restShowTimezone = document.querySelector('#rest-show-timezone');
     const runREST = document.querySelector('#run-rest');
     const openREST = document.querySelector('#open-rest');
     const restStatus = document.querySelector('#rest-status');
@@ -769,7 +783,11 @@
         addQueryValue(url, 'timezone', document.querySelector('#rest-timezone').value);
         addQueryValue(url, 'sort', document.querySelector('#rest-sort').value);
         addQueryValue(url, 'query', document.querySelector('#rest-query').value);
-        if (format !== 'json' && format !== 'txt') addQueryValue(url, 'fields', restFields.value);
+        if (format !== 'json' && format !== 'txt') {
+          addQueryValue(url, 'fields', restFields.value);
+          addQueryValue(url, 'time_style', restTimeStyle.value);
+          setBoolQuery(url, 'show_timezone', restShowTimezone.checked);
+        }
         if (selectedCalendarID) url.searchParams.append('calendar_id', selectedCalendarID);
         setBoolQuery(url, 'include_description', document.querySelector('#rest-include-description').checked);
         setBoolQuery(url, 'include_links', document.querySelector('#rest-include-links').checked, true);
@@ -871,9 +889,9 @@
       const base = window.location.origin;
       const examples = [
         ['/api/events/today?format=txt&limit=5', 'Today text'],
-        ['/api/events/next.ascii?limit=3', 'Next ASCII'],
-        ['/api/events/by-calendar?format=md&fields=when,calendar,title,duration&exclude_cancelled=true', 'Grouped Markdown'],
-        ['/api/events.csv?fields=when,title&limit=10', 'Events CSV'],
+        ['/api/events/next.ascii?limit=3&time_style=start', 'Next ASCII'],
+        ['/api/events/by-calendar?format=md&fields=when,calendar,title,duration&time_style=range&exclude_cancelled=true', 'Grouped Markdown'],
+        ['/api/events.csv?fields=when,title&time_style=start&limit=10', 'Events CSV'],
         ['/api/free-busy?range=today_tomorrow&format=json', 'Free/busy JSON'],
         ['/openapi.json', 'OpenAPI']
       ];
@@ -1037,6 +1055,8 @@
       restCalendar,
       restFormat,
       restFields,
+      restTimeStyle,
+      restShowTimezone,
       document.querySelector('#rest-limit'),
       document.querySelector('#rest-window'),
       document.querySelector('#rest-day'),

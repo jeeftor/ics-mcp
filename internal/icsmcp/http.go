@@ -543,24 +543,43 @@ func negotiatedFormat(r *http.Request, pathFormat string) string {
 }
 
 func writeFormatted(w http.ResponseWriter, r *http.Request, value any, pathFormat string) {
+	options := tableFormatOptionsFromRequest(r)
 	switch negotiatedFormat(r, pathFormat) {
 	case "html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(renderHTML(value, selectedFields(r))))
+		_, _ = w.Write([]byte(renderHTML(value, options)))
 	case "md":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		_, _ = w.Write([]byte(renderMarkdown(value, selectedFields(r))))
+		_, _ = w.Write([]byte(renderMarkdown(value, options)))
 	case "txt":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte(renderText(value)))
 	case "ascii":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte(renderASCII(value, selectedFields(r))))
+		_, _ = w.Write([]byte(renderASCII(value, options)))
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		_, _ = w.Write([]byte(renderCSV(value, selectedFields(r))))
+		_, _ = w.Write([]byte(renderCSV(value, options)))
 	default:
 		writeJSON(w, value, nil)
+	}
+}
+
+type tableFormatOptions struct {
+	fields       []string
+	timeStyle    string
+	showTimezone bool
+}
+
+func tableFormatOptionsFromRequest(r *http.Request) tableFormatOptions {
+	timeStyle := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("time_style")))
+	if timeStyle == "" {
+		timeStyle = "date_range"
+	}
+	return tableFormatOptions{
+		fields:       selectedFields(r),
+		timeStyle:    timeStyle,
+		showTimezone: parseBoolQuery(r.URL.Query().Get("show_timezone")),
 	}
 }
 
@@ -582,12 +601,12 @@ func selectedFields(r *http.Request) []string {
 	return fields
 }
 
-func renderHTML(value any, fields []string) string {
-	return "<!doctype html><html><head><style>body{font-family:system-ui,sans-serif}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}</style></head><body>" + renderHTMLBody(value, fields) + "</body></html>"
+func renderHTML(value any, options tableFormatOptions) string {
+	return "<!doctype html><html><head><style>body{font-family:system-ui,sans-serif}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}</style></head><body>" + renderHTMLBody(value, options) + "</body></html>"
 }
 
-func renderMarkdown(value any, fields []string) string {
-	return "# " + renderTitle(value) + "\n\n" + renderMarkdownBody(value, fields)
+func renderMarkdown(value any, options tableFormatOptions) string {
+	return "# " + renderTitle(value) + "\n\n" + renderMarkdownBody(value, options)
 }
 
 func renderText(value any) string {
@@ -615,40 +634,40 @@ func renderText(value any) string {
 	return b.String()
 }
 
-func renderASCII(value any, fields []string) string {
+func renderASCII(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
 	case meetingsOutput:
-		return renderMeetingsASCII(typed.Meetings, fields)
+		return renderMeetingsASCII(typed.Meetings, options)
 	case groupedMeetingsOutput:
-		return renderGroupsASCII(typed.Calendars, fields)
+		return renderGroupsASCII(typed.Calendars, options)
 	case freeBusyOutput:
-		return renderBusyASCII(typed.Busy, fields)
+		return renderBusyASCII(typed.Busy, options)
 	case []Meeting:
-		return renderMeetingsASCII(typed, fields)
+		return renderMeetingsASCII(typed, options)
 	case []CalendarMeetingGroup:
-		return renderGroupsASCII(typed, fields)
+		return renderGroupsASCII(typed, options)
 	case []BusyBlock:
-		return renderBusyASCII(typed, fields)
+		return renderBusyASCII(typed, options)
 	default:
 		return renderText(value)
 	}
 }
 
-func renderCSV(value any, fields []string) string {
+func renderCSV(value any, options tableFormatOptions) string {
 	var rows [][]string
 	switch typed := value.(type) {
 	case meetingsOutput:
-		rows = meetingRows(typed.Meetings, fields)
+		rows = meetingRows(typed.Meetings, options)
 	case groupedMeetingsOutput:
-		rows = groupRows(typed.Calendars, fields)
+		rows = groupRows(typed.Calendars, options)
 	case freeBusyOutput:
-		rows = busyRows(typed.Busy, fields)
+		rows = busyRows(typed.Busy, options)
 	case []Meeting:
-		rows = meetingRows(typed, fields)
+		rows = meetingRows(typed, options)
 	case []CalendarMeetingGroup:
-		rows = groupRows(typed, fields)
+		rows = groupRows(typed, options)
 	case []BusyBlock:
-		rows = busyRows(typed, fields)
+		rows = busyRows(typed, options)
 	default:
 		return renderText(value)
 	}
@@ -676,72 +695,73 @@ func renderTitle(value any) string {
 	}
 }
 
-func renderHTMLBody(value any, fields []string) string {
+func renderHTMLBody(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
 	case meetingsOutput:
-		return renderMeetingsHTML(typed.Meetings, fields)
+		return renderMeetingsHTML(typed.Meetings, options)
 	case groupedMeetingsOutput:
-		return renderGroupsHTML(typed.Calendars, fields)
+		return renderGroupsHTML(typed.Calendars, options)
 	case freeBusyOutput:
-		return renderBusyHTML(typed.Busy, fields)
+		return renderBusyHTML(typed.Busy, options)
 	case []Meeting:
-		return renderMeetingsHTML(typed, fields)
+		return renderMeetingsHTML(typed, options)
 	case []CalendarMeetingGroup:
-		return renderGroupsHTML(typed, fields)
+		return renderGroupsHTML(typed, options)
 	case []BusyBlock:
-		return renderBusyHTML(typed, fields)
+		return renderBusyHTML(typed, options)
 	default:
 		return "<pre>" + html.EscapeString(renderText(value)) + "</pre>"
 	}
 }
 
-func renderMarkdownBody(value any, fields []string) string {
+func renderMarkdownBody(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
 	case meetingsOutput:
-		return renderMeetingsMarkdown(typed.Meetings, fields)
+		return renderMeetingsMarkdown(typed.Meetings, options)
 	case groupedMeetingsOutput:
-		return renderGroupsMarkdown(typed.Calendars, fields)
+		return renderGroupsMarkdown(typed.Calendars, options)
 	case freeBusyOutput:
-		return renderBusyMarkdown(typed.Busy, fields)
+		return renderBusyMarkdown(typed.Busy, options)
 	case []Meeting:
-		return renderMeetingsMarkdown(typed, fields)
+		return renderMeetingsMarkdown(typed, options)
 	case []CalendarMeetingGroup:
-		return renderGroupsMarkdown(typed, fields)
+		return renderGroupsMarkdown(typed, options)
 	case []BusyBlock:
-		return renderBusyMarkdown(typed, fields)
+		return renderBusyMarkdown(typed, options)
 	default:
 		return "```json\n" + strings.TrimSpace(renderText(value)) + "\n```\n"
 	}
 }
 
-func renderMeetingsHTML(meetings []Meeting, fields []string) string {
+func renderMeetingsHTML(meetings []Meeting, options tableFormatOptions) string {
 	if len(meetings) == 0 {
 		return "<p>No meetings.</p>"
 	}
 	var b strings.Builder
-	writeHTMLTable(&b, fieldLabels(fields), meetingRows(meetings, fields)[1:])
+	writeHTMLTable(&b, fieldLabels(options.fields), meetingRows(meetings, options)[1:])
 	return b.String()
 }
 
-func renderGroupsHTML(groups []CalendarMeetingGroup, fields []string) string {
+func renderGroupsHTML(groups []CalendarMeetingGroup, options tableFormatOptions) string {
 	if len(groups) == 0 {
 		return "<p>No meetings.</p>"
 	}
 	var b strings.Builder
 	for _, group := range groups {
 		_, _ = fmt.Fprintf(&b, "<h2>%s</h2>", html.EscapeString(group.CalendarName))
-		b.WriteString(renderMeetingsHTML(group.Meetings, fields))
+		b.WriteString(renderMeetingsHTML(group.Meetings, options))
 	}
 	return b.String()
 }
 
-func renderBusyHTML(busy []BusyBlock, fields []string) string {
-	busyFields := busyFields(fields)
+func renderBusyHTML(busy []BusyBlock, options tableFormatOptions) string {
+	busyOptions := options
+	busyOptions.fields = busyFields(options.fields)
 	if len(busy) == 0 {
 		return "<p>No busy blocks.</p>"
 	}
 	var b strings.Builder
-	writeHTMLTable(&b, fieldLabels(busyFields), busyRows(busy, busyFields)[1:])
+	writeHTMLTable(&b, fieldLabels(busyOptions.fields), busyRows(busy, busyOptions)[1:])
 	return b.String()
 }
 
@@ -761,32 +781,33 @@ func writeHTMLTable(b *strings.Builder, headers []string, rows [][]string) {
 	b.WriteString("</tbody></table>")
 }
 
-func renderMeetingsMarkdown(meetings []Meeting, fields []string) string {
+func renderMeetingsMarkdown(meetings []Meeting, options tableFormatOptions) string {
 	if len(meetings) == 0 {
 		return "No meetings.\n"
 	}
-	return renderMarkdownTable(fieldLabels(fields), meetingRows(meetings, fields)[1:])
+	return renderMarkdownTable(fieldLabels(options.fields), meetingRows(meetings, options)[1:])
 }
 
-func renderGroupsMarkdown(groups []CalendarMeetingGroup, fields []string) string {
+func renderGroupsMarkdown(groups []CalendarMeetingGroup, options tableFormatOptions) string {
 	if len(groups) == 0 {
 		return "No meetings.\n"
 	}
 	var b strings.Builder
 	for _, group := range groups {
 		_, _ = fmt.Fprintf(&b, "## %s\n\n", markdownCell(group.CalendarName))
-		b.WriteString(renderMeetingsMarkdown(group.Meetings, fields))
+		b.WriteString(renderMeetingsMarkdown(group.Meetings, options))
 		b.WriteString("\n")
 	}
 	return b.String()
 }
 
-func renderBusyMarkdown(busy []BusyBlock, fields []string) string {
-	busyFields := busyFields(fields)
+func renderBusyMarkdown(busy []BusyBlock, options tableFormatOptions) string {
+	busyOptions := options
+	busyOptions.fields = busyFields(options.fields)
 	if len(busy) == 0 {
 		return "No busy blocks.\n"
 	}
-	return renderMarkdownTable(fieldLabels(busyFields), busyRows(busy, busyFields)[1:])
+	return renderMarkdownTable(fieldLabels(busyOptions.fields), busyRows(busy, busyOptions)[1:])
 }
 
 func renderMarkdownTable(headers []string, rows [][]string) string {
@@ -823,59 +844,60 @@ func markdownCell(value string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(value, "\n", " "), "|", "\\|")
 }
 
-func renderMeetingsASCII(meetings []Meeting, fields []string) string {
+func renderMeetingsASCII(meetings []Meeting, options tableFormatOptions) string {
 	if len(meetings) == 0 {
 		return "No meetings.\n"
 	}
-	rows := meetingRows(meetings, fields)
-	rows[0] = fieldLabels(fields)
+	rows := meetingRows(meetings, options)
+	rows[0] = fieldLabels(options.fields)
 	return renderASCIITable(rows)
 }
 
-func renderGroupsASCII(groups []CalendarMeetingGroup, fields []string) string {
+func renderGroupsASCII(groups []CalendarMeetingGroup, options tableFormatOptions) string {
 	if len(groups) == 0 {
 		return "No meetings.\n"
 	}
 	var b strings.Builder
 	for _, group := range groups {
 		_, _ = fmt.Fprintf(&b, "%s\n", group.CalendarName)
-		b.WriteString(renderMeetingsASCII(group.Meetings, fields))
+		b.WriteString(renderMeetingsASCII(group.Meetings, options))
 	}
 	return b.String()
 }
 
-func renderBusyASCII(busy []BusyBlock, fields []string) string {
-	busyFields := busyFields(fields)
+func renderBusyASCII(busy []BusyBlock, options tableFormatOptions) string {
+	busyOptions := options
+	busyOptions.fields = busyFields(options.fields)
 	if len(busy) == 0 {
 		return "No busy blocks.\n"
 	}
-	rows := busyRows(busy, busyFields)
-	rows[0] = fieldLabels(busyFields)
+	rows := busyRows(busy, busyOptions)
+	rows[0] = fieldLabels(busyOptions.fields)
 	return renderASCIITable(rows)
 }
 
-func meetingRows(meetings []Meeting, fields []string) [][]string {
-	rows := [][]string{fields}
+func meetingRows(meetings []Meeting, options tableFormatOptions) [][]string {
+	rows := [][]string{options.fields}
 	for _, meeting := range meetings {
-		row := make([]string, 0, len(fields))
-		for _, field := range fields {
-			row = append(row, meetingField(meeting, field))
+		row := make([]string, 0, len(options.fields))
+		for _, field := range options.fields {
+			row = append(row, meetingField(meeting, field, options))
 		}
 		rows = append(rows, row)
 	}
 	return rows
 }
 
-func groupRows(groups []CalendarMeetingGroup, fields []string) [][]string {
-	rows := [][]string{fields}
+func groupRows(groups []CalendarMeetingGroup, options tableFormatOptions) [][]string {
+	rows := [][]string{options.fields}
 	for _, group := range groups {
 		for _, meeting := range group.Meetings {
-			row := make([]string, 0, len(fields))
-			for _, field := range fields {
+			row := make([]string, 0, len(options.fields))
+			for _, field := range options.fields {
 				if field == "group" {
 					row = append(row, group.CalendarName)
 				} else {
-					row = append(row, meetingField(meeting, field))
+					row = append(row, meetingField(meeting, field, options))
 				}
 			}
 			rows = append(rows, row)
@@ -884,22 +906,22 @@ func groupRows(groups []CalendarMeetingGroup, fields []string) [][]string {
 	return rows
 }
 
-func busyRows(busy []BusyBlock, fields []string) [][]string {
-	rows := [][]string{fields}
+func busyRows(busy []BusyBlock, options tableFormatOptions) [][]string {
+	rows := [][]string{options.fields}
 	for _, block := range busy {
-		row := make([]string, 0, len(fields))
-		for _, field := range fields {
-			row = append(row, busyField(block, field))
+		row := make([]string, 0, len(options.fields))
+		for _, field := range options.fields {
+			row = append(row, busyField(block, field, options))
 		}
 		rows = append(rows, row)
 	}
 	return rows
 }
 
-func meetingField(meeting Meeting, field string) string {
+func meetingField(meeting Meeting, field string, options tableFormatOptions) string {
 	switch field {
 	case "when":
-		return meeting.When
+		return displayWhen(meeting, options)
 	case "calendar":
 		return meeting.CalendarName
 	case "title", "name":
@@ -935,10 +957,90 @@ func meetingField(meeting Meeting, field string) string {
 	}
 }
 
-func busyField(block BusyBlock, field string) string {
+func displayWhen(meeting Meeting, options tableFormatOptions) string {
+	day := meeting.Day
+	date := displayDate(meeting.Date)
+	start := displayClock(meeting.Start)
+	timeRange := displayTimeRange(meeting.Start, meeting.End)
+	if timeRange == "" {
+		timeRange = strings.TrimSpace(meeting.Start + "-" + meeting.End)
+	}
+
+	var value string
+	switch options.timeStyle {
+	case "start":
+		value = strings.TrimSpace(day + " " + start)
+	case "date_start":
+		value = strings.TrimSpace(day + " " + date + " " + start)
+	case "range":
+		value = strings.TrimSpace(day + " " + timeRange)
+	case "time_range":
+		value = timeRange
+	case "time_start":
+		value = start
+	default:
+		value = strings.TrimSpace(day + " " + date + " " + timeRange)
+	}
+	if options.showTimezone && meeting.Timezone != "" {
+		value = strings.TrimSpace(value + " " + meeting.Timezone)
+	}
+	if value != "" {
+		return value
+	}
+	if options.showTimezone {
+		return meeting.When
+	}
+	return stripTrailingTimezone(meeting.When)
+}
+
+func displayDate(value string) string {
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed.Format("Jan 2")
+	}
+	return value
+}
+
+func displayClock(value string) string {
+	hour, minute, ok := parseClock(value)
+	if !ok {
+		return value
+	}
+	return fmt.Sprintf("%d:%02d %s", hour12(hour), minute, meridiem(hour))
+}
+
+func displayTimeRange(start string, end string) string {
+	startHour, startMinute, okStart := parseClock(start)
+	endHour, endMinute, okEnd := parseClock(end)
+	if !okStart || !okEnd {
+		return ""
+	}
+	startSuffix := meridiem(startHour)
+	endSuffix := meridiem(endHour)
+	if startSuffix == endSuffix {
+		return fmt.Sprintf("%d:%02d-%d:%02d %s", hour12(startHour), startMinute, hour12(endHour), endMinute, endSuffix)
+	}
+	return fmt.Sprintf("%d:%02d %s-%d:%02d %s", hour12(startHour), startMinute, startSuffix, hour12(endHour), endMinute, endSuffix)
+}
+
+func stripTrailingTimezone(value string) string {
+	fields := strings.Fields(value)
+	if len(fields) < 2 {
+		return value
+	}
+	last := fields[len(fields)-1]
+	if strings.Contains(last, "/") || last == "UTC" || last == "GMT" {
+		return strings.TrimSpace(strings.TrimSuffix(value, last))
+	}
+	return value
+}
+
+func busyField(block BusyBlock, field string, options tableFormatOptions) string {
 	switch field {
 	case "when":
-		return block.When
+		if options.showTimezone {
+			return block.When
+		}
+		return stripTrailingTimezone(block.When)
 	case "calendar":
 		return block.Calendar
 	case "duration":
