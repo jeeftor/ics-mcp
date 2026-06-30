@@ -15,6 +15,10 @@ type groupedMeetingsOutput struct {
 	Calendars []CalendarMeetingGroup `json:"calendars"`
 }
 
+type freeBusyOutput struct {
+	Busy []BusyBlock `json:"busy"`
+}
+
 type calendarsOutput struct {
 	Calendars []CalendarStatus `json:"calendars"`
 }
@@ -64,11 +68,21 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 			return nil, groupedMeetingsOutput{Calendars: groups}, err
 		})
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
+			meetings, err := svc.NextMeeting(ctx, in)
+			return nil, meetingsOutput{Meetings: meetings}, err
+		})
 	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.ExcludeAllDay = true
 			in.ExcludeCancelled = true
 			meetings, err := svc.UpcomingMeetings(ctx, in)
+			return nil, meetingsOutput{Meetings: meetings}, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings for the current display day."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
+			meetings, err := svc.TodayMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress."},
@@ -81,6 +95,11 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			return nil, meetingsOutput{Meetings: meetings}, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
+			busy, err := svc.FreeBusy(ctx, in)
+			return nil, freeBusyOutput{Busy: busy}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, statusOutput, error) {

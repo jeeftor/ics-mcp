@@ -67,13 +67,13 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	}
 
 	var meetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &meetings)
 	if len(meetings) != 1 || meetings[0].Name != "Planning" {
 		t.Fatalf("meetings preview = %#v", meetings)
 	}
 
 	var utcMeetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&timezone=UTC", nil, &utcMeetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&timezone=UTC&detail=full", nil, &utcMeetings)
 	if len(utcMeetings) != 1 || utcMeetings[0].Timezone != "UTC" {
 		t.Fatalf("UTC meetings preview = %#v", utcMeetings)
 	}
@@ -92,7 +92,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	}
 
 	var groups []CalendarMeetingGroup
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings/by-calendar?limit=10", nil, &groups)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings/by-calendar?limit=10&detail=full", nil, &groups)
 	if len(groups) != 1 || groups[0].CalendarName != "Renamed" || len(groups[0].Meetings) != 1 {
 		t.Fatalf("grouped meetings preview = %#v", groups)
 	}
@@ -197,13 +197,13 @@ func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
 	}
 
 	var defaultMeetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &defaultMeetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &defaultMeetings)
 	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"General Meeting"}) {
 		t.Fatalf("default meeting names = %#v", got)
 	}
 
 	var explicitMeetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&calendar_id="+private.ID, nil, &explicitMeetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full&calendar_id="+private.ID, nil, &explicitMeetings)
 	if got := meetingNames(explicitMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
 		t.Fatalf("explicit meeting names = %#v", got)
 	}
@@ -220,7 +220,7 @@ func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
 		t.Fatalf("selected calendar ids = %#v, want private only", selected.CalendarIDs)
 	}
 
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &defaultMeetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &defaultMeetings)
 	if got := meetingNames(defaultMeetings); !slices.Equal(got, []string{"Private Meeting"}) {
 		t.Fatalf("default meeting names after bulk selection = %#v", got)
 	}
@@ -429,13 +429,13 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&query=plan&timezone=America%2FDenver&detail=full&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
 		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
 	}
-	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" {
+	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Timezone != "America/Denver" || query.Detail != "full" {
 		t.Fatalf("basic query fields = %#v", query)
 	}
 	if !slices.Equal(query.CalendarIDs, []string{"work", "home"}) {
@@ -482,7 +482,7 @@ func TestHTTPAPIAddCalendarRefreshesImmediately(t *testing.T) {
 	doJSON(t, http.MethodPost, server.URL+"/api/calendars", AddCalendarInput{Key: "work", Name: "Work", URL: feed.URL}, &add)
 
 	var meetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &meetings)
 	if len(meetings) != 1 || meetings[0].Name != "Planning" {
 		t.Fatalf("meetings after add = %#v", meetings)
 	}
@@ -521,7 +521,7 @@ func TestHTTPAPIRefreshCalendarRouteUpdatesCache(t *testing.T) {
 		t.Fatalf("status after manual refresh = %#v", statuses)
 	}
 	var meetings []Meeting
-	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10", nil, &meetings)
+	doJSON(t, http.MethodGet, server.URL+"/api/meetings?limit=10&detail=full", nil, &meetings)
 	if len(meetings) != 1 || meetings[0].Name != "Planning" {
 		t.Fatalf("meetings after manual refresh = %#v", meetings)
 	}
@@ -603,7 +603,9 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 		want string
 	}{
 		{name: "upcoming_meetings", args: json.RawMessage(`{"limit":10}`), want: "Planning"},
+		{name: "next_meeting", args: json.RawMessage(`{}`), want: "Planning"},
 		{name: "next_meetings", args: json.RawMessage(`{}`), want: "Planning"},
+		{name: "today_meetings", args: json.RawMessage(`{}`), want: "Planning"},
 		{name: "current_meetings", args: json.RawMessage(`{}`), want: "Planning"},
 		{name: "search_meetings", args: json.RawMessage(`{"query":"plan"}`), want: "Planning"},
 	} {
@@ -615,6 +617,15 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 		if !ok || len(out.Meetings) != 1 || out.Meetings[0].Name != tc.want {
 			t.Fatalf("%s preview = %#v", tc.name, resp)
 		}
+	}
+
+	busyResp, err := PreviewToolCall(ctx, svc, "free_busy", json.RawMessage(`{"limit":10}`))
+	if err != nil {
+		t.Fatalf("free_busy preview error = %v", err)
+	}
+	busyOut, ok := busyResp.Result.(freeBusyOutput)
+	if !ok || len(busyOut.Busy) != 1 || busyOut.Busy[0].When == "" || busyOut.Busy[0].DurationMinutes != 60 {
+		t.Fatalf("free_busy preview = %#v", busyResp)
 	}
 
 	groupResp, err := PreviewToolCall(ctx, svc, "upcoming_meetings_by_calendar", json.RawMessage(`{"limit":10}`))
@@ -779,9 +790,12 @@ func TestToolPreviewReportsDecodeErrorsForArgumentTools(t *testing.T) {
 	for _, name := range []string{
 		"upcoming_meetings",
 		"upcoming_meetings_by_calendar",
+		"next_meeting",
 		"next_meetings",
+		"today_meetings",
 		"current_meetings",
 		"search_meetings",
+		"free_busy",
 		"add_calendar",
 		"validate_calendar",
 		"update_calendar",
@@ -880,9 +894,12 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	for _, want := range []string{
 		"upcoming_meetings",
 		"upcoming_meetings_by_calendar",
+		"next_meeting",
 		"next_meetings",
+		"today_meetings",
 		"current_meetings",
 		"search_meetings",
+		"free_busy",
 		"server_status",
 		"list_calendars",
 		"add_calendar",
@@ -900,7 +917,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "detail", "include_description", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}

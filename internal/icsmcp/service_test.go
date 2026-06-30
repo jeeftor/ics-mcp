@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -939,6 +940,86 @@ func TestUpcomingMeetingsRendersConfiguredTimezone(t *testing.T) {
 	}
 	if utcMeetings[0].Start != "15:00" || utcMeetings[0].End != "15:30" || utcMeetings[0].Timezone != "UTC" {
 		t.Fatalf("timezone-overridden meeting = %#v", utcMeetings[0])
+	}
+}
+
+func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
+	meeting := Meeting{
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+		Ongoing:         true,
+		Recurring:       true,
+		MeetingURL:      "https://meet.example.test/planning",
+		MeetingURLType:  "meet",
+		Description:     "private notes",
+		RecurrenceID:    "20260630T150000Z",
+	}
+
+	data, err := json.Marshal(meeting)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	for _, want := range []string{"when", "title", "calendar", "duration", "duration_minutes", "ongoing", "recurring", "meeting_url", "meeting_url_type"} {
+		if _, ok := got[want]; !ok {
+			t.Fatalf("compact meeting JSON missing %q: %s", want, data)
+		}
+	}
+	for _, omitted := range []string{"day", "date", "start", "end", "timezone", "name", "calendar_id", "calendar_name", "recurrence_id"} {
+		if _, ok := got[omitted]; ok {
+			t.Fatalf("compact meeting JSON includes %q: %s", omitted, data)
+		}
+	}
+	if got["when"] != "Tue Jun 30 9:00-10:30 AM America/Denver" {
+		t.Fatalf("when = %q", got["when"])
+	}
+	if got["duration"] != "1 hr 30 min" {
+		t.Fatalf("duration = %q", got["duration"])
+	}
+}
+
+func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
+	meeting := Meeting{
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		Description:     "private notes",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+		Recurring:       true,
+		RecurrenceID:    "20260630T150000Z",
+		Detail:          "full",
+	}
+
+	data, err := json.Marshal(meeting)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	for _, want := range []string{"day", "date", "start", "end", "timezone", "duration_minutes", "name", "description", "calendar_id", "calendar_name", "recurring", "recurrence_id"} {
+		if _, ok := got[want]; !ok {
+			t.Fatalf("full meeting JSON missing %q: %s", want, data)
+		}
+	}
+	if _, ok := got["when"]; ok {
+		t.Fatalf("full meeting JSON includes compact when: %s", data)
 	}
 }
 

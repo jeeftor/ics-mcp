@@ -2,6 +2,12 @@
 
 ## v1.4.75 - 2026-06-30
 
+### Changed
+- Made MCP/API meeting output compact by default for lower token usage. Use `detail: "full"` or `detail=full` for the verbose field set.
+
+### Added
+- Added token-efficient read tools: `next_meeting`, `today_meetings`, and `free_busy`.
+
 ### Improved
 - Split Docker publishing out of GoReleaser so release binaries and per-architecture Docker images run in parallel.
 - Started release tests, GoReleaser, and Docker image jobs concurrently so tests no longer block artifact publishing.
