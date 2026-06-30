@@ -220,17 +220,28 @@ func TestHTTPAPIReportsBadRequestsAndMethodErrors(t *testing.T) {
 		wantBody   string
 	}{
 		{name: "health method", method: http.MethodPost, path: "/healthz", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "ready method", method: http.MethodPost, path: "/readyz", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "metrics method", method: http.MethodPost, path: "/metrics", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "status method", method: http.MethodPost, path: "/api/status", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "meetings invalid limit", method: http.MethodGet, path: "/api/meetings?limit=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
 		{name: "meetings invalid lookahead", method: http.MethodGet, path: "/api/meetings?lookahead_days=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
 		{name: "meetings invalid description max", method: http.MethodGet, path: "/api/meetings?description_max_chars=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
 		{name: "meetings invalid after", method: http.MethodGet, path: "/api/meetings?after=not-a-time", wantStatus: http.StatusBadRequest, wantBody: "cannot parse"},
 		{name: "meetings invalid before", method: http.MethodGet, path: "/api/meetings?before=not-a-time", wantStatus: http.StatusBadRequest, wantBody: "cannot parse"},
+		{name: "grouped meetings method", method: http.MethodPost, path: "/api/meetings/by-calendar", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "grouped meetings invalid limit", method: http.MethodGet, path: "/api/meetings/by-calendar?limit=bogus", wantStatus: http.StatusBadRequest, wantBody: "invalid syntax"},
+		{name: "tools list method", method: http.MethodPost, path: "/api/tools", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "calendar collection method", method: http.MethodPut, path: "/api/calendars", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar add bad json", method: http.MethodPost, path: "/api/calendars", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar validate method", method: http.MethodGet, path: "/api/calendars/validate", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar validate bad json", method: http.MethodPost, path: "/api/calendars/validate", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar empty id", method: http.MethodGet, path: "/api/calendars/", wantStatus: http.StatusNotFound, wantBody: "404 page not found"},
 		{name: "calendar patch bad json", method: http.MethodPatch, path: "/api/calendars/missing", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
+		{name: "calendar item unsupported method", method: http.MethodPost, path: "/api/calendars/missing", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "calendar refresh method", method: http.MethodGet, path: "/api/calendars/missing/refresh", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
 		{name: "tools bad json", method: http.MethodPost, path: "/api/tools/upcoming_meetings/call", body: "{", wantStatus: http.StatusBadRequest, wantBody: "unexpected EOF"},
 		{name: "tools method", method: http.MethodGet, path: "/api/tools/upcoming_meetings/call", wantStatus: http.StatusMethodNotAllowed, wantBody: "feature not supported"},
+		{name: "unknown admin path", method: http.MethodGet, path: "/nope", wantStatus: http.StatusNotFound, wantBody: "404 page not found"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req, err := http.NewRequest(tc.method, server.URL+tc.path, strings.NewReader(tc.body))

@@ -97,6 +97,25 @@ func TestServeCommandRejectsInvalidLogLevelBeforeStarting(t *testing.T) {
 	}
 }
 
+func TestServeCommandTimezoneHelpMentionsOnlyAppTimezoneConfig(t *testing.T) {
+	cmd := NewRootCommand()
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"serve", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(serve --help) error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "defaults to ICSMCP_TIMEZONE or local time") {
+		t.Fatalf("serve help missing app timezone default:\n%s", got)
+	}
+	if strings.Contains(got, "TZ") {
+		t.Fatalf("serve help still mentions generic TZ:\n%s", got)
+	}
+}
+
 func TestParseLogLevel(t *testing.T) {
 	tests := map[string]slog.Level{
 		"":        slog.LevelInfo,

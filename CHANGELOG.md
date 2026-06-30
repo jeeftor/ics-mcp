@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.16 - 2026-06-30
+
+### Fixed
+- Removed stale `TZ` wording from the `--timezone` CLI help now that app timezone configuration uses `ICSMCP_TIMEZONE` or `--timezone`.
+
+### Improved
+- Expanded HTTP API edge-case coverage for method errors, grouped meeting query parsing, calendar item routing, and unknown admin paths.
+
 ## v1.4.15 - 2026-06-30
 
 ### Changed
