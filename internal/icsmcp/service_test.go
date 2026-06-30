@@ -60,6 +60,44 @@ func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *tes
 	}
 }
 
+func TestImportStartupCalendarsReturnsEnvUpsertErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	_, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_startup_calendar_insert
+		BEFORE INSERT ON calendars
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked startup calendar insert');
+		END`)
+	if err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	err = svc.ImportStartupCalendars(ctx, map[string]string{
+		"ICSMCP_CALENDAR_WORK": "https://example.test/work.ics",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "insert calendar") {
+		t.Fatalf("ImportStartupCalendars() error = %v, want insert calendar", err)
+	}
+}
+
+func TestImportStartupCalendarsReturnsCLIUpsertErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	_, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_startup_cli_calendar_insert
+		BEFORE INSERT ON calendars
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked startup cli calendar insert');
+		END`)
+	if err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	err = svc.ImportStartupCalendars(ctx, nil, []string{"work=https://example.test/work.ics"})
+	if err == nil || !strings.Contains(err.Error(), "insert calendar") {
+		t.Fatalf("ImportStartupCalendars() error = %v, want insert calendar", err)
+	}
+}
+
 func TestCLIStartupImportNormalizesKeysAndRejectsInvalidAssignments(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
