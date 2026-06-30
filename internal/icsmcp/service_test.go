@@ -620,6 +620,49 @@ func TestSetGeneralQueryCalendarsRollsBackWhenSaveFails(t *testing.T) {
 	}
 }
 
+func TestSetGeneralQueryCalendarsReportsClearFailures(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `CREATE TRIGGER fail_selection_clear
+		BEFORE UPDATE OF include_in_general_queries ON calendars
+		WHEN NEW.include_in_general_queries = 0
+		BEGIN
+			SELECT RAISE(FAIL, 'blocked selection clear');
+		END`); err != nil {
+		t.Fatalf("CREATE TRIGGER error = %v", err)
+	}
+
+	_, err = svc.SetGeneralQueryCalendars(ctx, nil)
+	if err == nil || !strings.Contains(err.Error(), "clear calendar selection") {
+		t.Fatalf("SetGeneralQueryCalendars() error = %v, want clear calendar selection", err)
+	}
+
+	selection, err := svc.GeneralQueryCalendars(ctx)
+	if err != nil {
+		t.Fatalf("GeneralQueryCalendars() error = %v", err)
+	}
+	if !slices.Equal(selection.CalendarIDs, []string{cal.ID}) {
+		t.Fatalf("selection after failed clear = %#v, want original calendar selected", selection)
+	}
+}
+
+func TestReplaceEventsReportsClosedStoreErrors(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	if err := svc.store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	err := svc.ReplaceEvents(ctx, "calendar-id", []EventInstance{{Name: "Planning"}})
+	if err == nil || !strings.Contains(err.Error(), "begin replace events") {
+		t.Fatalf("ReplaceEvents() error = %v, want begin replace events", err)
+	}
+}
+
 func TestUpcomingMeetingsSupportsFilters(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
