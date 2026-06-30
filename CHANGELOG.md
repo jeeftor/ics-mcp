@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.38 - 2026-06-30
+
+### Improved
+- Expanded startup calendar import coverage for SQLite persistence failures.
+
 ## v1.4.37 - 2026-06-30
 
 ### Improved
