@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.58 - 2026-06-30
+
+### Improved
+- Expanded CLI logging coverage for slog handler writer failures and zero timestamp fallback.
+
 ## v1.4.57 - 2026-06-30
 
 ### Improved
