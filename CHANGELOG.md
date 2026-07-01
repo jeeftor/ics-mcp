@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.0.4 - 2026-07-01
 
 ### Improved
 - Polished the admin UI MCP Tools, Meetings, and REST tabs with denser tool cards, tool-backed meeting preview controls, REST hover help, and raw/rendered text previews.
