@@ -156,6 +156,16 @@ Meeting and free/busy read endpoints also accept Telegram-ready text formats: `f
 
 `upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time unless `sort` is supplied. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus the always-present status flags `ongoing`, `all_day`, `cancelled`, and `recurring`. Meeting URL fields are emitted only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `end_date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Pass `fields: ["title","start","calendar_id"]` to select only those structured fields for each meeting. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Links are included by default when found; pass `include_links: false` to hide them or `links_only: true` to return only meetings with links. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Disabled calendars require both explicit `calendar_ids` and `include_disabled: true`. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `window`, `format`, `fields`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `include_disabled`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
 
+MCP field selection example:
+
+```json
+{
+  "limit": 5,
+  "sort": "agenda",
+  "fields": ["title", "start", "end", "calendar_id"]
+}
+```
+
 Meeting read tools accept `format: "tg-text"`, `format: "tg-html"`, and `format: "tg-markdownv2"` for Telegram-ready text. Formatted MCP and `/api/tools/{name}/call` responses keep the existing structured `meetings`, `calendars`, or `busy` field and add a `text` field. Direct REST meeting and free/busy endpoints return the formatted text body as `text/plain; charset=utf-8` when `format` is non-JSON.
 
 Telegram-oriented REST examples:

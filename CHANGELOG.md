@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.7 - 2026-07-01
+
+### Improved
+- Replaced the Meetings tab comma-separated field text box with a compact checkbox field picker that keeps generated tool JSON synced.
+- Kept the Meetings tab toolbar aligned by moving the `today_meetings` broad-window hint onto its own row.
+- Added a README MCP `fields` JSON example.
+
 ## v2.0.6 - 2026-07-01
 
 ### Added
