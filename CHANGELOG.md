@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.3 - 2026-07-01
+
+### Improved
+- Added Telegram output quick links with copy buttons to the embedded admin UI setup panel.
+
 ## v1.6.2 - 2026-07-01
 
 ### Improved
