@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.8 - 2026-07-01
+
+### Improved
+- Redesigned the Meetings tab `Preview Tool Args` panel into separated control, fields, options, and action rows for cleaner spacing.
+- Fixed small horizontal overflow in the Meetings preview controls at desktop width.
+
 ## v2.0.7 - 2026-07-01
 
 ### Improved

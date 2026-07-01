@@ -94,12 +94,17 @@
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     .selection-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
     .selection-bar .spacer { flex: 1 1 auto; }
-    .meeting-query-controls { display: grid; grid-template-columns: minmax(250px, 1.2fr) 84px minmax(170px, .9fr) minmax(160px, .8fr) minmax(120px, .7fr) minmax(180px, 1fr); gap: 10px; margin: 0 0 14px; align-items: end; }
-    .meeting-query-controls label { display: grid; gap: 4px; color: var(--muted); }
-    .meeting-query-controls label.checkbox-control { grid-template-columns: auto 1fr; align-items: center; color: var(--text); }
-    .meeting-query-controls .fields-control { grid-column: 1 / span 2; min-width: 0; display: grid; gap: 4px; color: var(--muted); }
-    .meeting-query-controls .query-control { min-width: 220px; }
-    .meeting-hint { display: none; grid-column: 1 / -1; margin: -2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .meeting-query-controls { display: grid; gap: 12px; margin: 0 0 14px; }
+    .meeting-control-row { display: grid; gap: 10px; align-items: end; }
+    .meeting-main-row { grid-template-columns: minmax(260px, 1.4fr) 76px minmax(150px, .8fr) minmax(160px, .85fr) minmax(120px, .65fr) minmax(170px, 1fr); }
+    .meeting-fields-row { grid-template-columns: minmax(320px, 430px) minmax(0, 1fr); align-items: center; }
+    .meeting-options-row { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 10px 12px; border: 1px solid #e1e7eb; border-radius: 6px; background: #f7fafb; }
+    .meeting-query-controls label { display: grid; gap: 4px; min-width: 0; color: var(--muted); }
+    .meeting-query-controls input, .meeting-query-controls select { width: 100%; min-width: 0; }
+    .meeting-query-controls label.checkbox-control { grid-template-columns: auto 1fr; align-items: center; gap: 7px; color: var(--text); white-space: nowrap; }
+    .meeting-query-controls .fields-control { min-width: 0; display: grid; gap: 4px; color: var(--muted); }
+    .meeting-query-controls .query-control { min-width: 0; }
+    .meeting-hint { display: none; color: var(--muted); font-size: 12px; line-height: 1.35; }
     .meeting-hint.active { display: block; }
     .meeting-field-picker { position: relative; }
     .meeting-field-picker > summary { list-style: none; cursor: pointer; min-height: 41px; padding: 9px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: #fff; color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -110,7 +115,10 @@
     .meeting-field-options { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: min(560px, calc(100vw - 48px)); max-height: 320px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 7px 12px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 12px 28px rgba(29, 37, 44, .16); }
     .meeting-query-controls .meeting-field-options label { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: center; color: var(--text); }
     .meeting-query-controls .meeting-field-options input { margin: 0; }
-    .advanced-json { margin-top: 10px; }
+    .meeting-action-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+    .meeting-action-row .tool-controls { margin: 0; }
+    .advanced-json { margin: 0; min-width: 190px; }
+    .advanced-json[open] { flex-basis: 100%; }
     .advanced-json > summary { cursor: pointer; color: var(--text); font-weight: 700; }
     .advanced-json textarea { margin-top: 8px; min-height: 130px; }
     .rest-layout { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -139,8 +147,8 @@
     .json-node > summary { cursor: pointer; color: #e6edf3; }
     .json-leaf { margin-left: 14px; white-space: pre-wrap; }
     @media (max-width: 1080px) {
-      .meeting-query-controls { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
-      .meeting-query-controls .fields-control { grid-column: 1 / -1; min-width: 0; }
+      .meeting-main-row { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+      .meeting-fields-row { grid-template-columns: 1fr; }
     }
     @media (max-width: 760px) {
       .topbar { grid-template-columns: 1fr; align-items: start; padding: 16px 14px 12px; }
@@ -148,8 +156,10 @@
       .tabs { padding: 0 14px; overflow-x: auto; }
       main { padding: 14px; }
       form, .tool-runner, .rest-layout { grid-template-columns: 1fr; }
-      .meeting-query-controls { grid-template-columns: 1fr; }
-      .meeting-query-controls .fields-control { grid-column: auto; }
+      .meeting-main-row { grid-template-columns: 1fr; }
+      .meeting-fields-row { grid-template-columns: 1fr; }
+      .meeting-options-row { display: grid; grid-template-columns: 1fr; gap: 8px; }
+      .meeting-action-row { display: grid; grid-template-columns: 1fr; }
       .meeting-field-options { position: static; width: 100%; margin-top: 6px; grid-template-columns: 1fr; box-shadow: none; }
       .rest-control-row { grid-template-columns: 1fr; gap: 3px; }
       .kv-row { grid-template-columns: 1fr; gap: 3px; }
@@ -443,49 +453,55 @@
         <div class="block">
           <h3>Preview Tool Args</h3>
           <div class="meeting-query-controls">
-            <label title="Choose the real MCP read tool used by this preview.">Tool<select id="meeting-tool-picker"><option value="upcoming_meetings_by_calendar">upcoming_meetings_by_calendar</option><option value="upcoming_meetings">upcoming_meetings</option><option value="today_meetings">today_meetings</option><option value="next_meetings">next_meetings</option><option value="current_meetings">current_meetings</option><option value="search_meetings">search_meetings</option></select></label>
-            <label title="MCP tool limit argument. Applies per calendar for upcoming_meetings_by_calendar.">Limit<input id="meeting-limit" type="number" min="1" value="10"></label>
-            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week. today_meetings ignores broader presets and stays on the current display day.">Window preset<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
-            <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone override<input id="meeting-timezone" placeholder="America/Denver"></label>
-            <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
-            <label class="query-control" title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
-            <span id="meeting-window-hint" class="meeting-hint">today_meetings stays on the current display day and ignores broader window presets.</span>
-            <div class="fields-control" title="MCP fields applied to each meeting or busy block in structured output.">
-              <span>Fields</span>
-              <details id="meeting-field-picker" class="meeting-field-picker">
-                <summary><span id="meeting-fields-summary">9 selected</span></summary>
-                <div id="meeting-field-options" class="meeting-field-options">
-                  <label><input type="checkbox" value="when" checked> when</label>
-                  <label><input type="checkbox" value="title" checked> title</label>
-                  <label><input type="checkbox" value="calendar" checked> calendar</label>
-                  <label><input type="checkbox" value="duration" checked> duration</label>
-                  <label><input type="checkbox" value="duration_minutes" checked> duration_minutes</label>
-                  <label><input type="checkbox" value="ongoing" checked> ongoing</label>
-                  <label><input type="checkbox" value="all_day" checked> all_day</label>
-                  <label><input type="checkbox" value="cancelled" checked> cancelled</label>
-                  <label><input type="checkbox" value="recurring" checked> recurring</label>
-                  <label><input type="checkbox" value="meeting_url"> meeting_url</label>
-                  <label><input type="checkbox" value="description"> description</label>
-                  <label><input type="checkbox" value="start"> start</label>
-                  <label><input type="checkbox" value="end"> end</label>
-                  <label><input type="checkbox" value="timezone"> timezone</label>
-                  <label><input type="checkbox" value="calendar_id"> calendar_id</label>
-                </div>
-              </details>
-              <input id="meeting-fields" type="hidden" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring">
+            <div class="meeting-control-row meeting-main-row">
+              <label title="Choose the real MCP read tool used by this preview.">Tool<select id="meeting-tool-picker"><option value="upcoming_meetings_by_calendar">upcoming_meetings_by_calendar</option><option value="upcoming_meetings">upcoming_meetings</option><option value="today_meetings">today_meetings</option><option value="next_meetings">next_meetings</option><option value="current_meetings">current_meetings</option><option value="search_meetings">search_meetings</option></select></label>
+              <label title="MCP tool limit argument. Applies per calendar for upcoming_meetings_by_calendar.">Limit<input id="meeting-limit" type="number" min="1" value="10"></label>
+              <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week. today_meetings ignores broader presets and stays on the current display day.">Window preset<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
+              <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone override<input id="meeting-timezone" placeholder="America/Denver"></label>
+              <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
+              <label class="query-control" title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
             </div>
-            <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
-            <label class="checkbox-control" title="MCP tool include_description argument."><input id="meeting-include-description" type="checkbox"> descriptions</label>
-            <label class="checkbox-control" title="MCP tool include_links argument."><input id="meeting-include-links" type="checkbox" checked> links</label>
-            <label class="checkbox-control" title="MCP tool include_disabled argument. Disabled calendars still require an explicit calendar_ids list in tool callers."><input id="meeting-include-disabled" type="checkbox"> disabled calendars</label>
+            <div class="meeting-control-row meeting-fields-row">
+              <div class="fields-control" title="MCP fields applied to each meeting or busy block in structured output.">
+                <span>Fields</span>
+                <details id="meeting-field-picker" class="meeting-field-picker">
+                  <summary><span id="meeting-fields-summary">9 selected</span></summary>
+                  <div id="meeting-field-options" class="meeting-field-options">
+                    <label><input type="checkbox" value="when" checked> when</label>
+                    <label><input type="checkbox" value="title" checked> title</label>
+                    <label><input type="checkbox" value="calendar" checked> calendar</label>
+                    <label><input type="checkbox" value="duration" checked> duration</label>
+                    <label><input type="checkbox" value="duration_minutes" checked> duration_minutes</label>
+                    <label><input type="checkbox" value="ongoing" checked> ongoing</label>
+                    <label><input type="checkbox" value="all_day" checked> all_day</label>
+                    <label><input type="checkbox" value="cancelled" checked> cancelled</label>
+                    <label><input type="checkbox" value="recurring" checked> recurring</label>
+                    <label><input type="checkbox" value="meeting_url"> meeting_url</label>
+                    <label><input type="checkbox" value="description"> description</label>
+                    <label><input type="checkbox" value="start"> start</label>
+                    <label><input type="checkbox" value="end"> end</label>
+                    <label><input type="checkbox" value="timezone"> timezone</label>
+                    <label><input type="checkbox" value="calendar_id"> calendar_id</label>
+                  </div>
+                </details>
+                <input id="meeting-fields" type="hidden" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring">
+              </div>
+              <span id="meeting-window-hint" class="meeting-hint">today_meetings stays on the current display day and ignores broader window presets.</span>
+            </div>
+            <div class="meeting-options-row">
+              <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
+              <label class="checkbox-control" title="MCP tool include_description argument."><input id="meeting-include-description" type="checkbox"> descriptions</label>
+              <label class="checkbox-control" title="MCP tool include_links argument."><input id="meeting-include-links" type="checkbox" checked> links</label>
+              <label class="checkbox-control" title="MCP tool include_disabled argument. Disabled calendars still require an explicit calendar_ids list in tool callers."><input id="meeting-include-disabled" type="checkbox"> disabled calendars</label>
+            </div>
           </div>
-          <details class="advanced-json">
-            <summary>Advanced JSON</summary>
-            <label title="Actual JSON arguments sent to the selected MCP read tool. Editing this pauses auto-sync until another control changes.">Tool JSON<textarea id="meeting-tool-args" spellcheck="false"></textarea></label>
-          </details>
-          <div class="tool-controls">
+          <div class="meeting-action-row">
             <button id="run-meeting-preview" class="primary" type="button">Run Preview</button>
             <span id="meeting-preview-status" class="muted"></span>
+            <details class="advanced-json">
+              <summary>Advanced JSON</summary>
+              <label title="Actual JSON arguments sent to the selected MCP read tool. Editing this pauses auto-sync until another control changes.">Tool JSON<textarea id="meeting-tool-args" spellcheck="false"></textarea></label>
+            </details>
           </div>
         </div>
         <div id="meetings" class="meeting-groups"></div>
