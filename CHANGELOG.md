@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.5 - 2026-07-01
+
+### Improved
+- Added a Meetings tab tool selector that previews real read-tool calls for grouped, upcoming, today, next, current, and search meeting views.
+- Added a REST raw-output copy action for Telegram-oriented previews.
+- Clarified REST and Meetings control labels for window presets, legacy day/range aliases, and timezone overrides.
+
 ## v2.0.4 - 2026-07-01
 
 ### Improved
