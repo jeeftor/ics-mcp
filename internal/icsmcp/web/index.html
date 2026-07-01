@@ -330,10 +330,10 @@
               <label><input id="rest-show-timezone" type="checkbox"> show timezone</label>
             </div>
             <div class="rest-control-row"><label for="rest-limit">Limit</label><input id="rest-limit" type="number" min="1" value="10"></div>
-            <div class="rest-control-row"><label for="rest-window">Window</label><select id="rest-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></div>
-            <div class="rest-control-row"><label for="rest-day">Day</label><input id="rest-day" placeholder="today or tomorrow"></div>
-            <div class="rest-control-row"><label for="rest-range">Range</label><input id="rest-range" placeholder="today_tomorrow"></div>
-            <div class="rest-control-row"><label for="rest-timezone">Timezone</label><input id="rest-timezone" placeholder="America/Denver"></div>
+            <div class="rest-control-row"><label for="rest-window">Window preset</label><select id="rest-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></div>
+            <div class="rest-control-row"><label for="rest-day">Legacy day</label><input id="rest-day" placeholder="today or tomorrow"></div>
+            <div class="rest-control-row"><label for="rest-range">Legacy range</label><input id="rest-range" placeholder="today_tomorrow"></div>
+            <div class="rest-control-row"><label for="rest-timezone">Timezone override</label><input id="rest-timezone" placeholder="America/Denver"></div>
             <div class="rest-control-row"><label for="rest-sort">Sort</label><select id="rest-sort"><option value="">Default</option><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></div>
             <div class="rest-control-row"><label for="rest-query">Query</label><input id="rest-query" placeholder="planning"></div>
             <div class="rest-checkboxes">
@@ -363,7 +363,7 @@
                 <div id="rest-rendered-preview" class="rendered-preview"></div>
               </div>
               <div id="rest-raw-block" class="preview-block" style="display: none;">
-                <div class="preview-header">Raw</div>
+                <div class="preview-header">Raw <button id="copy-rest-telegram" class="copy-button" type="button">Copy for Telegram</button></div>
                 <pre id="rest-text-preview" class="tool-output"></pre>
               </div>
               <div class="preview-block">
@@ -420,9 +420,10 @@
         <div class="block">
           <h3>Preview Tool Args</h3>
           <div class="meeting-query-controls">
+            <label title="Choose the real MCP read tool used by this preview.">Tool<select id="meeting-tool-picker"><option value="upcoming_meetings_by_calendar">upcoming_meetings_by_calendar</option><option value="upcoming_meetings">upcoming_meetings</option><option value="today_meetings">today_meetings</option><option value="next_meetings">next_meetings</option><option value="current_meetings">current_meetings</option><option value="search_meetings">search_meetings</option></select></label>
             <label title="MCP tool limit argument. Applies per calendar for upcoming_meetings_by_calendar.">Limit<input id="meeting-limit" type="number" min="1" value="10"></label>
-            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week.">Window<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
-            <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone<input id="meeting-timezone" placeholder="America/Denver"></label>
+            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week.">Window preset<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
+            <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone override<input id="meeting-timezone" placeholder="America/Denver"></label>
             <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
             <label title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
             <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
@@ -466,6 +467,7 @@
     const toolOutput = document.querySelector('#tool-output');
     const toolStatus = document.querySelector('#tool-status');
     const runTool = document.querySelector('#run-tool');
+    const meetingToolPicker = document.querySelector('#meeting-tool-picker');
     const meetingLimit = document.querySelector('#meeting-limit');
     const meetingWindow = document.querySelector('#meeting-window');
     const meetingTimezone = document.querySelector('#meeting-timezone');
@@ -500,6 +502,7 @@
     const restRenderedBlock = document.querySelector('#rest-rendered-block');
     const restRenderedPreview = document.querySelector('#rest-rendered-preview');
     const restRenderedNote = document.querySelector('#rest-rendered-note');
+    const copyRESTTelegram = document.querySelector('#copy-rest-telegram');
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
@@ -509,6 +512,14 @@
       summary: ['when', 'calendar', 'title', 'duration'],
       status: ['when', 'calendar', 'title', 'duration', 'ongoing', 'all_day', 'cancelled', 'recurring'],
       links: ['when', 'calendar', 'title', 'meeting_url']
+    };
+    const meetingToolConfigs = {
+      upcoming_meetings_by_calendar: { path: '/api/tools/upcoming_meetings_by_calendar/call', mode: 'groups', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
+      upcoming_meetings: { path: '/api/tools/upcoming_meetings/call', mode: 'meetings', title: 'Upcoming Meetings', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
+      today_meetings: { path: '/api/tools/today_meetings/call', mode: 'meetings', title: 'Today Meetings', defaults: { sort: 'agenda', include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
+      next_meetings: { path: '/api/tools/next_meetings/call', mode: 'meetings', title: 'Next Meetings', defaults: { limit: 10, sort: 'start_time', include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
+      current_meetings: { path: '/api/tools/current_meetings/call', mode: 'meetings', title: 'Current Meetings', defaults: { exclude_all_day: true, exclude_cancelled: true, include_disabled: false, detail: 'full' } },
+      search_meetings: { path: '/api/tools/search_meetings/call', mode: 'meetings', title: 'Search Meetings', defaults: { query: '', limit: 10, sort: 'start_time', exclude_cancelled: true, include_links: true, include_disabled: false, detail: 'full' } }
     };
     let meetingArgsTouched = false;
     const endpoints = [
@@ -532,10 +543,10 @@
       'rest-time-style': 'Controls how the when column is displayed in table formats.',
       'rest-show-timezone': 'Include timezone text in formatted table output.',
       'rest-limit': 'Maximum events or busy blocks to return.',
-      'rest-window': 'Named time window preset. This is usually easier than Day or Range.',
-      'rest-day': 'Compatibility alias for a single-day window, such as today or tomorrow.',
-      'rest-range': 'Compatibility alias for a named range, such as today_tomorrow.',
-      'rest-timezone': 'Render query windows and display times in this IANA timezone.',
+      'rest-window': 'Preferred named time window preset. Use this for normal queries instead of the legacy aliases below.',
+      'rest-day': 'Legacy single-day alias. Prefer Window preset unless you need to test day= compatibility.',
+      'rest-range': 'Legacy named-range alias. Prefer Window preset unless you need to test range= compatibility.',
+      'rest-timezone': 'Optional IANA timezone override for query windows and display times.',
       'rest-sort': 'Ordering for meeting results.',
       'rest-query': 'Search text matched against title, calendar name, and cached description.',
       'rest-include-description': 'Include descriptions in meeting output. Off by default to keep responses compact.',
@@ -690,19 +701,39 @@
     }
 
     async function fetchMeetingGroupsFromTool() {
+      const request = buildMeetingToolRequest();
+      const response = await api(request.path, {
+        method: 'POST',
+        body: JSON.stringify({ arguments: request.args })
+      });
+      const result = (response && response.result) || {};
+      if (request.config.mode === 'groups') {
+        return arrayOrEmpty(result.calendars);
+      }
+      return groupFlatMeetingResults(arrayOrEmpty(result.meetings), request.config.title || request.tool);
+    }
+
+    function buildMeetingToolRequest() {
+      const tool = meetingToolPicker.value || 'upcoming_meetings_by_calendar';
+      const config = meetingToolConfigs[tool] || meetingToolConfigs.upcoming_meetings_by_calendar;
       let args;
       try {
         args = JSON.parse(meetingToolArgs.value || '{}');
       } catch (error) {
         meetingPreviewStatus.textContent = 'Invalid JSON';
         meetingsBody.innerHTML = `<div class="block error">${escapeHTML(error.message)}</div>`;
-        return [];
+        throw error;
       }
-      const response = await api('/api/tools/upcoming_meetings_by_calendar/call', {
-        method: 'POST',
-        body: JSON.stringify({ arguments: args })
-      });
-      return arrayOrEmpty(response && response.result && response.result.calendars);
+      return { tool, config, path: config.path, args };
+    }
+
+    function groupFlatMeetingResults(meetings, title) {
+      if (meetings.length === 0) return [];
+      return [{
+        calendar_name: title,
+        calendar_id: 'tool result',
+        meetings
+      }];
     }
 
     function renderMeetingGroups(groups) {
@@ -756,19 +787,30 @@
     }
 
     function meetingArgsFromControls() {
-      const args = {
-        limit: Number(meetingLimit.value) || 10,
-        timezone: meetingTimezone.value.trim(),
-        query: meetingQuery.value.trim(),
-        sort: meetingSort.value,
-        exclude_cancelled: meetingExcludeCancelled.checked,
-        include_description: meetingIncludeDescription.checked,
-        include_links: meetingIncludeLinks.checked,
-        include_disabled: meetingIncludeDisabled.checked,
-        detail: 'full'
-      };
+      const config = meetingToolConfigs[meetingToolPicker.value] || meetingToolConfigs.upcoming_meetings_by_calendar;
+      const args = { ...config.defaults };
+      if ('limit' in args) args.limit = Number(meetingLimit.value) || 10;
+      if ('timezone' in args || meetingTimezone.value.trim()) args.timezone = meetingTimezone.value.trim();
+      if ('query' in args || meetingQuery.value.trim()) args.query = meetingQuery.value.trim();
+      if ('sort' in args) args.sort = meetingSort.value;
+      if ('exclude_cancelled' in args) args.exclude_cancelled = meetingExcludeCancelled.checked;
+      if ('include_description' in args) args.include_description = meetingIncludeDescription.checked;
+      if ('include_links' in args) args.include_links = meetingIncludeLinks.checked;
+      if ('include_disabled' in args) args.include_disabled = meetingIncludeDisabled.checked;
       if (meetingWindow.value) args.window = meetingWindow.value;
       return args;
+    }
+
+    function applyMeetingToolDefaults() {
+      const config = meetingToolConfigs[meetingToolPicker.value] || meetingToolConfigs.upcoming_meetings_by_calendar;
+      const defaults = config.defaults;
+      if ('limit' in defaults) meetingLimit.value = defaults.limit;
+      if ('sort' in defaults) meetingSort.value = defaults.sort;
+      if ('query' in defaults && !defaults.query) meetingQuery.value = '';
+      if ('exclude_cancelled' in defaults) meetingExcludeCancelled.checked = Boolean(defaults.exclude_cancelled);
+      if ('include_description' in defaults) meetingIncludeDescription.checked = Boolean(defaults.include_description);
+      if ('include_links' in defaults) meetingIncludeLinks.checked = Boolean(defaults.include_links);
+      if ('include_disabled' in defaults) meetingIncludeDisabled.checked = Boolean(defaults.include_disabled);
     }
 
     function syncMeetingArgsFromControls() {
@@ -1373,6 +1415,12 @@
       window.open(request.url.toString(), '_blank', 'noopener,noreferrer');
     });
 
+    meetingToolPicker.addEventListener('change', () => {
+      meetingArgsTouched = false;
+      applyMeetingToolDefaults();
+      syncMeetingArgsFromControls();
+    });
+
     [
       meetingLimit,
       meetingWindow,
@@ -1405,6 +1453,10 @@
       });
     });
 
+    copyRESTTelegram.addEventListener('click', async () => {
+      await copyRESTTelegramOutput();
+    });
+
     runTool.addEventListener('click', async () => {
       if (!selectedTool) return;
       let parsedArgs;
@@ -1429,6 +1481,17 @@
         toolStatus.textContent = 'Error';
       }
     });
+
+    async function copyRESTTelegramOutput() {
+      try {
+        await navigator.clipboard.writeText(restTextPreview.textContent || '');
+        const original = copyRESTTelegram.textContent;
+        copyRESTTelegram.textContent = 'Copied';
+        setTimeout(() => { copyRESTTelegram.textContent = original; }, 1200);
+      } catch (error) {
+        copyRESTTelegram.textContent = 'Select raw text';
+      }
+    }
 
     function renderJSON(target, value) {
       target.innerHTML = '';
