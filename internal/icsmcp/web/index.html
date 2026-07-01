@@ -97,8 +97,19 @@
     .meeting-query-controls { display: grid; grid-template-columns: minmax(250px, 1.2fr) 84px minmax(170px, .9fr) minmax(160px, .8fr) minmax(120px, .7fr) minmax(180px, 1fr); gap: 10px; margin: 0 0 14px; align-items: end; }
     .meeting-query-controls label { display: grid; gap: 4px; color: var(--muted); }
     .meeting-query-controls label.checkbox-control { grid-template-columns: auto 1fr; align-items: center; color: var(--text); }
-    .meeting-query-controls .fields-control { grid-column: span 2; min-width: 360px; }
+    .meeting-query-controls .fields-control { grid-column: 1 / span 2; min-width: 0; display: grid; gap: 4px; color: var(--muted); }
     .meeting-query-controls .query-control { min-width: 220px; }
+    .meeting-hint { display: none; grid-column: 1 / -1; margin: -2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .meeting-hint.active { display: block; }
+    .meeting-field-picker { position: relative; }
+    .meeting-field-picker > summary { list-style: none; cursor: pointer; min-height: 41px; padding: 9px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: #fff; color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .meeting-field-picker > summary::-webkit-details-marker { display: none; }
+    .meeting-field-picker > summary::after { content: "Edit"; color: var(--muted); font-size: 12px; }
+    #meeting-fields-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meeting-field-picker[open] > summary { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30, 95, 116, .12); }
+    .meeting-field-options { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: min(560px, calc(100vw - 48px)); max-height: 320px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 7px 12px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 12px 28px rgba(29, 37, 44, .16); }
+    .meeting-query-controls .meeting-field-options label { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: center; color: var(--text); }
+    .meeting-query-controls .meeting-field-options input { margin: 0; }
     .advanced-json { margin-top: 10px; }
     .advanced-json > summary { cursor: pointer; color: var(--text); font-weight: 700; }
     .advanced-json textarea { margin-top: 8px; min-height: 130px; }
@@ -139,6 +150,7 @@
       form, .tool-runner, .rest-layout { grid-template-columns: 1fr; }
       .meeting-query-controls { grid-template-columns: 1fr; }
       .meeting-query-controls .fields-control { grid-column: auto; }
+      .meeting-field-options { position: static; width: 100%; margin-top: 6px; grid-template-columns: 1fr; box-shadow: none; }
       .rest-control-row { grid-template-columns: 1fr; gap: 3px; }
       .kv-row { grid-template-columns: 1fr; gap: 3px; }
       .endpoint-cell { grid-template-columns: 1fr; justify-items: start; }
@@ -437,7 +449,31 @@
             <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone override<input id="meeting-timezone" placeholder="America/Denver"></label>
             <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
             <label class="query-control" title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
-            <label class="fields-control" title="Comma-separated MCP fields applied to each meeting or busy block in structured output.">Fields<input id="meeting-fields" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring"></label>
+            <span id="meeting-window-hint" class="meeting-hint">today_meetings stays on the current display day and ignores broader window presets.</span>
+            <div class="fields-control" title="MCP fields applied to each meeting or busy block in structured output.">
+              <span>Fields</span>
+              <details id="meeting-field-picker" class="meeting-field-picker">
+                <summary><span id="meeting-fields-summary">9 selected</span></summary>
+                <div id="meeting-field-options" class="meeting-field-options">
+                  <label><input type="checkbox" value="when" checked> when</label>
+                  <label><input type="checkbox" value="title" checked> title</label>
+                  <label><input type="checkbox" value="calendar" checked> calendar</label>
+                  <label><input type="checkbox" value="duration" checked> duration</label>
+                  <label><input type="checkbox" value="duration_minutes" checked> duration_minutes</label>
+                  <label><input type="checkbox" value="ongoing" checked> ongoing</label>
+                  <label><input type="checkbox" value="all_day" checked> all_day</label>
+                  <label><input type="checkbox" value="cancelled" checked> cancelled</label>
+                  <label><input type="checkbox" value="recurring" checked> recurring</label>
+                  <label><input type="checkbox" value="meeting_url"> meeting_url</label>
+                  <label><input type="checkbox" value="description"> description</label>
+                  <label><input type="checkbox" value="start"> start</label>
+                  <label><input type="checkbox" value="end"> end</label>
+                  <label><input type="checkbox" value="timezone"> timezone</label>
+                  <label><input type="checkbox" value="calendar_id"> calendar_id</label>
+                </div>
+              </details>
+              <input id="meeting-fields" type="hidden" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring">
+            </div>
             <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
             <label class="checkbox-control" title="MCP tool include_description argument."><input id="meeting-include-description" type="checkbox"> descriptions</label>
             <label class="checkbox-control" title="MCP tool include_links argument."><input id="meeting-include-links" type="checkbox" checked> links</label>
@@ -485,10 +521,13 @@
     const meetingToolPicker = document.querySelector('#meeting-tool-picker');
     const meetingLimit = document.querySelector('#meeting-limit');
     const meetingWindow = document.querySelector('#meeting-window');
+    const meetingWindowHint = document.querySelector('#meeting-window-hint');
     const meetingTimezone = document.querySelector('#meeting-timezone');
     const meetingSort = document.querySelector('#meeting-sort');
     const meetingQuery = document.querySelector('#meeting-query');
     const meetingFields = document.querySelector('#meeting-fields');
+    const meetingFieldOptions = document.querySelector('#meeting-field-options');
+    const meetingFieldsSummary = document.querySelector('#meeting-fields-summary');
     const meetingExcludeCancelled = document.querySelector('#meeting-exclude-cancelled');
     const meetingIncludeDescription = document.querySelector('#meeting-include-description');
     const meetingIncludeLinks = document.querySelector('#meeting-include-links');
@@ -621,6 +660,7 @@
       renderRESTControls(calendars, status);
       renderTelegramLinks(status);
       renderCalendars(calendars);
+      syncMeetingFieldsInput();
       syncMeetingArgsFromControls();
       await loadMeetings();
       await loadTools();
@@ -811,7 +851,7 @@
       if ('limit' in args) args.limit = Number(meetingLimit.value) || 10;
       if ('timezone' in args || meetingTimezone.value.trim()) args.timezone = meetingTimezone.value.trim();
       if ('query' in args || meetingQuery.value.trim()) args.query = meetingQuery.value.trim();
-      args.fields = meetingFields.value.split(',').map((field) => field.trim()).filter(Boolean);
+      args.fields = selectedMeetingFields();
       if ('sort' in args) args.sort = meetingSort.value;
       if ('exclude_cancelled' in args) args.exclude_cancelled = meetingExcludeCancelled.checked;
       if ('include_description' in args) args.include_description = meetingIncludeDescription.checked;
@@ -827,11 +867,39 @@
       if ('limit' in defaults) meetingLimit.value = defaults.limit;
       if ('sort' in defaults) meetingSort.value = defaults.sort;
       if ('query' in defaults && !defaults.query) meetingQuery.value = '';
-      if ('fields' in defaults) meetingFields.value = defaults.fields.join(',');
+      if ('fields' in defaults) setMeetingFields(defaults.fields);
       if ('exclude_cancelled' in defaults) meetingExcludeCancelled.checked = Boolean(defaults.exclude_cancelled);
       if ('include_description' in defaults) meetingIncludeDescription.checked = Boolean(defaults.include_description);
       if ('include_links' in defaults) meetingIncludeLinks.checked = Boolean(defaults.include_links);
       if ('include_disabled' in defaults) meetingIncludeDisabled.checked = Boolean(defaults.include_disabled);
+      updateMeetingWindowHint();
+    }
+
+    function selectedMeetingFields() {
+      return Array.from(meetingFieldOptions.querySelectorAll('input[type="checkbox"]:checked')).map((control) => control.value);
+    }
+
+    function setMeetingFields(fields) {
+      const selected = new Set(fields || []);
+      meetingFieldOptions.querySelectorAll('input[type="checkbox"]').forEach((control) => {
+        control.checked = selected.has(control.value);
+      });
+      syncMeetingFieldsInput();
+    }
+
+    function syncMeetingFieldsInput() {
+      const fields = selectedMeetingFields();
+      meetingFields.value = fields.join(',');
+      if (!fields.length) {
+        meetingFieldsSummary.textContent = 'No fields selected';
+        return;
+      }
+      const preview = fields.slice(0, 3).join(', ');
+      meetingFieldsSummary.textContent = `${fields.length} selected: ${preview}${fields.length > 3 ? ', ...' : ''}`;
+    }
+
+    function updateMeetingWindowHint() {
+      meetingWindowHint.classList.toggle('active', meetingToolPicker.value === 'today_meetings' && meetingWindow.value !== '');
     }
 
     function syncMeetingArgsFromControls() {
@@ -1448,7 +1516,6 @@
       meetingTimezone,
       meetingSort,
       meetingQuery,
-      meetingFields,
       meetingExcludeCancelled,
       meetingIncludeDescription,
       meetingIncludeLinks,
@@ -1456,10 +1523,20 @@
     ].forEach((control) => {
       control.addEventListener('input', () => {
         meetingArgsTouched = false;
+        updateMeetingWindowHint();
         syncMeetingArgsFromControls();
       });
       control.addEventListener('change', () => {
         meetingArgsTouched = false;
+        updateMeetingWindowHint();
+        syncMeetingArgsFromControls();
+      });
+    });
+
+    meetingFieldOptions.querySelectorAll('input[type="checkbox"]').forEach((control) => {
+      control.addEventListener('change', () => {
+        meetingArgsTouched = false;
+        syncMeetingFieldsInput();
         syncMeetingArgsFromControls();
       });
     });
