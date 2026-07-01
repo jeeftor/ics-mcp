@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.0.3 - 2026-07-01
+
+### Added
+- Reconciled the 2.0 REST API/debug UI branch with the current Telegram-ready output work from `master`.
+- Added Telegram-ready `tg-text`, `tg-html`, and `tg-markdownv2` output to REST aliases and tool-backed REST calls.
+- Added Telegram quick links to the admin UI while keeping the 2.0 REST and Meetings tabs.
+
+### Fixed
+- Kept `/api/free-busy` on one canonical handler while preserving JSON, table, and Telegram-ready output formats.
+- Preserved localized build-date output in `/api/status` and startup logs on the 2.0 line.
+
 ## v2.0.2 - 2026-06-30
 
 ### Added
