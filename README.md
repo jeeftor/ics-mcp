@@ -170,7 +170,7 @@ MCP tool discovery exposes each tool name, description, and JSON input schema. F
 
 ## Debug UI
 
-The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
+The admin page at `/` is also the local debug interface. It shows the exact same-origin MCP endpoint (`/mcp`), optional external endpoint from `ICSMCP_EXTERNAL_URL`, status endpoint, health endpoint, readiness endpoint, metrics endpoint, runtime config, build version, calendar refresh state, per-calendar general-query inclusion, copy buttons for endpoint/setup values, setup snippets for MCP clients, Telegram output quick links, a next-meetings preview grouped by calendar, and a tool runner that lists every exposed MCP tool. Select a tool, edit JSON arguments, run it, and inspect syntax-highlighted JSON output.
 
 ## Docker
 
