@@ -94,6 +94,7 @@ type UpcomingQuery struct {
 	Timezone            string    `json:"timezone,omitempty"`
 	Detail              string    `json:"detail,omitempty"`
 	Format              string    `json:"format,omitempty"`
+	Fields              []string  `json:"fields,omitempty"`
 	Sort                string    `json:"sort,omitempty"`
 	InProgressOnly      bool      `json:"in_progress_only,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`
@@ -143,14 +144,14 @@ type Meeting struct {
 	Start           string    `json:"start,omitempty"`
 	End             string    `json:"end,omitempty"`
 	Timezone        string    `json:"timezone,omitempty"`
-	DurationMinutes int       `json:"duration_minutes"`
+	DurationMinutes int       `json:"duration_minutes,omitempty"`
 	Name            string    `json:"name,omitempty"`
 	Description     string    `json:"description,omitempty"`
 	MeetingURL      string    `json:"meeting_url,omitempty"`
 	MeetingURLType  string    `json:"meeting_url_type,omitempty"`
 	CalendarID      string    `json:"calendar_id,omitempty"`
 	CalendarName    string    `json:"calendar_name,omitempty"`
-	Ongoing         bool      `json:"ongoing"`
+	Ongoing         bool      `json:"ongoing,omitempty"`
 	AllDay          bool      `json:"all_day,omitempty"`
 	Cancelled       bool      `json:"cancelled,omitempty"`
 	Recurring       bool      `json:"recurring,omitempty"`
@@ -158,10 +159,18 @@ type Meeting struct {
 	StartTime       time.Time `json:"-"`
 	EndTime         time.Time `json:"-"`
 	Detail          string    `json:"-"`
+	Fields          []string  `json:"-"`
 }
 
 // MarshalJSON renders meetings compactly by default; detail=full keeps the verbose shape.
 func (m Meeting) MarshalJSON() ([]byte, error) {
+	if len(m.Fields) > 0 {
+		projected, err := projectMeeting(m)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(projected)
+	}
 	if strings.EqualFold(m.Detail, "full") {
 		type fullMeeting struct {
 			Day             string `json:"day"`
@@ -264,12 +273,117 @@ type CalendarMeetingGroup struct {
 
 // BusyBlock is a token-light availability block without meeting title/details.
 type BusyBlock struct {
-	When            string `json:"when"`
-	Calendar        string `json:"calendar,omitempty"`
-	Duration        string `json:"duration"`
-	DurationMinutes int    `json:"duration_minutes"`
-	Ongoing         bool   `json:"ongoing,omitempty"`
-	AllDay          bool   `json:"all_day,omitempty"`
+	When            string   `json:"when,omitempty"`
+	Calendar        string   `json:"calendar,omitempty"`
+	Duration        string   `json:"duration,omitempty"`
+	DurationMinutes int      `json:"duration_minutes,omitempty"`
+	Ongoing         bool     `json:"ongoing,omitempty"`
+	AllDay          bool     `json:"all_day,omitempty"`
+	Fields          []string `json:"-"`
+}
+
+// MarshalJSON renders free/busy blocks compactly by default and supports explicit field projection.
+func (b BusyBlock) MarshalJSON() ([]byte, error) {
+	if len(b.Fields) > 0 {
+		projected, err := projectBusyBlock(b)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(projected)
+	}
+	return json.Marshal(struct {
+		When            string `json:"when"`
+		Calendar        string `json:"calendar,omitempty"`
+		Duration        string `json:"duration"`
+		DurationMinutes int    `json:"duration_minutes"`
+		Ongoing         bool   `json:"ongoing,omitempty"`
+		AllDay          bool   `json:"all_day,omitempty"`
+	}{
+		When:            b.When,
+		Calendar:        b.Calendar,
+		Duration:        b.Duration,
+		DurationMinutes: b.DurationMinutes,
+		Ongoing:         b.Ongoing,
+		AllDay:          b.AllDay,
+	})
+}
+
+func projectMeeting(m Meeting) (map[string]any, error) {
+	projected := make(map[string]any, len(m.Fields))
+	for _, field := range m.Fields {
+		switch field {
+		case "when":
+			projected[field] = compactWhen(m)
+		case "title":
+			projected[field] = m.Name
+		case "calendar":
+			projected[field] = m.CalendarName
+		case "duration":
+			projected[field] = durationText(m.DurationMinutes)
+		case "duration_minutes":
+			projected[field] = m.DurationMinutes
+		case "ongoing":
+			projected[field] = m.Ongoing
+		case "all_day":
+			projected[field] = m.AllDay
+		case "cancelled":
+			projected[field] = m.Cancelled
+		case "recurring":
+			projected[field] = m.Recurring
+		case "meeting_url":
+			projected[field] = m.MeetingURL
+		case "meeting_url_type":
+			projected[field] = m.MeetingURLType
+		case "description":
+			projected[field] = m.Description
+		case "day":
+			projected[field] = m.Day
+		case "date":
+			projected[field] = m.Date
+		case "end_date":
+			projected[field] = m.EndDate
+		case "start":
+			projected[field] = m.Start
+		case "end":
+			projected[field] = m.End
+		case "timezone":
+			projected[field] = m.Timezone
+		case "name":
+			projected[field] = m.Name
+		case "calendar_id":
+			projected[field] = m.CalendarID
+		case "calendar_name":
+			projected[field] = m.CalendarName
+		case "recurrence_id":
+			projected[field] = m.RecurrenceID
+		default:
+			return nil, fmt.Errorf("unknown meeting field %q", field)
+		}
+	}
+	return projected, nil
+}
+
+func projectBusyBlock(b BusyBlock) (map[string]any, error) {
+	projected := make(map[string]any, len(b.Fields))
+	for _, field := range b.Fields {
+		switch field {
+		case "when":
+			projected[field] = b.When
+		case "calendar":
+			projected[field] = b.Calendar
+		case "duration":
+			projected[field] = b.Duration
+		case "duration_minutes":
+			projected[field] = b.DurationMinutes
+		case "ongoing":
+			projected[field] = b.Ongoing
+		case "all_day":
+			projected[field] = b.AllDay
+		default:
+			return nil, fmt.Errorf("unknown busy field %q", field)
+		}
+	}
+	return projected, nil
 }
 
 // MarshalJSON renders grouped meeting output compactly unless the meetings requested full detail.

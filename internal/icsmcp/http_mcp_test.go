@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -833,6 +834,62 @@ func TestToolPreviewFormattedMeetingsKeepStructuredFieldsAndText(t *testing.T) {
 	}
 }
 
+func TestToolPreviewReadToolsRespectRequestedFields(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		UID:          "planning",
+		Name:         "Planning",
+		Start:        time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:          time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	resp, err := PreviewToolCall(ctx, svc, "upcoming_meetings", json.RawMessage(`{"fields":["title","calendar_id","ongoing"]}`))
+	if err != nil {
+		t.Fatalf("upcoming_meetings fields preview error = %v", err)
+	}
+	data, err := json.Marshal(resp.Result)
+	if err != nil {
+		t.Fatalf("Marshal projected meetings error = %v", err)
+	}
+	assertMeetingJSONFields(t, data, "meetings", []string{"calendar_id", "ongoing", "title"})
+
+	groupResp, err := PreviewToolCall(ctx, svc, "upcoming_meetings_by_calendar", json.RawMessage(`{"fields":["title","start"]}`))
+	if err != nil {
+		t.Fatalf("upcoming_meetings_by_calendar fields preview error = %v", err)
+	}
+	groupData, err := json.Marshal(groupResp.Result)
+	if err != nil {
+		t.Fatalf("Marshal projected grouped meetings error = %v", err)
+	}
+	assertGroupedMeetingJSONFields(t, groupData, []string{"start", "title"})
+
+	busyResp, err := PreviewToolCall(ctx, svc, "free_busy", json.RawMessage(`{"fields":["when","duration_minutes"]}`))
+	if err != nil {
+		t.Fatalf("free_busy fields preview error = %v", err)
+	}
+	busyData, err := json.Marshal(busyResp.Result)
+	if err != nil {
+		t.Fatalf("Marshal projected busy blocks error = %v", err)
+	}
+	assertBusyJSONFields(t, busyData, []string{"duration_minutes", "when"})
+
+	_, err = PreviewToolCall(ctx, svc, "upcoming_meetings", json.RawMessage(`{"fields":["bogus"]}`))
+	if err == nil || !strings.Contains(err.Error(), `unknown meeting field "bogus"`) {
+		t.Fatalf("unknown fields error = %v, want clear meeting field error", err)
+	}
+}
+
 func TestUpcomingQueryFromRequestSupportsLegacyOnlyOngoingFilter(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/meetings?only_ongoing=yes", nil)
 
@@ -1405,7 +1462,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "format", "sort", "include_description", "include_links", "links_only", "include_disabled", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "format", "fields", "sort", "include_description", "include_links", "links_only", "include_disabled", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}
@@ -1446,6 +1503,21 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
 	assertStructuredMeetingStatusFields(t, upcomingResult.StructuredContent, "meetings", "upcoming_meetings")
+
+	projectedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "upcoming_meetings",
+		Arguments: map[string]any{
+			"fields": []string{"title", "calendar_id", "ongoing"},
+		},
+	})
+	if err != nil || projectedResult.IsError {
+		t.Fatalf("projected upcoming_meetings result = %#v err = %v", projectedResult, err)
+	}
+	projectedData, err := json.Marshal(projectedResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal projected structured content error = %v", err)
+	}
+	assertMeetingJSONFields(t, projectedData, "meetings", []string{"calendar_id", "ongoing", "title"})
 
 	formattedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "today_meetings",
@@ -1490,6 +1562,21 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("grouped meetings = %#v", grouped.Calendars)
 	}
 	assertStructuredGroupedMeetingStatusFields(t, groupedResult.StructuredContent, "upcoming_meetings_by_calendar")
+
+	projectedGroupedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "upcoming_meetings_by_calendar",
+		Arguments: map[string]any{
+			"fields": []string{"title", "start"},
+		},
+	})
+	if err != nil || projectedGroupedResult.IsError {
+		t.Fatalf("projected grouped result = %#v err = %v", projectedGroupedResult, err)
+	}
+	projectedGroupedData, err := json.Marshal(projectedGroupedResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal projected grouped structured content error = %v", err)
+	}
+	assertGroupedMeetingJSONFields(t, projectedGroupedData, []string{"start", "title"})
 
 	nextOneResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "next_meeting",
@@ -1572,6 +1659,21 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if len(freeBusy.Busy) != 1 || freeBusy.Busy[0].Calendar != "Work" || !strings.Contains(freeBusy.Text, "<b>Busy</b>") {
 		t.Fatalf("free busy = %#v", freeBusy.Busy)
 	}
+
+	projectedFreeBusyResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "free_busy",
+		Arguments: map[string]any{
+			"fields": []string{"when", "duration_minutes"},
+		},
+	})
+	if err != nil || projectedFreeBusyResult.IsError {
+		t.Fatalf("projected free_busy result = %#v err = %v", projectedFreeBusyResult, err)
+	}
+	projectedFreeBusyData, err := json.Marshal(projectedFreeBusyResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal projected free_busy structured content error = %v", err)
+	}
+	assertBusyJSONFields(t, projectedFreeBusyData, []string{"duration_minutes", "when"})
 
 	searchResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "search_meetings",
@@ -1820,6 +1922,64 @@ func assertStructuredGroupedMeetingStatusFields(t *testing.T, in any, tool strin
 		t.Fatalf("%s structured grouped meetings = %#v", tool, structured.Calendars)
 	}
 	assertMeetingStatusFields(t, structured.Calendars[0].Meetings[0], tool)
+}
+
+func assertMeetingJSONFields(t *testing.T, data []byte, key string, want []string) {
+	t.Helper()
+	var structured map[string][]map[string]any
+	if err := json.Unmarshal(data, &structured); err != nil {
+		t.Fatalf("Unmarshal projected %s JSON error = %v: %s", key, err, data)
+	}
+	meetings := structured[key]
+	if len(meetings) != 1 {
+		t.Fatalf("projected %s length = %d, want 1: %s", key, len(meetings), data)
+	}
+	if got := sortedMapKeys(meetings[0]); !slices.Equal(got, want) {
+		t.Fatalf("projected %s fields = %#v, want %#v: %s", key, got, want, data)
+	}
+}
+
+func assertGroupedMeetingJSONFields(t *testing.T, data []byte, want []string) {
+	t.Helper()
+	var structured struct {
+		Calendars []struct {
+			Meetings []map[string]any `json:"meetings"`
+		} `json:"calendars"`
+	}
+	if err := json.Unmarshal(data, &structured); err != nil {
+		t.Fatalf("Unmarshal projected grouped JSON error = %v: %s", err, data)
+	}
+	if len(structured.Calendars) != 1 || len(structured.Calendars[0].Meetings) != 1 {
+		t.Fatalf("projected grouped meetings = %#v: %s", structured.Calendars, data)
+	}
+	if got := sortedMapKeys(structured.Calendars[0].Meetings[0]); !slices.Equal(got, want) {
+		t.Fatalf("projected grouped fields = %#v, want %#v: %s", got, want, data)
+	}
+}
+
+func assertBusyJSONFields(t *testing.T, data []byte, want []string) {
+	t.Helper()
+	var structured struct {
+		Busy []map[string]any `json:"busy"`
+	}
+	if err := json.Unmarshal(data, &structured); err != nil {
+		t.Fatalf("Unmarshal projected busy JSON error = %v: %s", err, data)
+	}
+	if len(structured.Busy) != 1 {
+		t.Fatalf("projected busy length = %d, want 1: %s", len(structured.Busy), data)
+	}
+	if got := sortedMapKeys(structured.Busy[0]); !slices.Equal(got, want) {
+		t.Fatalf("projected busy fields = %#v, want %#v: %s", got, want, data)
+	}
+}
+
+func sortedMapKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func assertMeetingStatusFields(t *testing.T, meeting map[string]any, tool string) {

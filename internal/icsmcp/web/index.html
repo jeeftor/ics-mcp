@@ -51,8 +51,9 @@
     .meeting-groups { display: grid; gap: 16px; }
     .calendar-meeting-group { background: white; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
     .calendar-meeting-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; background: #e7eef0; border-bottom: 1px solid #cbd7dc; font-weight: 700; }
-    .calendar-meeting-group .meeting-table { border: 0; }
+    .calendar-meeting-group .meeting-table { border: 0; table-layout: fixed; }
     .calendar-meeting-group .meeting-table tr:last-child td { border-bottom: 0; }
+    .meeting-table td { overflow-wrap: anywhere; }
     .meeting-table .status-column { width: 118px; }
     .meeting-table .time-column { width: 235px; }
     .meeting-table .meta-column { width: 210px; }
@@ -93,10 +94,14 @@
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     .selection-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
     .selection-bar .spacer { flex: 1 1 auto; }
-    .meeting-query-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0 0 14px; }
+    .meeting-query-controls { display: grid; grid-template-columns: minmax(250px, 1.2fr) 84px minmax(170px, .9fr) minmax(160px, .8fr) minmax(120px, .7fr) minmax(180px, 1fr); gap: 10px; margin: 0 0 14px; align-items: end; }
     .meeting-query-controls label { display: grid; gap: 4px; color: var(--muted); }
     .meeting-query-controls label.checkbox-control { grid-template-columns: auto 1fr; align-items: center; color: var(--text); }
-    .meeting-query-controls .wide-control { grid-column: 1 / -1; }
+    .meeting-query-controls .fields-control { grid-column: span 2; min-width: 360px; }
+    .meeting-query-controls .query-control { min-width: 220px; }
+    .advanced-json { margin-top: 10px; }
+    .advanced-json > summary { cursor: pointer; color: var(--text); font-weight: 700; }
+    .advanced-json textarea { margin-top: 8px; min-height: 130px; }
     .rest-layout { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .rest-controls { display: grid; gap: 10px; }
     .rest-control-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; align-items: center; }
@@ -122,12 +127,18 @@
     .json-node { margin-left: 14px; }
     .json-node > summary { cursor: pointer; color: #e6edf3; }
     .json-leaf { margin-left: 14px; white-space: pre-wrap; }
+    @media (max-width: 1080px) {
+      .meeting-query-controls { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+      .meeting-query-controls .fields-control { grid-column: 1 / -1; min-width: 0; }
+    }
     @media (max-width: 760px) {
       .topbar { grid-template-columns: 1fr; align-items: start; padding: 16px 14px 12px; }
       .status-pills { justify-content: flex-start; }
       .tabs { padding: 0 14px; overflow-x: auto; }
       main { padding: 14px; }
       form, .tool-runner, .rest-layout { grid-template-columns: 1fr; }
+      .meeting-query-controls { grid-template-columns: 1fr; }
+      .meeting-query-controls .fields-control { grid-column: auto; }
       .rest-control-row { grid-template-columns: 1fr; gap: 3px; }
       .kv-row { grid-template-columns: 1fr; gap: 3px; }
       .endpoint-cell { grid-template-columns: 1fr; justify-items: start; }
@@ -422,16 +433,20 @@
           <div class="meeting-query-controls">
             <label title="Choose the real MCP read tool used by this preview.">Tool<select id="meeting-tool-picker"><option value="upcoming_meetings_by_calendar">upcoming_meetings_by_calendar</option><option value="upcoming_meetings">upcoming_meetings</option><option value="today_meetings">today_meetings</option><option value="next_meetings">next_meetings</option><option value="current_meetings">current_meetings</option><option value="search_meetings">search_meetings</option></select></label>
             <label title="MCP tool limit argument. Applies per calendar for upcoming_meetings_by_calendar.">Limit<input id="meeting-limit" type="number" min="1" value="10"></label>
-            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week.">Window preset<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
+            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week. today_meetings ignores broader presets and stays on the current display day.">Window preset<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
             <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone override<input id="meeting-timezone" placeholder="America/Denver"></label>
             <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
-            <label title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
+            <label class="query-control" title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
+            <label class="fields-control" title="Comma-separated MCP fields applied to each meeting or busy block in structured output.">Fields<input id="meeting-fields" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring"></label>
             <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
             <label class="checkbox-control" title="MCP tool include_description argument."><input id="meeting-include-description" type="checkbox"> descriptions</label>
             <label class="checkbox-control" title="MCP tool include_links argument."><input id="meeting-include-links" type="checkbox" checked> links</label>
             <label class="checkbox-control" title="MCP tool include_disabled argument. Disabled calendars still require an explicit calendar_ids list in tool callers."><input id="meeting-include-disabled" type="checkbox"> disabled calendars</label>
-            <label class="wide-control" title="Actual JSON arguments sent to /api/tools/upcoming_meetings_by_calendar/call. You can edit this directly for advanced options.">Tool JSON<textarea id="meeting-tool-args" spellcheck="false"></textarea></label>
           </div>
+          <details class="advanced-json">
+            <summary>Advanced JSON</summary>
+            <label title="Actual JSON arguments sent to the selected MCP read tool. Editing this pauses auto-sync until another control changes.">Tool JSON<textarea id="meeting-tool-args" spellcheck="false"></textarea></label>
+          </details>
           <div class="tool-controls">
             <button id="run-meeting-preview" class="primary" type="button">Run Preview</button>
             <span id="meeting-preview-status" class="muted"></span>
@@ -473,6 +488,7 @@
     const meetingTimezone = document.querySelector('#meeting-timezone');
     const meetingSort = document.querySelector('#meeting-sort');
     const meetingQuery = document.querySelector('#meeting-query');
+    const meetingFields = document.querySelector('#meeting-fields');
     const meetingExcludeCancelled = document.querySelector('#meeting-exclude-cancelled');
     const meetingIncludeDescription = document.querySelector('#meeting-include-description');
     const meetingIncludeLinks = document.querySelector('#meeting-include-links');
@@ -513,13 +529,14 @@
       status: ['when', 'calendar', 'title', 'duration', 'ongoing', 'all_day', 'cancelled', 'recurring'],
       links: ['when', 'calendar', 'title', 'meeting_url']
     };
+    const defaultMeetingFields = ['when', 'title', 'calendar', 'duration', 'duration_minutes', 'ongoing', 'all_day', 'cancelled', 'recurring'];
     const meetingToolConfigs = {
-      upcoming_meetings_by_calendar: { path: '/api/tools/upcoming_meetings_by_calendar/call', mode: 'groups', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
-      upcoming_meetings: { path: '/api/tools/upcoming_meetings/call', mode: 'meetings', title: 'Upcoming Meetings', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
-      today_meetings: { path: '/api/tools/today_meetings/call', mode: 'meetings', title: 'Today Meetings', defaults: { sort: 'agenda', include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
-      next_meetings: { path: '/api/tools/next_meetings/call', mode: 'meetings', title: 'Next Meetings', defaults: { limit: 10, sort: 'start_time', include_description: false, include_links: true, include_disabled: false, detail: 'full' } },
-      current_meetings: { path: '/api/tools/current_meetings/call', mode: 'meetings', title: 'Current Meetings', defaults: { exclude_all_day: true, exclude_cancelled: true, include_disabled: false, detail: 'full' } },
-      search_meetings: { path: '/api/tools/search_meetings/call', mode: 'meetings', title: 'Search Meetings', defaults: { query: '', limit: 10, sort: 'start_time', exclude_cancelled: true, include_links: true, include_disabled: false, detail: 'full' } }
+      upcoming_meetings_by_calendar: { path: '/api/tools/upcoming_meetings_by_calendar/call', mode: 'groups', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
+      upcoming_meetings: { path: '/api/tools/upcoming_meetings/call', mode: 'meetings', title: 'Upcoming Meetings', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
+      today_meetings: { path: '/api/tools/today_meetings/call', mode: 'meetings', title: 'Today Meetings', defaults: { sort: 'agenda', fields: defaultMeetingFields, include_description: false, include_links: true, include_disabled: false } },
+      next_meetings: { path: '/api/tools/next_meetings/call', mode: 'meetings', title: 'Next Meetings', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, include_description: false, include_links: true, include_disabled: false } },
+      current_meetings: { path: '/api/tools/current_meetings/call', mode: 'meetings', title: 'Current Meetings', defaults: { fields: defaultMeetingFields, exclude_all_day: true, exclude_cancelled: true, include_disabled: false } },
+      search_meetings: { path: '/api/tools/search_meetings/call', mode: 'meetings', title: 'Search Meetings', defaults: { query: '', limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_links: true, include_disabled: false } }
     };
     let meetingArgsTouched = false;
     const endpoints = [
@@ -543,7 +560,7 @@
       'rest-time-style': 'Controls how the when column is displayed in table formats.',
       'rest-show-timezone': 'Include timezone text in formatted table output.',
       'rest-limit': 'Maximum events or busy blocks to return.',
-      'rest-window': 'Preferred named time window preset. Use this for normal queries instead of the legacy aliases below.',
+      'rest-window': 'Preferred named time window preset. today_meetings and /api/events/today ignore broader presets and stay on the current display day.',
       'rest-day': 'Legacy single-day alias. Prefer Window preset unless you need to test day= compatibility.',
       'rest-range': 'Legacy named-range alias. Prefer Window preset unless you need to test range= compatibility.',
       'rest-timezone': 'Optional IANA timezone override for query windows and display times.',
@@ -741,11 +758,12 @@
       for (const group of groups) {
         const wrapper = document.createElement('div');
         wrapper.className = 'calendar-meeting-group';
+        const groupName = group.calendar_name || group.calendar || 'Meetings';
         const groupTimezone = (group.meetings && group.meetings[0] && group.meetings[0].timezone) || '';
         wrapper.innerHTML = `
           <div class="calendar-meeting-header">
-            <span>${escapeHTML(group.calendar_name)}</span>
-            <span class="muted mono">${escapeHTML(group.calendar_id)}</span>
+            <span>${escapeHTML(groupName)}</span>
+            <span class="muted mono">${escapeHTML(group.calendar_id || '')}</span>
             ${groupTimezone ? `<span class="muted">${escapeHTML(groupTimezone)}</span>` : ''}
           </div>
           <table class="meeting-table">
@@ -768,16 +786,17 @@
           const displayEndDate = formatMeetingDate(meeting.end_date || meeting.date);
           const displayStart = formatMeetingTime(meeting.start);
           const displayEnd = formatMeetingTime(meeting.end);
-          const marker = meeting.ongoing ? 'Now' : `${escapeHTML(meeting.day)} ${escapeHTML(displayStart)}`;
-          const timeDetail = meeting.ongoing
+          const title = meeting.name || meeting.title || '(untitled)';
+          const marker = meeting.ongoing ? 'Now' : (meeting.day || displayStart ? `${escapeHTML(meeting.day || '')} ${escapeHTML(displayStart)}`.trim() : 'When');
+          const timeDetail = meeting.when || (meeting.ongoing
             ? `Started ${displayDate} ${displayStart}<br>Ends ${displayEndDate} ${displayEnd}`
-            : `${displayDate} ${displayStart}-${displayEndDate === displayDate ? '' : displayEndDate + ' '}${displayEnd}`;
+            : `${displayDate} ${displayStart}-${displayEndDate === displayDate ? '' : displayEndDate + ' '}${displayEnd}`);
           row.innerHTML = `
           <td data-label="Status"><div class="badge-row">${meetingStatusBadges(meeting)}</div></td>
           <td data-label="When">${marker}<br><span class="muted">${timeDetail}</span></td>
-          <td data-label="Meeting"><span class="meeting-title">${escapeHTML(meeting.name)}</span>${meeting.meeting_url ? `<br><a class="meeting-badge join" href="${escapeHTML(meeting.meeting_url)}" target="_blank" rel="noreferrer">Join</a>` : ''}</td>
+          <td data-label="Meeting"><span class="meeting-title">${escapeHTML(title)}</span>${meeting.meeting_url ? `<br><a class="meeting-badge join" href="${escapeHTML(meeting.meeting_url)}" target="_blank" rel="noreferrer">Join</a>` : ''}</td>
           <td data-label="Meta"><div class="badge-row">${meetingMetaBadges(meeting)}</div></td>
-          <td data-label="Duration">${escapeHTML(formatDuration(meeting.duration_minutes))}</td>`;
+          <td data-label="Duration">${escapeHTML(meeting.duration || formatDuration(meeting.duration_minutes))}</td>`;
           rows.push(row);
         }
         tableBody.replaceChildren(...rows);
@@ -792,6 +811,7 @@
       if ('limit' in args) args.limit = Number(meetingLimit.value) || 10;
       if ('timezone' in args || meetingTimezone.value.trim()) args.timezone = meetingTimezone.value.trim();
       if ('query' in args || meetingQuery.value.trim()) args.query = meetingQuery.value.trim();
+      args.fields = meetingFields.value.split(',').map((field) => field.trim()).filter(Boolean);
       if ('sort' in args) args.sort = meetingSort.value;
       if ('exclude_cancelled' in args) args.exclude_cancelled = meetingExcludeCancelled.checked;
       if ('include_description' in args) args.include_description = meetingIncludeDescription.checked;
@@ -807,6 +827,7 @@
       if ('limit' in defaults) meetingLimit.value = defaults.limit;
       if ('sort' in defaults) meetingSort.value = defaults.sort;
       if ('query' in defaults && !defaults.query) meetingQuery.value = '';
+      if ('fields' in defaults) meetingFields.value = defaults.fields.join(',');
       if ('exclude_cancelled' in defaults) meetingExcludeCancelled.checked = Boolean(defaults.exclude_cancelled);
       if ('include_description' in defaults) meetingIncludeDescription.checked = Boolean(defaults.include_description);
       if ('include_links' in defaults) meetingIncludeLinks.checked = Boolean(defaults.include_links);
@@ -1427,6 +1448,7 @@
       meetingTimezone,
       meetingSort,
       meetingQuery,
+      meetingFields,
       meetingExcludeCancelled,
       meetingIncludeDescription,
       meetingIncludeLinks,
