@@ -26,7 +26,7 @@ func registerMCPResources(server *mcp.Server, svc *Service) {
 			calendars, err := svc.ListCalendarStatus(ctx)
 			return jsonResource(req.Params.URI, calendarsOutput{Calendars: calendars}, err)
 		})
-	server.AddResource(&mcp.Resource{Name: "today_meetings", Description: "Today's meetings using agenda sort.", MIMEType: "application/json", URI: resourceTodayMeetings},
+	server.AddResource(&mcp.Resource{Name: "today_meetings", Description: "Meetings that overlap the current display day using agenda sort.", MIMEType: "application/json", URI: resourceTodayMeetings},
 		func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			meetings, err := svc.TodayMeetings(ctx, UpcomingQuery{Sort: "agenda"})
 			return jsonResource(req.Params.URI, meetingsOutput{Meetings: meetings}, err)
@@ -60,7 +60,7 @@ func registerMCPPrompts(server *mcp.Server) {
 		Name:        "daily_briefing",
 		Title:       "Daily Briefing",
 		Description: "Summarize today's calendar and call out what is next.",
-	}, staticPrompt("Daily Briefing", "Read icsmcp://meetings/today or call today_meetings with sort=agenda. Summarize ongoing meetings, next timed meetings, all-day or multi-day blocks, and any available join links. Keep it concise and action-oriented."))
+	}, staticPrompt("Daily Briefing", "Read icsmcp://meetings/today or call today_meetings with sort=agenda. Treat the result as the current display day only: it can include meetings that overlap today, including ongoing multi-day blocks, but should not include tomorrow or later events. Summarize ongoing meetings, next timed meetings, all-day or multi-day blocks, and any available join links. Keep it concise and action-oriented."))
 
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "meeting_prep",

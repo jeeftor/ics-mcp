@@ -1246,7 +1246,7 @@ func openAPISpec() map[string]any {
 			"/api/rest/{tool_name}":            map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},
 			"/api/events":                      map[string]any{"get": map[string]any{"summary": "Upcoming events"}},
 			"/api/events/by-calendar":          map[string]any{"get": map[string]any{"summary": "Upcoming events grouped by calendar"}},
-			"/api/events/today":                map[string]any{"get": map[string]any{"summary": "Today's events"}},
+			"/api/events/today":                map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day"}},
 			"/api/events/tomorrow":             map[string]any{"get": map[string]any{"summary": "Tomorrow's events"}},
 			"/api/events/today-tomorrow":       map[string]any{"get": map[string]any{"summary": "Today and tomorrow events"}},
 			"/api/events/current":              map[string]any{"get": map[string]any{"summary": "Current events"}},
@@ -1254,7 +1254,7 @@ func openAPISpec() map[string]any {
 			"/api/events/search":               map[string]any{"get": map[string]any{"summary": "Search events"}},
 			"/api/free-busy":                   map[string]any{"get": map[string]any{"summary": "Free/busy blocks"}},
 			"/api/calendars/{calendar}/events": map[string]any{"get": map[string]any{"summary": "Events for one calendar"}},
-			"/api/calendars/{calendar}/today":  map[string]any{"get": map[string]any{"summary": "Today's events for one calendar"}},
+			"/api/calendars/{calendar}/today":  map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day for one calendar"}},
 		},
 	}
 }

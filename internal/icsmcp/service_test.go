@@ -1014,6 +1014,35 @@ func TestTodayMeetingsDefaultsToAgendaSort(t *testing.T) {
 	}
 }
 
+func TestTodayMeetingsIgnoresBroaderWindowPreset(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	denver, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 7, 1, 10, 0, 0, 0, denver).UTC()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	events := []EventInstance{
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Today Planning", Start: time.Date(2026, 7, 1, 15, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 1, 15, 30, 0, 0, denver).UTC()},
+		{CalendarID: cal.ID, CalendarName: cal.Name, Name: "Tomorrow Planning", Start: time.Date(2026, 7, 2, 9, 0, 0, 0, denver).UTC(), End: time.Date(2026, 7, 2, 9, 30, 0, 0, denver).UTC()},
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, events); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.TodayMeetings(ctx, UpcomingQuery{Now: now, Timezone: "America/Denver", Window: "today_tomorrow", Limit: 10})
+	if err != nil {
+		t.Fatalf("TodayMeetings() error = %v", err)
+	}
+	if got := meetingNames(meetings); !slices.Equal(got, []string{"Today Planning"}) {
+		t.Fatalf("today meetings with broad window = %#v, want only today's meeting", got)
+	}
+}
+
 func TestUpcomingMeetingsSupportsCalendarSort(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -1196,6 +1225,39 @@ func TestCompactMeetingJSONIncludesFalseStatusFlags(t *testing.T) {
 		if value != false {
 			t.Fatalf("compact meeting JSON %q = %#v, want false: %s", field, value, data)
 		}
+	}
+}
+
+func TestMeetingJSONUsesRequestedFieldsWhenSupplied(t *testing.T) {
+	meeting := Meeting{
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		Description:     "private notes",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+		Ongoing:         true,
+		AllDay:          false,
+		Fields:          []string{"title", "calendar_id", "ongoing"},
+	}
+
+	data, err := json.Marshal(meeting)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if !slices.Equal(sortedMapKeys(got), []string{"calendar_id", "ongoing", "title"}) {
+		t.Fatalf("projected meeting fields = %#v from %s", sortedMapKeys(got), data)
+	}
+	if got["title"] != "Planning" || got["calendar_id"] != "calendar-1" || got["ongoing"] != true {
+		t.Fatalf("projected meeting = %#v", got)
 	}
 }
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.6 - 2026-07-01
+
+### Added
+- Added per-call MCP `fields` selection for meeting and free/busy read tools, including grouped meeting output and MCP structured content.
+- Added visible Meetings tab field controls with generated tool JSON tucked into a collapsed Advanced JSON section.
+
+### Fixed
+- Kept existing compact and full MCP output behavior unchanged when `fields` is omitted.
+- Kept `today_meetings` constrained to the current display day even when callers include a broader window preset.
+
 ## v2.0.5 - 2026-07-01
 
 ### Improved

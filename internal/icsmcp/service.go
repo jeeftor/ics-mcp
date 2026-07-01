@@ -429,6 +429,7 @@ func (s *Service) TodayMeetings(ctx context.Context, query UpcomingQuery) ([]Mee
 	query.LookaheadDays = 1
 	query.After = localStart.UTC()
 	query.Before = localStart.Add(24 * time.Hour).UTC()
+	query.Window = ""
 	query.ExcludeCancelled = true
 	query.OverlapWindow = true
 	if query.Sort == "" {
