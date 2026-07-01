@@ -83,12 +83,20 @@
     .setup-block pre, .copy-box, .tool-output { margin: 8px 0 0; padding: 11px; overflow: auto; background: var(--code); color: #e6edf3; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .tool-runner { display: grid; grid-template-columns: minmax(230px, 330px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .tool-list { display: grid; gap: 8px; max-height: calc(100vh - 250px); overflow: auto; padding-right: 3px; }
-    .tool-button { text-align: left; background: #fff; }
+    .tool-button { text-align: left; background: #fff; display: grid; gap: 6px; padding: 10px 12px; min-height: 86px; }
     .tool-button.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+    .tool-name { color: var(--text); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+    .tool-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+    .tool-badge { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border: 1px solid #c7d2d8; border-radius: 999px; background: #f4f7f8; color: #41525d; font-size: 12px; line-height: 1.2; }
+    .tool-description { color: var(--muted); font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .tool-output { min-height: 260px; font-size: 13px; }
     .tool-controls { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
     .selection-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
     .selection-bar .spacer { flex: 1 1 auto; }
+    .meeting-query-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0 0 14px; }
+    .meeting-query-controls label { display: grid; gap: 4px; color: var(--muted); }
+    .meeting-query-controls label.checkbox-control { grid-template-columns: auto 1fr; align-items: center; color: var(--text); }
+    .meeting-query-controls .wide-control { grid-column: 1 / -1; }
     .rest-layout { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .rest-controls { display: grid; gap: 10px; }
     .rest-control-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; align-items: center; }
@@ -98,6 +106,13 @@
     .rest-url-stack { display: grid; gap: 8px; }
     .rest-preview-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .rest-preview-grid .tool-output { min-height: 180px; }
+    .preview-block { min-width: 0; }
+    .preview-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-weight: 650; }
+    .rendered-preview { margin: 0; min-height: 180px; max-height: 360px; overflow: auto; background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+    .rendered-preview table { border-collapse: collapse; width: 100%; }
+    .rendered-preview th, .rendered-preview td { padding: 7px 9px; border: 1px solid #d7dee2; text-align: left; }
+    .rendered-preview th { background: #eef1f3; }
+    .rendered-frame { width: 100%; min-height: 240px; max-height: 420px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
     .example-list { display: grid; gap: 8px; }
     .json-key { color: #7dd3fc; }
     .json-string { color: #86efac; }
@@ -142,7 +157,7 @@
       <button class="tab active" type="button" data-tab="info">Info</button>
       <button class="tab" type="button" data-tab="calendars">Calendars</button>
       <button class="tab" type="button" data-tab="meetings">Meetings</button>
-      <button class="tab" type="button" data-tab="tools">Tools</button>
+      <button class="tab" type="button" data-tab="tools">MCP Tools</button>
       <button class="tab" type="button" data-tab="rest">REST</button>
     </nav>
   </header>
@@ -269,6 +284,9 @@
                 <option value="html">html</option>
                 <option value="md">md</option>
                 <option value="txt">txt</option>
+                <option value="tg-text">tg-text</option>
+                <option value="tg-html">tg-html</option>
+                <option value="tg-markdownv2">tg-markdownv2</option>
                 <option value="ascii">ascii</option>
                 <option value="csv">csv</option>
               </select>
@@ -340,8 +358,18 @@
               <span id="rest-status" class="muted"></span>
             </div>
             <div class="rest-preview-grid">
-              <pre id="rest-text-preview" class="tool-output"></pre>
-              <pre id="rest-json-preview" class="tool-output">{}</pre>
+              <div id="rest-rendered-block" class="preview-block" style="display: none;">
+                <div class="preview-header">Rendered <span id="rest-rendered-note" class="muted"></span></div>
+                <div id="rest-rendered-preview" class="rendered-preview"></div>
+              </div>
+              <div id="rest-raw-block" class="preview-block" style="display: none;">
+                <div class="preview-header">Raw</div>
+                <pre id="rest-text-preview" class="tool-output"></pre>
+              </div>
+              <div class="preview-block">
+                <div class="preview-header">JSON</div>
+                <pre id="rest-json-preview" class="tool-output">{}</pre>
+              </div>
             </div>
           </div>
         </div>
@@ -389,6 +417,25 @@
     <div id="panel-meetings" class="panel">
       <section>
         <h2>Next Meetings By Calendar</h2>
+        <div class="block">
+          <h3>Preview Tool Args</h3>
+          <div class="meeting-query-controls">
+            <label title="MCP tool limit argument. Applies per calendar for upcoming_meetings_by_calendar.">Limit<input id="meeting-limit" type="number" min="1" value="10"></label>
+            <label title="MCP tool window argument. Presets include today, tomorrow, today_tomorrow, next_24h, and this_week.">Window<select id="meeting-window"><option value="">Default</option><option value="today">today</option><option value="tomorrow">tomorrow</option><option value="today_tomorrow">today_tomorrow</option><option value="next_24h">next_24h</option><option value="workday">workday</option><option value="rest_of_workday">rest_of_workday</option><option value="this_week">this_week</option><option value="rest_of_week">rest_of_week</option><option value="rest_of_work_week">rest_of_work_week</option></select></label>
+            <label title="MCP tool timezone argument. Leave blank to use the server display timezone.">Timezone<input id="meeting-timezone" placeholder="America/Denver"></label>
+            <label title="MCP tool sort argument. Controls order within each calendar group.">Sort<select id="meeting-sort"><option value="start_time">start_time</option><option value="agenda">agenda</option><option value="calendar">calendar</option><option value="ongoing_first">ongoing_first</option></select></label>
+            <label title="MCP tool query argument. Matches title, calendar name, or cached description.">Query<input id="meeting-query" placeholder="planning"></label>
+            <label class="checkbox-control" title="MCP tool exclude_cancelled argument."><input id="meeting-exclude-cancelled" type="checkbox" checked> exclude cancelled</label>
+            <label class="checkbox-control" title="MCP tool include_description argument."><input id="meeting-include-description" type="checkbox"> descriptions</label>
+            <label class="checkbox-control" title="MCP tool include_links argument."><input id="meeting-include-links" type="checkbox" checked> links</label>
+            <label class="checkbox-control" title="MCP tool include_disabled argument. Disabled calendars still require an explicit calendar_ids list in tool callers."><input id="meeting-include-disabled" type="checkbox"> disabled calendars</label>
+            <label class="wide-control" title="Actual JSON arguments sent to /api/tools/upcoming_meetings_by_calendar/call. You can edit this directly for advanced options.">Tool JSON<textarea id="meeting-tool-args" spellcheck="false"></textarea></label>
+          </div>
+          <div class="tool-controls">
+            <button id="run-meeting-preview" class="primary" type="button">Run Preview</button>
+            <span id="meeting-preview-status" class="muted"></span>
+          </div>
+        </div>
         <div id="meetings" class="meeting-groups"></div>
       </section>
     </div>
@@ -419,6 +466,18 @@
     const toolOutput = document.querySelector('#tool-output');
     const toolStatus = document.querySelector('#tool-status');
     const runTool = document.querySelector('#run-tool');
+    const meetingLimit = document.querySelector('#meeting-limit');
+    const meetingWindow = document.querySelector('#meeting-window');
+    const meetingTimezone = document.querySelector('#meeting-timezone');
+    const meetingSort = document.querySelector('#meeting-sort');
+    const meetingQuery = document.querySelector('#meeting-query');
+    const meetingExcludeCancelled = document.querySelector('#meeting-exclude-cancelled');
+    const meetingIncludeDescription = document.querySelector('#meeting-include-description');
+    const meetingIncludeLinks = document.querySelector('#meeting-include-links');
+    const meetingIncludeDisabled = document.querySelector('#meeting-include-disabled');
+    const meetingToolArgs = document.querySelector('#meeting-tool-args');
+    const runMeetingPreview = document.querySelector('#run-meeting-preview');
+    const meetingPreviewStatus = document.querySelector('#meeting-preview-status');
     const form = document.querySelector('#add-form');
     const saveSelectionButton = document.querySelector('#save-calendar-selection');
     const selectAllCalendarsButton = document.querySelector('#select-all-calendars');
@@ -437,6 +496,10 @@
     const restStatus = document.querySelector('#rest-status');
     const restJSONPreview = document.querySelector('#rest-json-preview');
     const restTextPreview = document.querySelector('#rest-text-preview');
+    const restRawBlock = document.querySelector('#rest-raw-block');
+    const restRenderedBlock = document.querySelector('#rest-rendered-block');
+    const restRenderedPreview = document.querySelector('#rest-rendered-preview');
+    const restRenderedNote = document.querySelector('#rest-rendered-note');
     let selectedTool = null;
     let tools = [];
     let lastStatus = null;
@@ -447,6 +510,7 @@
       status: ['when', 'calendar', 'title', 'duration', 'ongoing', 'all_day', 'cancelled', 'recurring'],
       links: ['when', 'calendar', 'title', 'meeting_url']
     };
+    let meetingArgsTouched = false;
     const endpoints = [
       ['Admin UI', '/'],
       ['MCP Server', '/mcp'],
@@ -459,10 +523,34 @@
       ['Readiness', '/readyz'],
       ['Metrics', '/metrics']
     ];
+    const restHelp = {
+      'rest-endpoint-picker': 'Choose the REST route or tool-backed REST call to build and preview.',
+      'rest-calendar': 'Optionally scope read queries to one configured calendar. Leave blank for default calendars.',
+      'rest-format': 'Choose the response format. Telegram formats are raw previews because Telegram rendering differs from browser rendering.',
+      'rest-layout': 'Preset field groups. Choose custom or edit Fields directly for a fully custom list.',
+      'rest-fields': 'Comma-separated custom field list. Examples: when,title,meeting_url or when,calendar,title,duration.',
+      'rest-time-style': 'Controls how the when column is displayed in table formats.',
+      'rest-show-timezone': 'Include timezone text in formatted table output.',
+      'rest-limit': 'Maximum events or busy blocks to return.',
+      'rest-window': 'Named time window preset. This is usually easier than Day or Range.',
+      'rest-day': 'Compatibility alias for a single-day window, such as today or tomorrow.',
+      'rest-range': 'Compatibility alias for a named range, such as today_tomorrow.',
+      'rest-timezone': 'Render query windows and display times in this IANA timezone.',
+      'rest-sort': 'Ordering for meeting results.',
+      'rest-query': 'Search text matched against title, calendar name, and cached description.',
+      'rest-include-description': 'Include descriptions in meeting output. Off by default to keep responses compact.',
+      'rest-include-links': 'Include meeting/join links when found.',
+      'rest-links-only': 'Only return meetings with links.',
+      'rest-in-progress': 'Only return meetings currently in progress.',
+      'rest-exclude-all-day': 'Hide all-day and multi-day blocks.',
+      'rest-exclude-cancelled': 'Hide cancelled events.',
+      'rest-include-disabled': 'Allow explicitly selected disabled calendars to be queried.'
+    };
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => selectTab(tab.dataset.tab));
     });
+    applyRESTHelp();
 
     function selectTab(name) {
       if (!document.querySelector('#panel-' + name)) {
@@ -505,6 +593,7 @@
       renderRESTControls(calendars, status);
       renderTelegramLinks(status);
       renderCalendars(calendars);
+      syncMeetingArgsFromControls();
       await loadMeetings();
       await loadTools();
     }
@@ -582,11 +671,41 @@
     }
 
     async function loadMeetings() {
-      const groups = arrayOrEmpty(await api('/api/meetings/by-calendar?limit=10&exclude_cancelled=true&detail=full'));
-      if (groups.length === 0) {
-        meetingsBody.innerHTML = '<div class="block muted">No upcoming meetings in the cache.</div>';
+      meetingPreviewStatus.textContent = 'Loading...';
+      let groups;
+      try {
+        groups = await fetchMeetingGroupsFromTool();
+      } catch (error) {
+        meetingPreviewStatus.textContent = 'Error';
+        meetingsBody.innerHTML = `<div class="block error">${escapeHTML(error.message)}</div>`;
         return;
       }
+      if (groups.length === 0) {
+        meetingsBody.innerHTML = '<div class="block muted">No upcoming meetings in the cache.</div>';
+        meetingPreviewStatus.textContent = 'Complete';
+        return;
+      }
+      renderMeetingGroups(groups);
+      meetingPreviewStatus.textContent = 'Complete';
+    }
+
+    async function fetchMeetingGroupsFromTool() {
+      let args;
+      try {
+        args = JSON.parse(meetingToolArgs.value || '{}');
+      } catch (error) {
+        meetingPreviewStatus.textContent = 'Invalid JSON';
+        meetingsBody.innerHTML = `<div class="block error">${escapeHTML(error.message)}</div>`;
+        return [];
+      }
+      const response = await api('/api/tools/upcoming_meetings_by_calendar/call', {
+        method: 'POST',
+        body: JSON.stringify({ arguments: args })
+      });
+      return arrayOrEmpty(response && response.result && response.result.calendars);
+    }
+
+    function renderMeetingGroups(groups) {
       const calendarTables = [];
       for (const group of groups) {
         const wrapper = document.createElement('div');
@@ -634,6 +753,27 @@
         calendarTables.push(wrapper);
       }
       meetingsBody.replaceChildren(...calendarTables);
+    }
+
+    function meetingArgsFromControls() {
+      const args = {
+        limit: Number(meetingLimit.value) || 10,
+        timezone: meetingTimezone.value.trim(),
+        query: meetingQuery.value.trim(),
+        sort: meetingSort.value,
+        exclude_cancelled: meetingExcludeCancelled.checked,
+        include_description: meetingIncludeDescription.checked,
+        include_links: meetingIncludeLinks.checked,
+        include_disabled: meetingIncludeDisabled.checked,
+        detail: 'full'
+      };
+      if (meetingWindow.value) args.window = meetingWindow.value;
+      return args;
+    }
+
+    function syncMeetingArgsFromControls() {
+      if (meetingArgsTouched) return;
+      meetingToolArgs.value = JSON.stringify(meetingArgsFromControls(), null, 2);
     }
 
     function meetingStatusBadges(meeting) {
@@ -788,7 +928,7 @@
         addQueryValue(url, 'timezone', document.querySelector('#rest-timezone').value);
         addQueryValue(url, 'sort', document.querySelector('#rest-sort').value);
         addQueryValue(url, 'query', document.querySelector('#rest-query').value);
-        if (format !== 'json' && format !== 'txt') {
+        if (isTableRESTFormat(format)) {
           addQueryValue(url, 'fields', restFields.value);
           addQueryValue(url, 'time_style', restTimeStyle.value);
           setBoolQuery(url, 'show_timezone', restShowTimezone.checked);
@@ -804,6 +944,10 @@
         if (format !== 'json') url.searchParams.set('format', format);
       }
       return { url, admin, body: restAdminBody(endpoint, selectedCalendarID) };
+    }
+
+    function isTableRESTFormat(format) {
+      return ['html', 'md', 'ascii', 'csv'].includes(String(format || '').toLowerCase());
     }
 
     function isReadRESTEndpoint(endpoint) {
@@ -942,13 +1086,15 @@
         if (!response.ok) throw new Error(text);
         const contentType = response.headers.get('Content-Type') || '';
         if (contentType.includes('application/json')) {
-          restTextPreview.style.display = 'none';
+          restRawBlock.style.display = 'none';
+          restRenderedBlock.style.display = 'none';
           restJSONPreview.style.display = '';
           renderJSON(restJSONPreview, JSON.parse(text));
         } else {
-          restTextPreview.style.display = '';
+          restRawBlock.style.display = '';
           restJSONPreview.style.display = '';
           restTextPreview.textContent = text;
+          renderRESTRenderedPreview(text, contentType, request.url.searchParams.get('format') || '');
         }
         if (!contentType.includes('application/json') && !request.admin) {
           const jsonRequest = buildRESTRequest();
@@ -966,6 +1112,8 @@
         restStatus.textContent = 'Complete';
       } catch (error) {
         restStatus.textContent = 'Error';
+        restRawBlock.style.display = '';
+        restRenderedBlock.style.display = 'none';
         restTextPreview.textContent = error.message;
         restJSONPreview.textContent = '{}';
       }
@@ -973,6 +1121,115 @@
 
     function renderRESTPreview() {
       updateRESTURLs(lastStatus);
+    }
+
+    function renderRESTRenderedPreview(text, contentType, format) {
+      const normalizedFormat = String(format || '').toLowerCase();
+      restRenderedPreview.replaceChildren();
+      restRenderedNote.textContent = '';
+      if (contentType.includes('text/html') || normalizedFormat === 'html') {
+        const frame = document.createElement('iframe');
+        frame.className = 'rendered-frame';
+        frame.sandbox = '';
+        frame.srcdoc = text;
+        restRenderedPreview.replaceChildren(frame);
+        restRenderedBlock.style.display = '';
+        return;
+      }
+      if (contentType.includes('text/markdown') || normalizedFormat === 'md') {
+        restRenderedPreview.replaceChildren(renderMarkdownFragment(text));
+        restRenderedBlock.style.display = '';
+        return;
+      }
+      if (normalizedFormat.startsWith('tg-')) {
+        restRenderedBlock.style.display = '';
+        restRenderedNote.textContent = 'raw Telegram markup';
+        restRenderedPreview.textContent = text;
+        return;
+      }
+      restRenderedBlock.style.display = 'none';
+    }
+
+    function renderMarkdownFragment(markdown) {
+      const fragment = document.createDocumentFragment();
+      const lines = markdown.split(/\r?\n/);
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (line.startsWith('# ')) {
+          const heading = document.createElement('h2');
+          heading.textContent = line.slice(2).trim();
+          fragment.appendChild(heading);
+          continue;
+        }
+        if (line.startsWith('## ')) {
+          const heading = document.createElement('h3');
+          heading.textContent = line.slice(3).trim();
+          fragment.appendChild(heading);
+          continue;
+        }
+        if (line.trim().startsWith('|')) {
+          const tableLines = [];
+          while (index < lines.length && lines[index].trim().startsWith('|')) {
+            tableLines.push(lines[index]);
+            index += 1;
+          }
+          index -= 1;
+          fragment.appendChild(renderMarkdownTable(tableLines));
+          continue;
+        }
+        if (line.trim() !== '') {
+          const paragraph = document.createElement('p');
+          paragraph.textContent = line;
+          fragment.appendChild(paragraph);
+        }
+      }
+      return fragment;
+    }
+
+    function renderMarkdownTable(lines) {
+      const table = document.createElement('table');
+      const headerCells = markdownCells(lines[0] || '');
+      const separatorIndex = lines.length > 1 && /^[-|:\s]+$/.test(lines[1].trim()) ? 1 : -1;
+      if (headerCells.length > 0) {
+        const thead = document.createElement('thead');
+        const row = document.createElement('tr');
+        for (const cell of headerCells) {
+          const th = document.createElement('th');
+          th.textContent = cell;
+          row.appendChild(th);
+        }
+        thead.appendChild(row);
+        table.appendChild(thead);
+      }
+      const tbodyNode = document.createElement('tbody');
+      const start = separatorIndex === 1 ? 2 : 1;
+      for (const line of lines.slice(start)) {
+        const row = document.createElement('tr');
+        for (const cell of markdownCells(line)) {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          row.appendChild(td);
+        }
+        tbodyNode.appendChild(row);
+      }
+      table.appendChild(tbodyNode);
+      return table;
+    }
+
+    function markdownCells(line) {
+      return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+    }
+
+    function applyRESTHelp() {
+      for (const [id, text] of Object.entries(restHelp)) {
+        const control = document.querySelector('#' + id);
+        if (!control) continue;
+        control.title = text;
+        const label = document.querySelector(`label[for="${id}"]`);
+        if (label) label.title = text;
+        const wrappingLabel = control.closest('label');
+        if (wrappingLabel) wrappingLabel.title = text;
+      }
     }
 
     async function loadTools() {
@@ -997,8 +1254,12 @@
           tool.category,
           tool.read_only ? 'read-only' : 'mutating',
           tool.destructive ? 'destructive' : ''
-        ].filter(Boolean).join(' | ');
-        button.innerHTML = `${escapeHTML(tool.name)}<br><span class="muted">${escapeHTML(badges)}</span><br><span class="muted">${escapeHTML(tool.description)}</span>`;
+        ].filter(Boolean);
+        button.title = tool.description;
+        button.innerHTML = `
+          <span class="tool-name">${escapeHTML(tool.name)}</span>
+          <span class="tool-badges">${badges.map((badge) => `<span class="tool-badge">${escapeHTML(badge)}</span>`).join('')}</span>
+          <span class="tool-description">${escapeHTML(tool.description)}</span>`;
         button.addEventListener('click', () => {
           selectedTool = tool;
           toolArgs.value = JSON.stringify(tool.default_arguments || {}, null, 2);
@@ -1110,6 +1371,38 @@
     openREST.addEventListener('click', () => {
       const request = buildRESTRequest();
       window.open(request.url.toString(), '_blank', 'noopener,noreferrer');
+    });
+
+    [
+      meetingLimit,
+      meetingWindow,
+      meetingTimezone,
+      meetingSort,
+      meetingQuery,
+      meetingExcludeCancelled,
+      meetingIncludeDescription,
+      meetingIncludeLinks,
+      meetingIncludeDisabled
+    ].forEach((control) => {
+      control.addEventListener('input', () => {
+        meetingArgsTouched = false;
+        syncMeetingArgsFromControls();
+      });
+      control.addEventListener('change', () => {
+        meetingArgsTouched = false;
+        syncMeetingArgsFromControls();
+      });
+    });
+
+    meetingToolArgs.addEventListener('input', () => {
+      meetingArgsTouched = true;
+    });
+
+    runMeetingPreview.addEventListener('click', () => {
+      loadMeetings().catch((error) => {
+        meetingPreviewStatus.textContent = 'Error';
+        meetingsBody.innerHTML = `<div class="block error">${escapeHTML(error.message)}</div>`;
+      });
     });
 
     runTool.addEventListener('click', async () => {
