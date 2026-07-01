@@ -127,7 +127,16 @@ Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_i
 
 `upcoming_meetings` returns ongoing meetings plus future meetings, sorted by start time unless `sort` is supplied. It defaults to 10 meetings and a 30 day lookahead. Output is compact by default, using `when`, `title`, `calendar`, `duration`, and `duration_minutes`, plus `ongoing`, `all_day`, `cancelled`, `recurring`, and meeting URL fields only when relevant. Pass `detail: "full"` to include separate `day`, `date`, `end_date`, `start`, `end`, `timezone`, calendar IDs, recurrence IDs, and other verbose fields. Descriptions are omitted by default; use `include_description: true` and optional `description_max_chars` when details are needed. Links are included by default when found; pass `include_links: false` to hide them or `links_only: true` to return only meetings with links. Calendars opted out of general queries are omitted unless `calendar_ids` is supplied. Use `timezone` to render a specific query in another IANA timezone. Optional filters include `query`, `window`, `format`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `calendar_ids`, `after`, and `before`. MCP JSON input still accepts the older `only_ongoing` field for compatibility.
 
-Meeting read tools accept `format: "tg-text"`, `format: "tg-html"`, and `format: "tg-markdownv2"` for Telegram-ready text. Formatted MCP and `/api/tools/{name}/call` responses keep the existing structured `meetings`, `calendars`, or `busy` field and add a `text` field. Direct REST meeting endpoints return the formatted text body as `text/plain; charset=utf-8` when `format` is non-JSON.
+Meeting read tools accept `format: "tg-text"`, `format: "tg-html"`, and `format: "tg-markdownv2"` for Telegram-ready text. Formatted MCP and `/api/tools/{name}/call` responses keep the existing structured `meetings`, `calendars`, or `busy` field and add a `text` field. Direct REST meeting and free/busy endpoints return the formatted text body as `text/plain; charset=utf-8` when `format` is non-JSON.
+
+Telegram-oriented REST examples:
+
+```bash
+curl 'http://127.0.0.1:3333/api/meetings?window=today&sort=agenda&format=tg-text'
+curl 'http://127.0.0.1:3333/api/meetings/by-calendar?window=today_tomorrow&format=tg-html'
+curl 'http://127.0.0.1:3333/api/meetings?window=next_24h&include_links=true&format=tg-markdownv2'
+curl 'http://127.0.0.1:3333/api/free-busy?window=today&format=tg-text'
+```
 
 `sort` supports these modes: `start_time` for raw chronological order, `agenda` for ongoing timed meetings then upcoming timed meetings then all-day/multi-day blocks, `calendar` for all-day/multi-day blocks first then timed events, and `ongoing_first` for current events first then chronological order.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.2 - 2026-07-01
+
+### Improved
+- Added Telegram-oriented REST examples for meeting, grouped meeting, MarkdownV2, and free/busy output.
+
 ## v1.6.1 - 2026-07-01
 
 ### Added
