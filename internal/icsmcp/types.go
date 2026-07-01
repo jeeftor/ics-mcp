@@ -93,6 +93,7 @@ type UpcomingQuery struct {
 	Window              string    `json:"window,omitempty"`
 	Timezone            string    `json:"timezone,omitempty"`
 	Detail              string    `json:"detail,omitempty"`
+	Format              string    `json:"format,omitempty"`
 	Sort                string    `json:"sort,omitempty"`
 	InProgressOnly      bool      `json:"in_progress_only,omitempty"`
 	ExcludeAllDay       bool      `json:"exclude_all_day,omitempty"`

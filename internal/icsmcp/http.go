@@ -70,6 +70,11 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 			return
 		}
 		meetings, err := svc.UpcomingMeetings(r.Context(), query)
+		if err == nil && !isJSONMeetingFormat(query.Format) {
+			text, formatErr := FormatMeetings(meetings, query.Format)
+			writeText(w, text, formatErr)
+			return
+		}
 		writeJSON(w, meetings, err)
 	})
 	mux.HandleFunc("/api/meetings/by-calendar", func(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +88,11 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 			return
 		}
 		groups, err := svc.UpcomingMeetingsByCalendar(r.Context(), query)
+		if err == nil && !isJSONMeetingFormat(query.Format) {
+			text, formatErr := FormatGroupedMeetings(groups, query.Format)
+			writeText(w, text, formatErr)
+			return
+		}
 		writeJSON(w, groups, err)
 	})
 	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +230,7 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	query.Window = values.Get("window")
 	query.Timezone = values.Get("timezone")
 	query.Detail = values.Get("detail")
+	query.Format = values.Get("format")
 	query.Sort = values.Get("sort")
 	query.InProgressOnly = parseBoolQuery(values.Get("in_progress_only")) || parseBoolQuery(values.Get("only_ongoing"))
 	query.ExcludeAllDay = parseBoolQuery(values.Get("exclude_all_day"))
@@ -272,6 +283,15 @@ func writeJSON(w http.ResponseWriter, value any, err error) {
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func writeText(w http.ResponseWriter, value string, err error) {
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(value))
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {

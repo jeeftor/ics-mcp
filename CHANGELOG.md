@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.0 - 2026-07-01
+
+### Added
+- Added Telegram-ready meeting and busy-block output formats: `tg-text`, `tg-html`, and `tg-markdownv2`.
+- Added `format` query support for REST meeting previews and formatted `text` fields for MCP/tool-preview read outputs.
+
+### Improved
+- Expanded output contract coverage for formatted REST responses, MCP structured content, and free/busy formatting.
+- Localized RFC3339 build dates in status output and startup logs to the configured display timezone.
+
 ## v1.5.2 - 2026-06-30
 
 ### Added

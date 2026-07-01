@@ -1190,6 +1190,88 @@ func TestCompactMeetingFormattingHelpersCoverEdgeCases(t *testing.T) {
 	}
 }
 
+func TestFormatMeetingsForTelegramVariants(t *testing.T) {
+	meetings := []Meeting{{
+		Day:             "Mon",
+		Date:            "2026-06-29",
+		Start:           "13:00",
+		End:             "14:00",
+		Timezone:        "UTC",
+		DurationMinutes: 60,
+		Name:            "Planning & Review (A+B)",
+		CalendarName:    "Work",
+		MeetingURL:      "https://meet.example.test/planning?x=1&y=2",
+	}}
+	for i := range meetings {
+		meetings[i].When = compactWhen(meetings[i])
+		meetings[i].Duration = durationText(meetings[i].DurationMinutes)
+	}
+
+	plain, err := FormatMeetings(meetings, MeetingFormatText)
+	if err != nil {
+		t.Fatalf("FormatMeetings(text) error = %v", err)
+	}
+	if !strings.Contains(plain, "- 1:00-2:00 PM Planning & Review (A+B)") {
+		t.Fatalf("plain text = %q", plain)
+	}
+
+	htmlText, err := FormatMeetings(meetings, MeetingFormatTelegramHTML)
+	if err != nil {
+		t.Fatalf("FormatMeetings(html) error = %v", err)
+	}
+	if !strings.Contains(htmlText, "<b>Planning &amp; Review (A+B)</b>") ||
+		!strings.Contains(htmlText, `<a href="https://meet.example.test/planning?x=1&amp;y=2">Join</a>`) {
+		t.Fatalf("html text = %q", htmlText)
+	}
+
+	markdown, err := FormatMeetings(meetings, MeetingFormatTelegramMarkdownV2)
+	if err != nil {
+		t.Fatalf("FormatMeetings(markdownv2) error = %v", err)
+	}
+	if !strings.Contains(markdown, `*Planning & Review \(A\+B\)*`) ||
+		!strings.Contains(markdown, `[Join](https://meet.example.test/planning?x=1&y=2)`) {
+		t.Fatalf("markdown text = %q", markdown)
+	}
+}
+
+func TestFormatBusyBlocksForTelegramText(t *testing.T) {
+	busy := []BusyBlock{{
+		When:            "Mon Jun 29 1:00-2:00 PM UTC",
+		Calendar:        "Work",
+		Duration:        "1 hr",
+		DurationMinutes: 60,
+		Ongoing:         true,
+	}}
+
+	text, err := FormatBusyBlocks(busy, MeetingFormatTelegramText)
+	if err != nil {
+		t.Fatalf("FormatBusyBlocks(tg-text) error = %v", err)
+	}
+	for _, want := range []string{"Busy", "- Mon Jun 29 1:00-2:00 PM UTC (1 hr)", "Work", "ongoing"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("busy text missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestFormatGroupedMeetingsHandlesEmptyAndJSONFormats(t *testing.T) {
+	jsonText, err := FormatGroupedMeetings(nil, MeetingFormatJSON)
+	if err != nil {
+		t.Fatalf("FormatGroupedMeetings(json) error = %v", err)
+	}
+	if jsonText != "" {
+		t.Fatalf("FormatGroupedMeetings(json) = %q, want empty text", jsonText)
+	}
+
+	text, err := FormatGroupedMeetings([]CalendarMeetingGroup{{CalendarName: "Work"}}, MeetingFormatTelegramText)
+	if err != nil {
+		t.Fatalf("FormatGroupedMeetings(empty group) error = %v", err)
+	}
+	if strings.TrimSpace(text) != "Work" {
+		t.Fatalf("FormatGroupedMeetings(empty group) = %q, want calendar header only", text)
+	}
+}
+
 func TestMeetingAndGroupJSONDecodeErrorsAndFallbacks(t *testing.T) {
 	var meeting Meeting
 	if err := json.Unmarshal([]byte("{"), &meeting); err == nil {
@@ -1336,6 +1418,26 @@ func TestServiceResolvesTimezoneFormats(t *testing.T) {
 				t.Fatalf("timezone = %q, want %q", status.Timezone, tt.wantTimezone)
 			}
 		})
+	}
+}
+
+func TestStatusLocalizesRFC3339BuildDateToDisplayTimezone(t *testing.T) {
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{
+		Timezone:  "America/Denver",
+		BuildInfo: BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-30T22:33:49Z"},
+	})
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Version.Date != "June 30, 2026 at 4:33 PM MDT" {
+		t.Fatalf("build date = %q, want localized Denver time", status.Version.Date)
 	}
 }
 
