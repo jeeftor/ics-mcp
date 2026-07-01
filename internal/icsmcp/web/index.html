@@ -213,6 +213,10 @@
             <button class="copy-button" type="button" data-copy-target="setup-command">Copy</button>
             <pre id="setup-command">icsmcp serve</pre>
           </div>
+          <div class="setup-block">
+            <h3>Telegram Outputs</h3>
+            <div id="telegram-quick-links" class="kv"></div>
+          </div>
         </div>
       </section>
     </div>
@@ -499,6 +503,7 @@
       renderEndpoints(status);
       renderSetup(status);
       renderRESTControls(calendars, status);
+      renderTelegramLinks(status);
       renderCalendars(calendars);
       await loadMeetings();
       await loadTools();
@@ -900,6 +905,25 @@
         const row = document.createElement('div');
         row.className = 'endpoint-cell';
         row.innerHTML = `<code id="${id}" data-copy-value="${escapeHTML(base + path)}">${escapeHTML(label)}: ${escapeHTML(base + path)}</code><button class="copy-button" type="button" data-copy-target="${id}">Copy</button>`;
+        return row;
+      }));
+    }
+
+    function renderTelegramLinks(status) {
+      const preferredBase = (status && status.external_url) || window.location.origin;
+      const links = [
+        ['Today agenda', 'telegram-today-agenda', '/api/meetings', { window: 'today', sort: 'agenda', format: 'tg-text' }],
+        ['Grouped today/tomorrow', 'telegram-grouped-today-tomorrow', '/api/meetings/by-calendar', { window: 'today_tomorrow', format: 'tg-html' }],
+        ['Next 24h MarkdownV2', 'telegram-next-24h-markdownv2', '/api/meetings', { window: 'next_24h', include_links: 'true', format: 'tg-markdownv2' }],
+        ['Free/busy today', 'telegram-free-busy-today', '/api/free-busy', { window: 'today', format: 'tg-text' }]
+      ];
+      document.querySelector('#telegram-quick-links').replaceChildren(...links.map(([label, id, path, params]) => {
+        const row = document.createElement('div');
+        row.className = 'kv-row';
+        const url = preferredBase + path + '?' + new URLSearchParams(params).toString();
+        row.innerHTML = `
+          <span class="muted">${escapeHTML(label)}</span>
+          <span class="endpoint-cell"><code id="${id}" data-copy-value="${escapeHTML(url)}">${escapeHTML(url)}</code><button class="copy-button" type="button" data-copy-target="${id}">Copy</button></span>`;
         return row;
       }));
     }

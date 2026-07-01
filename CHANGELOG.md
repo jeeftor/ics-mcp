@@ -44,6 +44,34 @@
 - Added regression coverage for compact meeting JSON and MCP structured content across upcoming, grouped, next, today, and search meeting tools.
 - Documented the MCP output schema-contract guardrail for future output changes.
 
+## v1.6.3 - 2026-07-01
+
+### Improved
+- Added Telegram output quick links with copy buttons to the embedded admin UI setup panel.
+
+## v1.6.2 - 2026-07-01
+
+### Improved
+- Added Telegram-oriented REST examples for meeting, grouped meeting, MarkdownV2, and free/busy output.
+
+## v1.6.1 - 2026-07-01
+
+### Added
+- Added `GET /api/free-busy` with JSON output by default and Telegram-ready `format` support for direct REST integrations.
+
+### Improved
+- Expanded REST coverage for formatted free/busy output without exposing meeting titles.
+
+## v1.6.0 - 2026-07-01
+
+### Added
+- Added Telegram-ready meeting and busy-block output formats: `tg-text`, `tg-html`, and `tg-markdownv2`.
+- Added `format` query support for REST meeting previews and formatted `text` fields for MCP/tool-preview read outputs.
+
+### Improved
+- Expanded output contract coverage for formatted REST responses, MCP structured content, and free/busy formatting.
+- Localized RFC3339 build dates in status output and startup logs to the configured display timezone.
+
 ## v1.5.2 - 2026-06-30
 
 ### Added

@@ -37,7 +37,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "csv", "summary", "status", "links", "custom", "day date range", "day start", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "csv", "summary", "status", "links", "custom", "day date range", "day start", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "MCP Tools", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -586,13 +586,13 @@ func TestWriteJSONReportsEncodeFailures(t *testing.T) {
 }
 
 func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&calendar=side&query=plan&range=today_tomorrow&timezone=America%2FDenver&detail=full&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&include_links=false&links_only=true&include_disabled=true&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/meetings?limit=7&lookahead_days=14&calendar_id=work&calendar_id=home&calendar=side&query=plan&range=today_tomorrow&timezone=America%2FDenver&detail=full&format=tg-html&sort=agenda&in_progress_only=yes&exclude_all_day=on&exclude_cancelled=true&include_description=1&include_links=false&links_only=true&include_disabled=true&description_max_chars=42&after=2026-06-29T15:00:00Z&before=2026-06-30T15:00:00Z", nil)
 
 	query, err := upcomingQueryFromRequest(req)
 	if err != nil {
 		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
 	}
-	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Window != "today_tomorrow" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Sort != "agenda" {
+	if query.Limit != 7 || query.LookaheadDays != 14 || query.Query != "plan" || query.Window != "today_tomorrow" || query.Timezone != "America/Denver" || query.Detail != "full" || query.Format != "tg-html" || query.Sort != "agenda" {
 		t.Fatalf("basic query fields = %#v", query)
 	}
 	if !slices.Equal(query.CalendarIDs, []string{"work", "home", "side"}) {
@@ -612,6 +612,224 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	}
 	if got := query.Before.Format(time.RFC3339); got != "2026-06-30T15:00:00Z" {
 		t.Fatalf("before = %s", got)
+	}
+}
+
+func TestHTTPMeetingAPIFormatsTelegramText(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:     cal.ID,
+		CalendarName:   cal.Name,
+		UID:            "planning",
+		Name:           "Planning & Review",
+		MeetingURL:     "https://meet.example.test/planning?x=1&y=2",
+		MeetingURLType: "meet",
+		Start:          time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:            time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/meetings?limit=10&timezone=UTC&format=tg-text")
+	if err != nil {
+		t.Fatalf("GET formatted meetings error = %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+	for _, want := range []string{"Mon Jun 29", "- 1:00-2:00 PM Planning & Review", "Join: https://meet.example.test/planning?x=1&y=2"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("formatted body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestHTTPGroupedMeetingAPIFormatsTelegramHTML(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work & Personal", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		UID:          "planning",
+		Name:         "Planning <Review>",
+		Start:        time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:          time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/meetings/by-calendar?limit=10&timezone=UTC&format=tg-html")
+	if err != nil {
+		t.Fatalf("GET formatted grouped meetings error = %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", resp.StatusCode, body)
+	}
+	for _, want := range []string{"<b>Work &amp; Personal</b>", "<b>Mon Jun 29</b>", "Planning &lt;Review&gt;"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("formatted grouped body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestHTTPFreeBusyAPIFormatsTelegramText(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		UID:          "planning",
+		Name:         "Private Planning",
+		Start:        time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:          time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/free-busy?limit=10&timezone=UTC&format=tg-text")
+	if err != nil {
+		t.Fatalf("GET formatted free-busy error = %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+	for _, want := range []string{"Busy", "- Mon Jun 29 1:00-2:00 PM UTC (1 hr)", "Work"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("formatted free-busy body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "Private Planning") {
+		t.Fatalf("formatted free-busy leaked meeting title:\n%s", body)
+	}
+
+	var jsonOut freeBusyOutput
+	doJSON(t, http.MethodGet, server.URL+"/api/free-busy?limit=10&timezone=UTC", nil, &jsonOut)
+	if len(jsonOut.Busy) != 1 || jsonOut.Busy[0].Calendar != "Work" || jsonOut.Text != "" {
+		t.Fatalf("free-busy JSON = %#v", jsonOut)
+	}
+}
+
+func TestHTTPMeetingAPIRejectsUnsupportedFormat(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/meetings?format=bad-format")
+	if err != nil {
+		t.Fatalf("GET unsupported formatted meetings error = %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `unsupported meeting format`) || !strings.Contains(string(body), `bad-format`) {
+		t.Fatalf("body = %s, want unsupported format error", body)
+	}
+}
+
+func TestToolPreviewFormattedMeetingsKeepStructuredFieldsAndText(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:     cal.ID,
+		CalendarName:   cal.Name,
+		UID:            "planning",
+		Name:           "Planning & Review",
+		MeetingURL:     "https://meet.example.test/planning?x=1&y=2",
+		MeetingURLType: "meet",
+		Start:          time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:            time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	resp, err := PreviewToolCall(ctx, svc, "today_meetings", json.RawMessage(`{"timezone":"UTC","format":"tg-html"}`))
+	if err != nil {
+		t.Fatalf("today_meetings preview error = %v", err)
+	}
+	out, ok := resp.Result.(meetingsOutput)
+	if !ok {
+		t.Fatalf("today_meetings result type = %T", resp.Result)
+	}
+	if len(out.Meetings) != 1 || out.Meetings[0].Name != "Planning & Review" {
+		t.Fatalf("structured meetings = %#v", out.Meetings)
+	}
+	if out.Text == "" {
+		t.Fatalf("formatted text is empty: %#v", out)
+	}
+	for _, want := range []string{"<b>Mon Jun 29</b>", "Planning &amp; Review", `<a href="https://meet.example.test/planning?x=1&amp;y=2">Join</a>`} {
+		if !strings.Contains(out.Text, want) {
+			t.Fatalf("formatted text missing %q:\n%s", want, out.Text)
+		}
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	for _, want := range []string{"meetings", "text"} {
+		if _, ok := raw[want]; !ok {
+			t.Fatalf("formatted output missing raw JSON field %q: %s", want, data)
+		}
 	}
 }
 
@@ -786,6 +1004,15 @@ func TestToolPreviewExecutesReadAndAdminTools(t *testing.T) {
 	busyOut, ok := busyResp.Result.(freeBusyOutput)
 	if !ok || len(busyOut.Busy) != 1 || busyOut.Busy[0].When == "" || busyOut.Busy[0].DurationMinutes != 60 {
 		t.Fatalf("free_busy preview = %#v", busyResp)
+	}
+
+	formattedBusyResp, err := PreviewToolCall(ctx, svc, "free_busy", json.RawMessage(`{"limit":10,"format":"tg-text"}`))
+	if err != nil {
+		t.Fatalf("formatted free_busy preview error = %v", err)
+	}
+	formattedBusyOut, ok := formattedBusyResp.Result.(freeBusyOutput)
+	if !ok || len(formattedBusyOut.Busy) != 1 || !strings.Contains(formattedBusyOut.Text, "Busy") || !strings.Contains(formattedBusyOut.Text, "1 hr") {
+		t.Fatalf("formatted free_busy preview = %#v", formattedBusyResp)
 	}
 
 	groupResp, err := PreviewToolCall(ctx, svc, "upcoming_meetings_by_calendar", json.RawMessage(`{"limit":10}`))
@@ -1178,7 +1405,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal upcoming tool schema error = %v", err)
 	}
-	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "sort", "include_description", "include_links", "links_only", "include_disabled", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
+	for _, want := range []string{"limit", "calendar_ids", "lookahead_days", "window", "detail", "format", "sort", "include_description", "include_links", "links_only", "include_disabled", "in_progress_only", "exclude_all_day", "exclude_cancelled"} {
 		if !strings.Contains(string(schemaData), want) {
 			t.Fatalf("upcoming_meetings schema missing %q: %s", want, schemaData)
 		}
@@ -1219,6 +1446,36 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 		t.Fatalf("upcoming meetings = %#v", upcoming.Meetings)
 	}
 	assertStructuredMeetingStatusFields(t, upcomingResult.StructuredContent, "meetings", "upcoming_meetings")
+
+	formattedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "today_meetings",
+		Arguments: map[string]any{
+			"format": "tg-markdownv2",
+		},
+	})
+	if err != nil || formattedResult.IsError {
+		t.Fatalf("formatted today_meetings result = %#v err = %v", formattedResult, err)
+	}
+	formattedData, err := json.Marshal(formattedResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal formatted structured content error = %v", err)
+	}
+	var formattedRaw map[string]json.RawMessage
+	if err := json.Unmarshal(formattedData, &formattedRaw); err != nil {
+		t.Fatalf("Unmarshal formatted structured content error = %v", err)
+	}
+	for _, want := range []string{"meetings", "text"} {
+		if _, ok := formattedRaw[want]; !ok {
+			t.Fatalf("formatted structured content missing %q: %s", want, formattedData)
+		}
+	}
+	var formatted meetingsOutput
+	if err := json.Unmarshal(formattedData, &formatted); err != nil {
+		t.Fatalf("Unmarshal formatted meetings output error = %v", err)
+	}
+	if !strings.Contains(formatted.Text, `*Mon Jun 29*`) || !strings.Contains(formatted.Text, `*Planning*`) {
+		t.Fatalf("formatted text = %q", formatted.Text)
+	}
 
 	groupedResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "upcoming_meetings_by_calendar",
@@ -1289,15 +1546,30 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	}
 
 	freeBusyResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "free_busy",
-		Arguments: map[string]any{},
+		Name: "free_busy",
+		Arguments: map[string]any{
+			"format": "tg-html",
+		},
 	})
 	if err != nil || freeBusyResult.IsError {
 		t.Fatalf("free_busy result = %#v err = %v", freeBusyResult, err)
 	}
+	freeBusyData, err := json.Marshal(freeBusyResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal free_busy structured content error = %v", err)
+	}
+	var freeBusyRaw map[string]json.RawMessage
+	if err := json.Unmarshal(freeBusyData, &freeBusyRaw); err != nil {
+		t.Fatalf("Unmarshal free_busy structured content error = %v", err)
+	}
+	for _, want := range []string{"busy", "text"} {
+		if _, ok := freeBusyRaw[want]; !ok {
+			t.Fatalf("formatted free_busy structured content missing %q: %s", want, freeBusyData)
+		}
+	}
 	var freeBusy freeBusyOutput
 	decodeStructured(t, freeBusyResult.StructuredContent, &freeBusy)
-	if len(freeBusy.Busy) != 1 || freeBusy.Busy[0].Calendar != "Work" {
+	if len(freeBusy.Busy) != 1 || freeBusy.Busy[0].Calendar != "Work" || !strings.Contains(freeBusy.Text, "<b>Busy</b>") {
 		t.Fatalf("free busy = %#v", freeBusy.Busy)
 	}
 
