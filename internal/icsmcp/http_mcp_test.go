@@ -38,7 +38,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Compact default", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -1174,6 +1174,33 @@ func TestToolPreviewReadToolDefaultArgumentsAreExecutable(t *testing.T) {
 				t.Fatalf("PreviewToolCall(%s defaults) error = %v", tool.Name, err)
 			}
 		})
+	}
+}
+
+func TestToolPreviewReadToolDefaultsOmitOptionalFieldsProjection(t *testing.T) {
+	readToolsWithFields := map[string]bool{
+		"upcoming_meetings":             true,
+		"upcoming_meetings_by_calendar": true,
+		"next_meeting":                  true,
+		"next_meetings":                 true,
+		"today_meetings":                true,
+		"current_meetings":              true,
+		"search_meetings":               true,
+		"free_busy":                     true,
+	}
+	for _, tool := range ToolInfos() {
+		if !readToolsWithFields[tool.Name] {
+			continue
+		}
+		if _, ok := tool.DefaultArguments["fields"]; ok {
+			t.Fatalf("%s default arguments include optional fields projection: %#v", tool.Name, tool.DefaultArguments)
+		}
+		if strings.Contains(tool.InputExample, `"fields"`) {
+			t.Fatalf("%s input example includes optional fields projection by default: %s", tool.Name, tool.InputExample)
+		}
+		if !strings.Contains(tool.Description, "Omit fields") {
+			t.Fatalf("%s description does not explain omitted fields default: %s", tool.Name, tool.Description)
+		}
 	}
 }
 

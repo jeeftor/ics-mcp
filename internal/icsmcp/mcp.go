@@ -63,25 +63,25 @@ func NewMCPServer(svc *Service) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: svc.buildInfo.Version}, nil)
 	registerMCPResources(server, svc)
 	registerMCPPrompts(server)
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; supports window presets, sort, include_links, links_only, and format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Omit fields for compact default output; pass fields only to override structured fields. Supports window presets, sort, include_links, links_only, and format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; sort applies within each group. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Omit fields for compact default output; pass fields only to override each meeting. Limit applies per calendar; sort applies within each group. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, groupedMeetingsOutput, error) {
 			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
 			out, formatErr := newGroupedMeetingsOutput(groups, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting. Omit fields for compact default output; pass fields only to override structured fields. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.NextMeeting(ctx, in)
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events. Omit fields for compact default output; pass fields only to override structured fields. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.ExcludeAllDay = true
 			in.ExcludeCancelled = true
@@ -89,26 +89,26 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings that overlap the current display day. Includes today's timed meetings, today's all-day blocks, and ongoing multi-day events, but ignores broader window/day/range presets so tomorrow and later events are not returned. Defaults to agenda sort: ongoing timed, upcoming timed, then all-day or multi-day blocks. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings that overlap the current display day. Includes today's timed meetings, today's all-day blocks, and ongoing multi-day events, but ignores broader window/day/range presets so tomorrow and later events are not returned. Defaults to agenda sort. Omit fields for compact default output; pass fields only to override structured fields. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.TodayMeetings(ctx, in)
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress. Omit fields for compact default output; pass fields only to override structured fields. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.InProgressOnly = true
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Descriptions remain omitted from output unless requested. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Omit fields for compact default output; pass fields only to override structured fields. Descriptions remain omitted from output unless requested. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use window presets or after and before for a specific availability window. Supports format=tg-text/tg-html/tg-markdownv2."},
+	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Omit fields for compact default busy-block output; pass fields only to override structured busy fields. Use window presets or after and before for a specific availability window. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
 			busy, err := svc.FreeBusy(ctx, in)
 			out, formatErr := newFreeBusyOutput(busy, in)
