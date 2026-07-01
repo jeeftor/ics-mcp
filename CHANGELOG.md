@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.1 - 2026-07-01
+
+### Added
+- Added `GET /api/free-busy` with JSON output by default and Telegram-ready `format` support for direct REST integrations.
+
+### Improved
+- Expanded REST coverage for formatted free/busy output without exposing meeting titles.
+
 ## v1.6.0 - 2026-07-01
 
 ### Added

@@ -95,6 +95,25 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		}
 		writeJSON(w, groups, err)
 	})
+	mux.HandleFunc("/api/free-busy", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		query, err := upcomingQueryFromRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		busy, err := svc.FreeBusy(r.Context(), query)
+		if err == nil && !isJSONMeetingFormat(query.Format) {
+			text, formatErr := FormatBusyBlocks(busy, query.Format)
+			writeText(w, text, formatErr)
+			return
+		}
+		out, formatErr := newFreeBusyOutput(busy, query.Format)
+		writeJSON(w, out, firstError(err, formatErr))
+	})
 	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
