@@ -293,7 +293,7 @@ func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
 	var logs bytes.Buffer
 	logger := slog.New(newPlainSlogHandler(&logs, slog.LevelInfo))
-	buildInfo := app.BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-30"}
+	buildInfo := app.BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-30T22:33:49Z"}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)
@@ -323,7 +323,7 @@ func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 		t.Fatalf("database was not created: %v", err)
 	}
 	gotLogs := logs.String()
-	for _, want := range []string{"msg=\"server starting\"", "version=v9.9.9", "commit=abc123", "build_date=2026-06-30"} {
+	for _, want := range []string{"msg=\"server starting\"", "version=v9.9.9", "commit=abc123", "build_date=\"June 30, 2026 at 10:33 PM UTC\""} {
 		if !strings.Contains(gotLogs, want) {
 			t.Fatalf("startup log missing %q:\n%s", want, gotLogs)
 		}

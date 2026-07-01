@@ -9,14 +9,17 @@ import (
 
 type meetingsOutput struct {
 	Meetings []Meeting `json:"meetings"`
+	Text     string    `json:"text,omitempty"`
 }
 
 type groupedMeetingsOutput struct {
 	Calendars []CalendarMeetingGroup `json:"calendars"`
+	Text      string                 `json:"text,omitempty"`
 }
 
 type freeBusyOutput struct {
 	Busy []BusyBlock `json:"busy"`
+	Text string      `json:"text,omitempty"`
 }
 
 type calendarsOutput struct {
@@ -60,48 +63,56 @@ func NewMCPServer(svc *Service) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "icsmcp", Version: svc.buildInfo.Version}, nil)
 	registerMCPResources(server, svc)
 	registerMCPPrompts(server)
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; supports window presets, sort, include_links, and links_only."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings", Description: "List ongoing and upcoming meetings from cached ICS feeds. Compact by default; supports window presets, sort, include_links, links_only, and format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; sort applies within each group."},
+	mcp.AddTool(server, &mcp.Tool{Name: "upcoming_meetings_by_calendar", Description: "List ongoing and upcoming meetings grouped by calendar. Limit applies per calendar; sort applies within each group. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, groupedMeetingsOutput, error) {
 			groups, err := svc.UpcomingMeetingsByCalendar(ctx, in)
-			return nil, groupedMeetingsOutput{Calendars: groups}, err
+			out, formatErr := newGroupedMeetingsOutput(groups, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting."},
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meeting", Description: "Return the next non-all-day, non-cancelled meeting. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.NextMeeting(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events."},
+	mcp.AddTool(server, &mcp.Tool{Name: "next_meetings", Description: "List upcoming meeting-focused events, excluding all-day and cancelled events. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.ExcludeAllDay = true
 			in.ExcludeCancelled = true
 			meetings, err := svc.UpcomingMeetings(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings for the current display day. Defaults to agenda sort: ongoing timed, upcoming timed, then all-day or multi-day blocks."},
+	mcp.AddTool(server, &mcp.Tool{Name: "today_meetings", Description: "List meetings for the current display day. Defaults to agenda sort: ongoing timed, upcoming timed, then all-day or multi-day blocks. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.TodayMeetings(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress."},
+	mcp.AddTool(server, &mcp.Tool{Name: "current_meetings", Description: "List meetings that are currently in progress. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			in.InProgressOnly = true
 			meetings, err := svc.UpcomingMeetings(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Descriptions remain omitted from output unless requested."},
+	mcp.AddTool(server, &mcp.Tool{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Descriptions remain omitted from output unless requested. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, meetingsOutput, error) {
 			meetings, err := svc.UpcomingMeetings(ctx, in)
-			return nil, meetingsOutput{Meetings: meetings}, err
+			out, formatErr := newMeetingsOutput(meetings, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use window presets or after and before for a specific availability window."},
+	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Use window presets or after and before for a specific availability window. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
 			busy, err := svc.FreeBusy(ctx, in)
-			return nil, freeBusyOutput{Busy: busy}, err
+			out, formatErr := newFreeBusyOutput(busy, in.Format)
+			return nil, out, firstError(err, formatErr)
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, statusOutput, error) {
@@ -142,4 +153,26 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			return nil, result, err
 		})
 	return server
+}
+
+func newMeetingsOutput(meetings []Meeting, format string) (meetingsOutput, error) {
+	text, err := FormatMeetings(meetings, format)
+	return meetingsOutput{Meetings: meetings, Text: text}, err
+}
+
+func newGroupedMeetingsOutput(groups []CalendarMeetingGroup, format string) (groupedMeetingsOutput, error) {
+	text, err := FormatGroupedMeetings(groups, format)
+	return groupedMeetingsOutput{Calendars: groups, Text: text}, err
+}
+
+func newFreeBusyOutput(busy []BusyBlock, format string) (freeBusyOutput, error) {
+	text, err := FormatBusyBlocks(busy, format)
+	return freeBusyOutput{Busy: busy, Text: text}, err
+}
+
+func firstError(err error, next error) error {
+	if err != nil {
+		return err
+	}
+	return next
 }

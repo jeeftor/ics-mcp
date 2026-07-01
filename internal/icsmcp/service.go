@@ -103,6 +103,15 @@ func normalizeBuildInfo(in BuildInfo) BuildInfo {
 	return in
 }
 
+func localizeBuildInfoDate(in BuildInfo, location *time.Location) BuildInfo {
+	parsed, err := time.Parse(time.RFC3339, in.Date)
+	if err != nil {
+		return in
+	}
+	in.Date = parsed.In(location).Format("January 2, 2006 at 3:04 PM MST")
+	return in
+}
+
 // SetBuildInfo replaces build metadata for tests.
 func (s *Service) SetBuildInfo(info BuildInfo) {
 	s.buildInfo = normalizeBuildInfo(info)
@@ -723,7 +732,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{Now: s.now(), Version: s.buildInfo, Timezone: s.timezone, ExternalURL: s.externalURL, Calendars: calendars}, nil
+	return Status{Now: s.now(), Version: localizeBuildInfoDate(s.buildInfo, s.location), Timezone: s.timezone, ExternalURL: s.externalURL, Calendars: calendars}, nil
 }
 
 // ValidateCalendar fetches and parses an ICS feed without saving it.
