@@ -545,6 +545,59 @@ func TestHTTPGroupedMeetingAPIFormatsTelegramHTML(t *testing.T) {
 	}
 }
 
+func TestHTTPFreeBusyAPIFormatsTelegramText(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 30, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{{
+		CalendarID:   cal.ID,
+		CalendarName: cal.Name,
+		UID:          "planning",
+		Name:         "Private Planning",
+		Start:        time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC),
+		End:          time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/free-busy?limit=10&timezone=UTC&format=tg-text")
+	if err != nil {
+		t.Fatalf("GET formatted free-busy error = %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+	for _, want := range []string{"Busy", "- Mon Jun 29 1:00-2:00 PM UTC (1 hr)", "Work"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("formatted free-busy body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "Private Planning") {
+		t.Fatalf("formatted free-busy leaked meeting title:\n%s", body)
+	}
+
+	var jsonOut freeBusyOutput
+	doJSON(t, http.MethodGet, server.URL+"/api/free-busy?limit=10&timezone=UTC", nil, &jsonOut)
+	if len(jsonOut.Busy) != 1 || jsonOut.Busy[0].Calendar != "Work" || jsonOut.Text != "" {
+		t.Fatalf("free-busy JSON = %#v", jsonOut)
+	}
+}
+
 func TestHTTPMeetingAPIRejectsUnsupportedFormat(t *testing.T) {
 	svc := newTestService(t)
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))

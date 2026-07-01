@@ -92,6 +92,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `GET /api/status`
 - `GET /api/meetings`
 - `GET /api/meetings/by-calendar`
+- `GET /api/free-busy`
 - `GET /api/tools`
 - `POST /api/tools/{name}/call`
 - `GET /api/calendars`
@@ -101,7 +102,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
 
-Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `window`, `timezone`, `detail`, `format`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `after`, and `before`. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `format` defaults to JSON; use `format=tg-text`, `format=tg-html`, or `format=tg-markdownv2` for Telegram-ready `text/plain` output. `format=telegram` is accepted as an alias for `tg-text`, and `format=text` returns the same plain format. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window` accepts `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
+Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `query`, `window`, `timezone`, `detail`, `format`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `after`, and `before`. `/api/free-busy` accepts the same query shape, but returns busy blocks without titles or descriptions. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. `format` defaults to JSON; use `format=tg-text`, `format=tg-html`, or `format=tg-markdownv2` for Telegram-ready `text/plain` output. `format=telegram` is accepted as an alias for `tg-text`, and `format=text` returns the same plain format. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window` accepts `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The older `only_ongoing` query parameter is still accepted for compatibility.
 
 `/healthz` is the liveness endpoint and `/readyz` is the readiness endpoint. The `z` suffix is a common convention from Kubernetes-style health checks.
 
