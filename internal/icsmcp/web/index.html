@@ -465,17 +465,17 @@
               <div class="fields-control" title="MCP fields applied to each meeting or busy block in structured output.">
                 <span>Fields</span>
                 <details id="meeting-field-picker" class="meeting-field-picker">
-                  <summary><span id="meeting-fields-summary">9 selected</span></summary>
+                  <summary><span id="meeting-fields-summary">Compact default</span></summary>
                   <div id="meeting-field-options" class="meeting-field-options">
-                    <label><input type="checkbox" value="when" checked> when</label>
-                    <label><input type="checkbox" value="title" checked> title</label>
-                    <label><input type="checkbox" value="calendar" checked> calendar</label>
-                    <label><input type="checkbox" value="duration" checked> duration</label>
-                    <label><input type="checkbox" value="duration_minutes" checked> duration_minutes</label>
-                    <label><input type="checkbox" value="ongoing" checked> ongoing</label>
-                    <label><input type="checkbox" value="all_day" checked> all_day</label>
-                    <label><input type="checkbox" value="cancelled" checked> cancelled</label>
-                    <label><input type="checkbox" value="recurring" checked> recurring</label>
+                    <label><input type="checkbox" value="when"> when</label>
+                    <label><input type="checkbox" value="title"> title</label>
+                    <label><input type="checkbox" value="calendar"> calendar</label>
+                    <label><input type="checkbox" value="duration"> duration</label>
+                    <label><input type="checkbox" value="duration_minutes"> duration_minutes</label>
+                    <label><input type="checkbox" value="ongoing"> ongoing</label>
+                    <label><input type="checkbox" value="all_day"> all_day</label>
+                    <label><input type="checkbox" value="cancelled"> cancelled</label>
+                    <label><input type="checkbox" value="recurring"> recurring</label>
                     <label><input type="checkbox" value="meeting_url"> meeting_url</label>
                     <label><input type="checkbox" value="description"> description</label>
                     <label><input type="checkbox" value="start"> start</label>
@@ -484,7 +484,7 @@
                     <label><input type="checkbox" value="calendar_id"> calendar_id</label>
                   </div>
                 </details>
-                <input id="meeting-fields" type="hidden" value="when,title,calendar,duration,duration_minutes,ongoing,all_day,cancelled,recurring">
+                <input id="meeting-fields" type="hidden" value="">
               </div>
               <span id="meeting-window-hint" class="meeting-hint">today_meetings stays on the current display day and ignores broader window presets.</span>
             </div>
@@ -584,14 +584,13 @@
       status: ['when', 'calendar', 'title', 'duration', 'ongoing', 'all_day', 'cancelled', 'recurring'],
       links: ['when', 'calendar', 'title', 'meeting_url']
     };
-    const defaultMeetingFields = ['when', 'title', 'calendar', 'duration', 'duration_minutes', 'ongoing', 'all_day', 'cancelled', 'recurring'];
     const meetingToolConfigs = {
-      upcoming_meetings_by_calendar: { path: '/api/tools/upcoming_meetings_by_calendar/call', mode: 'groups', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
-      upcoming_meetings: { path: '/api/tools/upcoming_meetings/call', mode: 'meetings', title: 'Upcoming Meetings', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
-      today_meetings: { path: '/api/tools/today_meetings/call', mode: 'meetings', title: 'Today Meetings', defaults: { sort: 'agenda', fields: defaultMeetingFields, include_description: false, include_links: true, include_disabled: false } },
-      next_meetings: { path: '/api/tools/next_meetings/call', mode: 'meetings', title: 'Next Meetings', defaults: { limit: 10, sort: 'start_time', fields: defaultMeetingFields, include_description: false, include_links: true, include_disabled: false } },
-      current_meetings: { path: '/api/tools/current_meetings/call', mode: 'meetings', title: 'Current Meetings', defaults: { fields: defaultMeetingFields, exclude_all_day: true, exclude_cancelled: true, include_disabled: false } },
-      search_meetings: { path: '/api/tools/search_meetings/call', mode: 'meetings', title: 'Search Meetings', defaults: { query: '', limit: 10, sort: 'start_time', fields: defaultMeetingFields, exclude_cancelled: true, include_links: true, include_disabled: false } }
+      upcoming_meetings_by_calendar: { path: '/api/tools/upcoming_meetings_by_calendar/call', mode: 'groups', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
+      upcoming_meetings: { path: '/api/tools/upcoming_meetings/call', mode: 'meetings', title: 'Upcoming Meetings', defaults: { limit: 10, sort: 'start_time', exclude_cancelled: true, include_description: false, include_links: true, include_disabled: false } },
+      today_meetings: { path: '/api/tools/today_meetings/call', mode: 'meetings', title: 'Today Meetings', defaults: { sort: 'agenda', include_description: false, include_links: true, include_disabled: false } },
+      next_meetings: { path: '/api/tools/next_meetings/call', mode: 'meetings', title: 'Next Meetings', defaults: { limit: 10, sort: 'start_time', include_description: false, include_links: true, include_disabled: false } },
+      current_meetings: { path: '/api/tools/current_meetings/call', mode: 'meetings', title: 'Current Meetings', defaults: { exclude_all_day: true, exclude_cancelled: true, include_disabled: false } },
+      search_meetings: { path: '/api/tools/search_meetings/call', mode: 'meetings', title: 'Search Meetings', defaults: { query: '', limit: 10, sort: 'start_time', exclude_cancelled: true, include_links: true, include_disabled: false } }
     };
     let meetingArgsTouched = false;
     const endpoints = [
@@ -867,7 +866,8 @@
       if ('limit' in args) args.limit = Number(meetingLimit.value) || 10;
       if ('timezone' in args || meetingTimezone.value.trim()) args.timezone = meetingTimezone.value.trim();
       if ('query' in args || meetingQuery.value.trim()) args.query = meetingQuery.value.trim();
-      args.fields = selectedMeetingFields();
+      const fields = selectedMeetingFields();
+      if (fields.length) args.fields = fields;
       if ('sort' in args) args.sort = meetingSort.value;
       if ('exclude_cancelled' in args) args.exclude_cancelled = meetingExcludeCancelled.checked;
       if ('include_description' in args) args.include_description = meetingIncludeDescription.checked;
@@ -883,7 +883,7 @@
       if ('limit' in defaults) meetingLimit.value = defaults.limit;
       if ('sort' in defaults) meetingSort.value = defaults.sort;
       if ('query' in defaults && !defaults.query) meetingQuery.value = '';
-      if ('fields' in defaults) setMeetingFields(defaults.fields);
+      setMeetingFields(defaults.fields || []);
       if ('exclude_cancelled' in defaults) meetingExcludeCancelled.checked = Boolean(defaults.exclude_cancelled);
       if ('include_description' in defaults) meetingIncludeDescription.checked = Boolean(defaults.include_description);
       if ('include_links' in defaults) meetingIncludeLinks.checked = Boolean(defaults.include_links);
@@ -907,7 +907,7 @@
       const fields = selectedMeetingFields();
       meetingFields.value = fields.join(',');
       if (!fields.length) {
-        meetingFieldsSummary.textContent = 'No fields selected';
+        meetingFieldsSummary.textContent = 'Compact default';
         return;
       }
       const preview = fields.slice(0, 3).join(', ');

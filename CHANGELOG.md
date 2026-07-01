@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.9 - 2026-07-01
+
+### Improved
+- Clarified MCP read-tool metadata so `fields` is documented as an optional projection override, not a default argument.
+- Updated the Meetings preview field picker to start in compact-default mode and omit `fields` from generated tool JSON unless selected.
+- Documented that explicit `fields` projection controls structured output when combined with `detail`.
+
 ## v2.0.8 - 2026-07-01
 
 ### Improved
