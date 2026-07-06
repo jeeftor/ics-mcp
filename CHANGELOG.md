@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.0.10 - 2026-07-06
 
 ### Added
 - Added calendar-scoped numbered meeting shortcuts such as `/{calendar}/1`, `/{calendar}/upcoming/1`, and `/{calendar}/ongoing/1`.
