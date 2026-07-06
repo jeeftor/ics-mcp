@@ -2,6 +2,7 @@ package icsmcp
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,6 +21,40 @@ type groupedMeetingsOutput struct {
 type freeBusyOutput struct {
 	Busy []BusyBlock `json:"busy"`
 	Text string      `json:"text,omitempty"`
+}
+
+type meetingOutput struct {
+	Meeting Meeting `json:"meeting"`
+	Text    string  `json:"text,omitempty"`
+}
+
+type calendarMeetingInput struct {
+	UpcomingQuery
+	Calendar string `json:"calendar"`
+	Index    int    `json:"index"`
+	List     string `json:"list,omitempty"`
+}
+
+func (in *calendarMeetingInput) UnmarshalJSON(data []byte) error {
+	var query UpcomingQuery
+	if err := json.Unmarshal(data, &query); err != nil {
+		return err
+	}
+	var fields struct {
+		Calendar string `json:"calendar"`
+		Index    int    `json:"index"`
+		List     string `json:"list,omitempty"`
+	}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*in = calendarMeetingInput{
+		UpcomingQuery: query,
+		Calendar:      fields.Calendar,
+		Index:         fields.Index,
+		List:          fields.List,
+	}
+	return nil
 }
 
 type calendarsOutput struct {
@@ -108,6 +143,12 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			out, formatErr := newMeetingsOutput(meetings, in)
 			return nil, out, firstError(err, formatErr)
 		})
+	mcp.AddTool(server, &mcp.Tool{Name: "calendar_meeting", Description: "Return one meeting from one calendar by 1-based index. Set calendar to a calendar ID or key. list defaults to upcoming and also accepts ongoing. Omit fields for compact default output; pass fields only to override structured fields. Supports format=tg-text/tg-html/tg-markdownv2."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in calendarMeetingInput) (*mcp.CallToolResult, meetingOutput, error) {
+			meeting, err := svc.CalendarMeeting(ctx, in)
+			out, formatErr := newMeetingOutput(meeting, in.UpcomingQuery)
+			return nil, out, firstError(err, formatErr)
+		})
 	mcp.AddTool(server, &mcp.Tool{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Omit fields for compact default busy-block output; pass fields only to override structured busy fields. Use window presets or after and before for a specific availability window. Supports format=tg-text/tg-html/tg-markdownv2."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in UpcomingQuery) (*mcp.CallToolResult, freeBusyOutput, error) {
 			busy, err := svc.FreeBusy(ctx, in)
@@ -162,6 +203,17 @@ func newMeetingsOutput(meetings []Meeting, query UpcomingQuery) (meetingsOutput,
 	}
 	text, err := FormatMeetings(meetings, query.Format)
 	return meetingsOutput{Meetings: projected, Text: text}, err
+}
+
+func newMeetingOutput(meeting Meeting, query UpcomingQuery) (meetingOutput, error) {
+	if len(query.Fields) > 0 {
+		meeting.Fields = query.Fields
+		if _, err := projectMeeting(meeting); err != nil {
+			return meetingOutput{}, err
+		}
+	}
+	text, err := FormatMeetings([]Meeting{meeting}, query.Format)
+	return meetingOutput{Meeting: meeting, Text: text}, err
 }
 
 func newGroupedMeetingsOutput(groups []CalendarMeetingGroup, query UpcomingQuery) (groupedMeetingsOutput, error) {

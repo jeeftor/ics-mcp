@@ -303,6 +303,12 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 		t.Fatalf("rest upcoming meetings = %#v", rest)
 	}
 
+	var restOne meetingOutput
+	doJSON(t, http.MethodGet, server.URL+"/api/rest/calendar_meeting?calendar=work&index=1&detail=full", nil, &restOne)
+	if restOne.Meeting.Name != "Planning" || restOne.Meeting.CalendarID != cal.ID {
+		t.Fatalf("rest calendar meeting = %#v", restOne)
+	}
+
 	var search meetingsOutput
 	doJSON(t, http.MethodGet, server.URL+"/api/rest/search_meetings?query=plan", nil, &search)
 	if len(search.Meetings) != 1 || search.Meetings[0].Name != "Planning" {
@@ -377,9 +383,96 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	if !ok {
 		t.Fatalf("openapi paths = %#v", spec["paths"])
 	}
-	for _, want := range []string{"/api/rest/{tool_name}", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events"} {
+	for _, want := range []string{"/api/rest/{tool_name}", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events", "/{calendar}/{index}", "/{calendar}/upcoming/{index}", "/{calendar}/ongoing/{index}"} {
 		if _, ok := paths[want]; !ok {
 			t.Fatalf("openapi paths missing %q: %#v", want, paths)
+		}
+	}
+}
+
+func TestHTTPCalendarMeetingShortcutsSelectOneMeeting(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	home, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "home", Name: "Home", URL: "https://example.test/home.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar(home) error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, work.ID, []EventInstance{
+		{ID: "current", UID: "current", Name: "Current Standup", Start: now.Add(-15 * time.Minute), End: now.Add(15 * time.Minute)},
+		{ID: "first", UID: "first", Name: "First Planning", Start: now.Add(time.Hour), End: now.Add(2 * time.Hour)},
+		{ID: "second", UID: "second", Name: "Second Review", Start: now.Add(3 * time.Hour), End: now.Add(4 * time.Hour)},
+	}); err != nil {
+		t.Fatalf("ReplaceEvents(work) error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, home.ID, []EventInstance{
+		{ID: "home", UID: "home", Name: "Home Hold", Start: now.Add(30 * time.Minute), End: now.Add(90 * time.Minute)},
+	}); err != nil {
+		t.Fatalf("ReplaceEvents(home) error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var shorthand Meeting
+	doJSON(t, http.MethodGet, server.URL+"/work/1?detail=full", nil, &shorthand)
+	if shorthand.Name != "Current Standup" || shorthand.CalendarID != work.ID {
+		t.Fatalf("shortcut meeting = %#v, want first work upcoming/current meeting", shorthand)
+	}
+
+	var explicit Meeting
+	doJSON(t, http.MethodGet, server.URL+"/work/upcoming/2?detail=full", nil, &explicit)
+	if explicit.Name != "First Planning" || explicit.CalendarID != work.ID {
+		t.Fatalf("explicit upcoming shortcut = %#v, want second work meeting", explicit)
+	}
+
+	var ongoing Meeting
+	doJSON(t, http.MethodGet, server.URL+"/work/ongoing/1?detail=full", nil, &ongoing)
+	if ongoing.Name != "Current Standup" || !ongoing.Ongoing {
+		t.Fatalf("ongoing shortcut = %#v, want current work meeting", ongoing)
+	}
+
+	txtBody, txtContentType := doText(t, http.MethodGet, server.URL+"/work/upcoming/3.txt", nil, "")
+	if !strings.Contains(txtContentType, "text/plain") || !strings.Contains(txtBody, "Second Review") || strings.Contains(txtBody, "Home Hold") {
+		t.Fatalf("text shortcut content-type=%q body=%s", txtContentType, txtBody)
+	}
+
+	htmlBody, htmlContentType := doText(t, http.MethodGet, server.URL+"/work/1", nil, "text/html")
+	if !strings.Contains(htmlContentType, "text/html") || !strings.Contains(htmlBody, "<table>") || !strings.Contains(htmlBody, "Current Standup") {
+		t.Fatalf("html shortcut content-type=%q body=%s", htmlContentType, htmlBody)
+	}
+
+	for _, path := range []string{"/work/0", "/work/nope", "/work/upcoming/0"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("ReadAll(%s) error = %v", path, err)
+		}
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "meeting index must be a positive integer") {
+			t.Fatalf("GET %s status=%d body=%s, want 400 index error", path, resp.StatusCode, body)
+		}
+	}
+
+	for _, path := range []string{"/missing/1", "/work/upcoming/99"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("ReadAll(%s) error = %v", path, err)
+		}
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("GET %s status=%d body=%s, want 404", path, resp.StatusCode, body)
 		}
 	}
 }
@@ -1186,6 +1279,7 @@ func TestToolPreviewReadToolDefaultsOmitOptionalFieldsProjection(t *testing.T) {
 		"today_meetings":                true,
 		"current_meetings":              true,
 		"search_meetings":               true,
+		"calendar_meeting":              true,
 		"free_busy":                     true,
 	}
 	for _, tool := range ToolInfos() {
@@ -1291,6 +1385,7 @@ func TestToolPreviewReportsDecodeErrorsForArgumentTools(t *testing.T) {
 		"today_meetings",
 		"current_meetings",
 		"search_meetings",
+		"calendar_meeting",
 		"free_busy",
 		"add_calendar",
 		"validate_calendar",
@@ -1716,6 +1811,48 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	}
 	assertStructuredMeetingStatusFields(t, searchResult.StructuredContent, "meetings", "search_meetings")
 
+	calendarMeetingResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "calendar_meeting",
+		Arguments: map[string]any{
+			"calendar": addOut.Calendar.Key,
+			"index":    1,
+		},
+	})
+	if err != nil || calendarMeetingResult.IsError {
+		t.Fatalf("calendar_meeting result = %#v err = %v", calendarMeetingResult, err)
+	}
+	calendarMeetingData, err := json.Marshal(calendarMeetingResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal calendar_meeting structured content error = %v", err)
+	}
+	var calendarMeeting struct {
+		Meeting Meeting `json:"meeting"`
+	}
+	if err := json.Unmarshal(calendarMeetingData, &calendarMeeting); err != nil {
+		t.Fatalf("Unmarshal calendar_meeting structured content error = %v", err)
+	}
+	if calendarMeeting.Meeting.Name != "Planning" || calendarMeeting.Meeting.CalendarName != "Work" {
+		t.Fatalf("calendar_meeting structured content = %s", calendarMeetingData)
+	}
+	assertMeetingObjectJSONFields(t, calendarMeetingData, "meeting", []string{"all_day", "calendar", "cancelled", "duration", "duration_minutes", "ongoing", "recurring", "title", "when"})
+
+	projectedCalendarMeetingResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "calendar_meeting",
+		Arguments: map[string]any{
+			"calendar": addOut.Calendar.ID,
+			"index":    1,
+			"fields":   []string{"title", "calendar_id", "ongoing"},
+		},
+	})
+	if err != nil || projectedCalendarMeetingResult.IsError {
+		t.Fatalf("projected calendar_meeting result = %#v err = %v", projectedCalendarMeetingResult, err)
+	}
+	projectedCalendarMeetingData, err := json.Marshal(projectedCalendarMeetingResult.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal projected calendar_meeting structured content error = %v", err)
+	}
+	assertMeetingObjectJSONFields(t, projectedCalendarMeetingData, "meeting", []string{"calendar_id", "ongoing", "title"})
+
 	statusResult, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "server_status",
 		Arguments: map[string]any{},
@@ -1962,6 +2099,21 @@ func assertMeetingJSONFields(t *testing.T, data []byte, key string, want []strin
 		t.Fatalf("projected %s length = %d, want 1: %s", key, len(meetings), data)
 	}
 	if got := sortedMapKeys(meetings[0]); !slices.Equal(got, want) {
+		t.Fatalf("projected %s fields = %#v, want %#v: %s", key, got, want, data)
+	}
+}
+
+func assertMeetingObjectJSONFields(t *testing.T, data []byte, key string, want []string) {
+	t.Helper()
+	var structured map[string]map[string]any
+	if err := json.Unmarshal(data, &structured); err != nil {
+		t.Fatalf("Unmarshal projected %s JSON error = %v: %s", key, err, data)
+	}
+	meeting := structured[key]
+	if meeting == nil {
+		t.Fatalf("projected %s missing: %s", key, data)
+	}
+	if got := sortedMapKeys(meeting); !slices.Equal(got, want) {
 		t.Fatalf("projected %s fields = %#v, want %#v: %s", key, got, want, data)
 	}
 }

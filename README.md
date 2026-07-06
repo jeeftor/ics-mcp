@@ -105,6 +105,9 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `GET /api/events/search`
 - `GET /api/calendars/{calendar}/events`
 - `GET /api/calendars/{calendar}/today`
+- `GET /{calendar}/{index}`
+- `GET /{calendar}/upcoming/{index}`
+- `GET /{calendar}/ongoing/{index}`
 - `GET /openapi.json`
 - `GET /docs`
 - `GET /api/tools`
@@ -127,9 +130,13 @@ curl 'http://localhost:3333/api/events/by-calendar?format=md&fields=when,calenda
 curl 'http://localhost:3333/api/events.csv?fields=when,title&time_style=start&limit=10'
 curl 'http://localhost:3333/api/free-busy?range=today_tomorrow&format=json'
 curl 'http://localhost:3333/api/events?calendar_id=e81d3050123a252f593bdd01e0e0bd373a596f67&include_disabled=true'
+curl 'http://localhost:3333/work/1'
+curl 'http://localhost:3333/work/ongoing/1.txt'
 ```
 
-`/api/rest/{tool_name}` exposes the same behavior as MCP tools. Use `GET` for read tools such as `upcoming_meetings`, `today_meetings`, `search_meetings`, and `free_busy`; use `POST` with a JSON body for admin tools such as `update_calendar`, `refresh_calendar`, `refresh_all_calendars`, and `validate_calendar`. `/openapi.json` describes the REST surface, and `/docs` links to the REST tab and OpenAPI document.
+Calendar-scoped shortcut routes return one meeting by 1-based index. `/{calendar}/1` is shorthand for `/{calendar}/upcoming/1`; `/{calendar}/ongoing/1` selects from that calendar's currently in-progress meetings. `{calendar}` may be a calendar ID or key. These shortcuts use the same format negotiation as other REST read endpoints, so browsers can request HTML while scripts can request JSON, text, Markdown, ASCII, CSV, or Telegram formats.
+
+`/api/rest/{tool_name}` exposes the same behavior as MCP tools. Use `GET` for read tools such as `upcoming_meetings`, `today_meetings`, `calendar_meeting`, `search_meetings`, and `free_busy`; use `POST` with a JSON body for admin tools such as `update_calendar`, `refresh_calendar`, `refresh_all_calendars`, and `validate_calendar`. `/openapi.json` describes the REST surface, and `/docs` links to the REST tab and OpenAPI document.
 
 Meeting and free/busy read endpoints also accept Telegram-ready text formats: `format=tg-text`, `format=tg-html`, and `format=tg-markdownv2`. `format=telegram` is accepted as an alias for `tg-text`, and `format=text` returns the same plain format. Direct meeting and free/busy endpoints return the formatted body as `text/plain; charset=utf-8` when one of these formats is requested.
 
@@ -144,6 +151,7 @@ Meeting and free/busy read endpoints also accept Telegram-ready text formats: `f
 - `today_meetings`
 - `current_meetings`
 - `search_meetings`
+- `calendar_meeting`
 - `free_busy`
 - `server_status`
 - `list_calendars`
@@ -186,6 +194,8 @@ curl 'http://127.0.0.1:3333/api/free-busy?window=today&format=tg-text'
 `next_meeting` returns only the next non-all-day, non-cancelled meeting. Use this when a consumer asks what is next and does not need a larger agenda.
 
 `next_meetings` is the opinionated, token-conscious preset for normal meeting prep. It returns the same shape as `upcoming_meetings`, but always excludes all-day blocks and cancelled events.
+
+`calendar_meeting` returns one meeting from one calendar by 1-based index. Pass `calendar` as a calendar ID or key, `index` as the desired item number, and optional `list: "upcoming"` or `list: "ongoing"`. It returns a single `meeting` field and supports the same compact/default output, optional `fields`, `detail`, link, description, timezone, and Telegram formatting behavior as other meeting read tools.
 
 `today_meetings` returns meetings that overlap the current display day using the configured timezone or the optional query timezone. This includes timed meetings that start today, all-day blocks for today, and multi-day or ongoing events that started earlier but still overlap today. It does not include tomorrow or later events, and broader `window`, `day`, or `range` presets are ignored for this tool. It defaults to `sort: "agenda"` so ongoing timed meetings and upcoming timed meetings appear before all-day or multi-day blocks. Use `sort: "calendar"` to show all-day and multi-day blocks first.
 

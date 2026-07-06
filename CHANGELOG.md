@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Added calendar-scoped numbered meeting shortcuts such as `/{calendar}/1`, `/{calendar}/upcoming/1`, and `/{calendar}/ongoing/1`.
+- Added the `calendar_meeting` MCP/read REST tool for selecting one meeting from one calendar by 1-based index.
+
 ## v2.0.9 - 2026-07-01
 
 ### Improved

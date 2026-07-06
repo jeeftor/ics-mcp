@@ -459,6 +459,58 @@ func (s *Service) FreeBusy(ctx context.Context, query UpcomingQuery) ([]BusyBloc
 	return busy, nil
 }
 
+// CalendarMeeting returns one meeting from one calendar by 1-based index.
+func (s *Service) CalendarMeeting(ctx context.Context, in calendarMeetingInput) (Meeting, error) {
+	if in.Index <= 0 {
+		return Meeting{}, fmt.Errorf("meeting index must be a positive integer")
+	}
+	calendarID, err := s.ResolveCalendarID(ctx, in.Calendar)
+	if err != nil {
+		return Meeting{}, err
+	}
+	query := in.UpcomingQuery
+	query.CalendarIDs = []string{calendarID}
+	if query.Limit < in.Index {
+		query.Limit = in.Index
+	}
+	switch strings.ToLower(strings.TrimSpace(in.List)) {
+	case "", "upcoming":
+	case "ongoing":
+		query.InProgressOnly = true
+	default:
+		return Meeting{}, fmt.Errorf("unknown calendar meeting list %q", in.List)
+	}
+	meetings, err := s.UpcomingMeetings(ctx, query)
+	if err != nil {
+		return Meeting{}, err
+	}
+	if len(meetings) < in.Index {
+		return Meeting{}, fmt.Errorf("calendar %q has no %s meeting at index %d", in.Calendar, calendarMeetingListName(in.List), in.Index)
+	}
+	return meetings[in.Index-1], nil
+}
+
+// ResolveCalendarID returns the calendar ID for an ID or case-insensitive key.
+func (s *Service) ResolveCalendarID(ctx context.Context, value string) (string, error) {
+	calendars, err := s.ListCalendars(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, calendar := range calendars {
+		if calendar.ID == value || strings.EqualFold(calendar.Key, value) {
+			return calendar.ID, nil
+		}
+	}
+	return "", fmt.Errorf("calendar %q not found", value)
+}
+
+func calendarMeetingListName(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "ongoing") {
+		return "ongoing"
+	}
+	return "upcoming"
+}
+
 // UpcomingMeetingsByCalendar returns upcoming meetings grouped by calendar.
 func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query UpcomingQuery) ([]CalendarMeetingGroup, error) {
 	now, lookaheadDays := s.resolveUpcomingWindow(query)

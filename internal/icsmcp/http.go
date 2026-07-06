@@ -245,6 +245,9 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
+			if handleCalendarMeetingShortcut(w, r, svc) {
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}
@@ -465,6 +468,79 @@ func handleCalendarEventAlias(w http.ResponseWriter, r *http.Request, svc *Servi
 	writeFormatted(w, r, meetings, format)
 }
 
+func handleCalendarMeetingShortcut(w http.ResponseWriter, r *http.Request, svc *Service) bool {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return true
+	}
+	input, format, ok, err := calendarMeetingShortcutFromRequest(r)
+	if !ok {
+		return false
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return true
+	}
+	meeting, err := svc.CalendarMeeting(r.Context(), input)
+	if err != nil {
+		writeCalendarMeetingShortcutError(w, err)
+		return true
+	}
+	writeFormatted(w, r, meeting, format)
+	return true
+}
+
+func calendarMeetingShortcutFromRequest(r *http.Request) (calendarMeetingInput, string, bool, error) {
+	path, format := splitFormat(strings.Trim(r.URL.Path, "/"))
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 && len(parts) != 3 {
+		return calendarMeetingInput{}, "", false, nil
+	}
+	if isReservedShortcutRoot(parts[0]) {
+		return calendarMeetingInput{}, "", false, nil
+	}
+	query, err := upcomingQueryFromRequest(r)
+	if err != nil {
+		return calendarMeetingInput{}, "", true, err
+	}
+	input := calendarMeetingInput{UpcomingQuery: query, Calendar: parts[0], List: "upcoming"}
+	indexPart := parts[1]
+	if len(parts) == 3 {
+		input.List = strings.ToLower(strings.TrimSpace(parts[1]))
+		if input.List != "upcoming" && input.List != "ongoing" {
+			return calendarMeetingInput{}, "", false, nil
+		}
+		indexPart = parts[2]
+	}
+	index, err := strconv.Atoi(indexPart)
+	if err != nil || index <= 0 {
+		return calendarMeetingInput{}, "", true, fmt.Errorf("meeting index must be a positive integer")
+	}
+	input.Index = index
+	return input, format, true, nil
+}
+
+func isReservedShortcutRoot(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "api", "docs", "openapi.json", "healthz", "readyz", "metrics", "mcp":
+		return true
+	default:
+		return false
+	}
+}
+
+func writeCalendarMeetingShortcutError(w http.ResponseWriter, err error) {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "meeting index must be a positive integer"), strings.Contains(message, "unknown calendar meeting list"):
+		writeError(w, http.StatusBadRequest, err)
+	case strings.Contains(message, "not found"), strings.Contains(message, "has no"):
+		writeError(w, http.StatusNotFound, err)
+	default:
+		writeError(w, http.StatusInternalServerError, err)
+	}
+}
+
 func restReadArguments(r *http.Request, toolName string) (json.RawMessage, error) {
 	switch toolName {
 	case "upcoming_meetings", "upcoming_meetings_by_calendar", "next_meeting", "next_meetings", "today_meetings", "current_meetings", "search_meetings", "free_busy":
@@ -473,9 +549,37 @@ func restReadArguments(r *http.Request, toolName string) (json.RawMessage, error
 			return nil, err
 		}
 		return json.Marshal(query)
+	case "calendar_meeting":
+		input, err := calendarMeetingInputFromRequest(r)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(input)
 	default:
 		return nil, nil
 	}
+}
+
+func calendarMeetingInputFromRequest(r *http.Request) (calendarMeetingInput, error) {
+	query, err := upcomingQueryFromRequest(r)
+	if err != nil {
+		return calendarMeetingInput{}, err
+	}
+	values := r.URL.Query()
+	index, err := strconv.Atoi(values.Get("index"))
+	if err != nil || index <= 0 {
+		return calendarMeetingInput{}, fmt.Errorf("meeting index must be a positive integer")
+	}
+	calendar := values.Get("calendar_key")
+	if calendar == "" {
+		calendar = values.Get("calendar")
+	}
+	return calendarMeetingInput{
+		UpcomingQuery: query,
+		Calendar:      calendar,
+		Index:         index,
+		List:          values.Get("list"),
+	}, nil
 }
 
 func readRESTPostArguments(r *http.Request) (json.RawMessage, error) {
@@ -509,16 +613,7 @@ func toolInfoByName(name string) (ToolInfo, bool) {
 }
 
 func resolveCalendarID(r *http.Request, svc *Service, value string) (string, error) {
-	calendars, err := svc.ListCalendars(r.Context())
-	if err != nil {
-		return "", err
-	}
-	for _, calendar := range calendars {
-		if calendar.ID == value || strings.EqualFold(calendar.Key, value) {
-			return calendar.ID, nil
-		}
-	}
-	return "", fmt.Errorf("calendar %q not found", value)
+	return svc.ResolveCalendarID(r.Context(), value)
 }
 
 func splitFormat(path string) (string, string) {
@@ -593,6 +688,9 @@ func telegramFormattedText(value any, format string) (string, bool, error) {
 		return "", false, nil
 	}
 	switch typed := value.(type) {
+	case meetingOutput:
+		text, formatErr := FormatMeetings([]Meeting{typed.Meeting}, normalized)
+		return text, true, formatErr
 	case meetingsOutput:
 		text, formatErr := FormatMeetings(typed.Meetings, normalized)
 		return text, true, formatErr
@@ -610,6 +708,9 @@ func telegramFormattedText(value any, format string) (string, bool, error) {
 		return text, true, formatErr
 	case []BusyBlock:
 		text, formatErr := FormatBusyBlocks(typed, normalized)
+		return text, true, formatErr
+	case Meeting:
+		text, formatErr := FormatMeetings([]Meeting{typed}, normalized)
 		return text, true, formatErr
 	default:
 		return "", false, nil
@@ -663,6 +764,8 @@ func renderMarkdown(value any, options tableFormatOptions) string {
 func renderText(value any) string {
 	var b strings.Builder
 	switch typed := value.(type) {
+	case meetingOutput:
+		writeMeetingsText(&b, []Meeting{typed.Meeting})
 	case meetingsOutput:
 		writeMeetingsText(&b, typed.Meetings)
 	case groupedMeetingsOutput:
@@ -675,6 +778,8 @@ func renderText(value any) string {
 		writeGroupsText(&b, typed)
 	case []BusyBlock:
 		writeBusyText(&b, typed)
+	case Meeting:
+		writeMeetingsText(&b, []Meeting{typed})
 	default:
 		data, err := json.MarshalIndent(value, "", "  ")
 		if err != nil {
@@ -687,6 +792,8 @@ func renderText(value any) string {
 
 func renderASCII(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
+	case meetingOutput:
+		return renderMeetingsASCII([]Meeting{typed.Meeting}, options)
 	case meetingsOutput:
 		return renderMeetingsASCII(typed.Meetings, options)
 	case groupedMeetingsOutput:
@@ -699,6 +806,8 @@ func renderASCII(value any, options tableFormatOptions) string {
 		return renderGroupsASCII(typed, options)
 	case []BusyBlock:
 		return renderBusyASCII(typed, options)
+	case Meeting:
+		return renderMeetingsASCII([]Meeting{typed}, options)
 	default:
 		return renderText(value)
 	}
@@ -707,6 +816,8 @@ func renderASCII(value any, options tableFormatOptions) string {
 func renderCSV(value any, options tableFormatOptions) string {
 	var rows [][]string
 	switch typed := value.(type) {
+	case meetingOutput:
+		rows = meetingRows([]Meeting{typed.Meeting}, options)
 	case meetingsOutput:
 		rows = meetingRows(typed.Meetings, options)
 	case groupedMeetingsOutput:
@@ -719,6 +830,8 @@ func renderCSV(value any, options tableFormatOptions) string {
 		rows = groupRows(typed, options)
 	case []BusyBlock:
 		rows = busyRows(typed, options)
+	case Meeting:
+		rows = meetingRows([]Meeting{typed}, options)
 	default:
 		return renderText(value)
 	}
@@ -737,6 +850,8 @@ func renderCSV(value any, options tableFormatOptions) string {
 
 func renderTitle(value any) string {
 	switch value.(type) {
+	case meetingOutput, Meeting:
+		return "Meeting"
 	case groupedMeetingsOutput, []CalendarMeetingGroup:
 		return "Meetings By Calendar"
 	case freeBusyOutput, []BusyBlock:
@@ -748,6 +863,8 @@ func renderTitle(value any) string {
 
 func renderHTMLBody(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
+	case meetingOutput:
+		return renderMeetingsHTML([]Meeting{typed.Meeting}, options)
 	case meetingsOutput:
 		return renderMeetingsHTML(typed.Meetings, options)
 	case groupedMeetingsOutput:
@@ -760,6 +877,8 @@ func renderHTMLBody(value any, options tableFormatOptions) string {
 		return renderGroupsHTML(typed, options)
 	case []BusyBlock:
 		return renderBusyHTML(typed, options)
+	case Meeting:
+		return renderMeetingsHTML([]Meeting{typed}, options)
 	default:
 		return "<pre>" + html.EscapeString(renderText(value)) + "</pre>"
 	}
@@ -767,6 +886,8 @@ func renderHTMLBody(value any, options tableFormatOptions) string {
 
 func renderMarkdownBody(value any, options tableFormatOptions) string {
 	switch typed := value.(type) {
+	case meetingOutput:
+		return renderMeetingsMarkdown([]Meeting{typed.Meeting}, options)
 	case meetingsOutput:
 		return renderMeetingsMarkdown(typed.Meetings, options)
 	case groupedMeetingsOutput:
@@ -779,6 +900,8 @@ func renderMarkdownBody(value any, options tableFormatOptions) string {
 		return renderGroupsMarkdown(typed, options)
 	case []BusyBlock:
 		return renderBusyMarkdown(typed, options)
+	case Meeting:
+		return renderMeetingsMarkdown([]Meeting{typed}, options)
 	default:
 		return "```json\n" + strings.TrimSpace(renderText(value)) + "\n```\n"
 	}
@@ -1255,6 +1378,9 @@ func openAPISpec() map[string]any {
 			"/api/free-busy":                   map[string]any{"get": map[string]any{"summary": "Free/busy blocks"}},
 			"/api/calendars/{calendar}/events": map[string]any{"get": map[string]any{"summary": "Events for one calendar"}},
 			"/api/calendars/{calendar}/today":  map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day for one calendar"}},
+			"/{calendar}/{index}":              map[string]any{"get": map[string]any{"summary": "One upcoming event for one calendar by 1-based index"}},
+			"/{calendar}/upcoming/{index}":     map[string]any{"get": map[string]any{"summary": "One upcoming event for one calendar by 1-based index"}},
+			"/{calendar}/ongoing/{index}":      map[string]any{"get": map[string]any{"summary": "One ongoing event for one calendar by 1-based index"}},
 		},
 	}
 }
