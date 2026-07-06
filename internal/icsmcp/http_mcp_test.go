@@ -22,6 +22,11 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	svc.SetBuildInfo(BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-29"})
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	svc.SetClock(func() time.Time { return now })
+	releaseAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v9.9.10","html_url":"https://github.com/jeeftor/ics-mcp/releases/tag/v9.9.10"}`))
+	}))
+	defer releaseAPI.Close()
+	svc.updateCheckURL = releaseAPI.URL
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
 	defer server.Close()
 
@@ -38,7 +43,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Compact default", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Compact default", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "Update", "update-label", "config-update", "renderUpdateCheck", "loadUpdateCheck", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
@@ -118,6 +123,12 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	doJSON(t, http.MethodGet, server.URL+"/api/status", nil, &status)
 	if len(status.Calendars) != 1 || status.Calendars[0].Name != "Renamed" || status.Version.Version != "v9.9.9" {
 		t.Fatalf("status = %#v", status)
+	}
+
+	var update UpdateCheck
+	doJSON(t, http.MethodGet, server.URL+"/api/update-check", nil, &update)
+	if !update.Enabled || update.CurrentVersion != "v9.9.9" {
+		t.Fatalf("update check = %#v", update)
 	}
 
 	var health map[string]any
@@ -383,7 +394,7 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	if !ok {
 		t.Fatalf("openapi paths = %#v", spec["paths"])
 	}
-	for _, want := range []string{"/api/rest/{tool_name}", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events", "/{calendar}/{index}", "/{calendar}/upcoming/{index}", "/{calendar}/ongoing/{index}"} {
+	for _, want := range []string{"/api/rest/{tool_name}", "/api/update-check", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events", "/{calendar}/{index}", "/{calendar}/upcoming/{index}", "/{calendar}/ongoing/{index}"} {
 		if _, ok := paths[want]; !ok {
 			t.Fatalf("openapi paths missing %q: %#v", want, paths)
 		}
