@@ -294,6 +294,7 @@
                   <option value="/api/rest/today_meetings">today_meetings</option>
                   <option value="/api/rest/next_meetings">next_meetings</option>
                   <option value="/api/rest/search_meetings">search_meetings</option>
+                  <option value="/api/rest/calendar_meeting">calendar_meeting</option>
                   <option value="/api/rest/free_busy">free_busy</option>
                   <option value="/api/rest/list_calendars">list_calendars</option>
                   <option value="/api/rest/server_status">server_status</option>
@@ -1080,7 +1081,14 @@
           addQueryValue(url, 'time_style', restTimeStyle.value);
           setBoolQuery(url, 'show_timezone', restShowTimezone.checked);
         }
-        if (selectedCalendarID) url.searchParams.append('calendar_id', selectedCalendarID);
+        if (endpoint.endsWith('/calendar_meeting')) {
+          const fallbackCalendar = currentCalendars[0] && currentCalendars[0].id;
+          addQueryValue(url, 'calendar', selectedCalendarID || fallbackCalendar || '');
+          addQueryValue(url, 'index', document.querySelector('#rest-limit').value || '1');
+          url.searchParams.set('list', document.querySelector('#rest-in-progress').checked ? 'ongoing' : 'upcoming');
+        } else if (selectedCalendarID) {
+          url.searchParams.append('calendar_id', selectedCalendarID);
+        }
         setBoolQuery(url, 'include_description', document.querySelector('#rest-include-description').checked);
         setBoolQuery(url, 'include_links', document.querySelector('#rest-include-links').checked, true);
         setBoolQuery(url, 'links_only', document.querySelector('#rest-links-only').checked);
@@ -1104,6 +1112,7 @@
         '/api/rest/today_meetings',
         '/api/rest/next_meetings',
         '/api/rest/search_meetings',
+        '/api/rest/calendar_meeting',
         '/api/rest/free_busy',
         '/api/rest/list_calendars',
         '/api/rest/server_status'
@@ -1189,6 +1198,7 @@
         ['/api/events/by-calendar?format=md&fields=when,calendar,title,duration&time_style=range&exclude_cancelled=true', 'Grouped Markdown'],
         ['/api/events.csv?fields=when,title&time_style=start&limit=10', 'Events CSV'],
         ['/api/free-busy?range=today_tomorrow&format=json', 'Free/busy JSON'],
+        ['/work/1', 'Work shortcut'],
         ['/openapi.json', 'OpenAPI']
       ];
       document.querySelector('#rest-examples').replaceChildren(...examples.map(([path, label], index) => {

@@ -38,6 +38,7 @@ func ToolInfos() []ToolInfo {
 		{Name: "today_meetings", Description: "List meetings that overlap the current display day. Includes today's timed meetings, today's all-day blocks, and ongoing multi-day events, but ignores broader window/day/range presets so tomorrow and later events are not returned. Defaults to agenda sort. Omit fields for compact default output; pass fields=[...] only to override structured fields.", Category: "read", ReadOnly: true, InputExample: `{"timezone":"","format":"","sort":"agenda","include_description":false,"include_links":true,"include_disabled":false}`, DefaultArguments: map[string]any{"timezone": "", "format": "", "sort": "agenda", "include_description": false, "include_links": true, "include_disabled": false}},
 		{Name: "current_meetings", Description: "List meetings currently in progress. Omit fields for compact default output; pass fields=[...] only to override structured fields, or format=tg-text, tg-html, or tg-markdownv2 for Telegram-ready text.", Category: "read", ReadOnly: true, InputExample: `{"format":"","exclude_all_day":true,"exclude_cancelled":true,"include_disabled":false}`, DefaultArguments: map[string]any{"format": "", "exclude_all_day": true, "exclude_cancelled": true, "include_disabled": false}},
 		{Name: "search_meetings", Description: "Search cached ongoing and upcoming meetings by title, calendar name, or cached description. Descriptions remain omitted unless include_description is true. Omit fields for compact default output; pass fields=[...] only to override structured fields.", Category: "read", ReadOnly: true, InputExample: `{"query":"planning","limit":10,"window":"","format":"","sort":"start_time","exclude_cancelled":true,"include_links":true,"include_disabled":false}`, DefaultArguments: map[string]any{"query": "", "limit": 10, "window": "", "format": "", "sort": "start_time", "exclude_cancelled": true, "include_links": true, "include_disabled": false}},
+		{Name: "calendar_meeting", Description: "Return one meeting from one calendar by 1-based index. Set calendar to a calendar ID or key and list to upcoming or ongoing. Omit fields for compact default output; pass fields=[...] only to override structured fields.", Category: "read", ReadOnly: true, InputExample: `{"calendar":"work","index":1,"list":"upcoming","timezone":"","format":"","include_links":true,"include_disabled":false}`, DefaultArguments: map[string]any{"calendar": "work", "index": 1, "list": "upcoming", "timezone": "", "format": "", "include_links": true, "include_disabled": false}},
 		{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Omit fields for compact default busy-block output; pass fields=[...] only to override structured busy fields. Use window or after and before for a specific availability window.", Category: "read", ReadOnly: true, InputExample: `{"window":"today_tomorrow","after":"2026-06-30T15:00:00Z","before":"2026-07-01T00:00:00Z","limit":20,"format":"","exclude_cancelled":true,"sort":"start_time","include_disabled":false}`, DefaultArguments: map[string]any{"window": "today", "limit": 20, "format": "", "exclude_cancelled": true, "sort": "start_time", "include_disabled": false}},
 		{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
@@ -111,6 +112,14 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		meetings, err := svc.UpcomingMeetings(ctx, in)
 		out, formatErr := newMeetingsOutput(meetings, in)
+		return ToolCallResponse{Tool: name, Result: out}, firstError(err, formatErr)
+	case "calendar_meeting":
+		var in calendarMeetingInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		meeting, err := svc.CalendarMeeting(ctx, in)
+		out, formatErr := newMeetingOutput(meeting, in.UpcomingQuery)
 		return ToolCallResponse{Tool: name, Result: out}, firstError(err, formatErr)
 	case "free_busy":
 		var in UpcomingQuery
