@@ -90,6 +90,7 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `GET /readyz`
 - `GET /metrics`
 - `GET /api/status`
+- `GET /api/update-check`
 - `GET /api/meetings`
 - `GET /api/meetings/by-calendar`
 - `GET /api/free-busy`
@@ -118,6 +119,8 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `PATCH /api/calendars/{id}`
 - `DELETE /api/calendars/{id}`
 - `POST /api/calendars/{id}/refresh`
+
+`/api/update-check` checks the latest GitHub Release through the server, caches the result for one hour, and returns the current version, latest version, release URL, and an `outdated` flag. The admin UI displays this as an update badge and refreshes it hourly. Set `ICSMCP_UPDATE_CHECK=false` or run `icsmcp serve --update-check=false` to disable outbound update checks.
 
 Meeting preview endpoints accept `limit`, `lookahead_days`, repeated `calendar_id`, `calendar`, `query`, `window`, `day`, `range`, `timezone`, `detail`, `format`, `sort`, `in_progress_only`, `exclude_all_day`, `exclude_cancelled`, `include_description`, `description_max_chars`, `include_links`, `links_only`, `include_disabled`, `after`, and `before`. `/api/free-busy` accepts the same query shape, but returns busy blocks without titles or descriptions. When no `calendar_id` is supplied, calendars with `include_in_general_queries=false` are omitted. Disabled calendars are also omitted unless `include_disabled=true` is supplied with an explicit calendar filter. `timezone` is optional and accepts IANA names such as `America/Denver` or `UTC`; when omitted, output uses the configured display timezone. `detail` defaults to compact token-efficient output; use `detail=full` for the verbose field set. MCP read tools also accept optional `fields` as a JSON array to choose structured meeting or busy-block output fields for that call; omit `fields` to keep the compact default output. When both `detail` and `fields` are supplied, the explicit `fields` projection controls structured output. `sort` accepts `start_time`, `agenda`, `calendar`, and `ongoing_first`. `window`, `day`, and `range` accept presets such as `today`, `tomorrow`, `today_tomorrow`, `next_24h`, `workday`, `rest_of_workday`, `this_week`, `rest_of_week`, and `rest_of_work_week`. `after` and `before` use RFC3339 timestamps. The dedicated `today_meetings` tool and `/api/events/today` aliases always use the current display day; they include events that overlap that local day, but ignore broader `window`, `day`, or `range` presets. The older `only_ongoing` query parameter is still accepted for compatibility.
 

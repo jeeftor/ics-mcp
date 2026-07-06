@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1598,6 +1599,77 @@ func TestStatusIncludesNormalizedExternalURL(t *testing.T) {
 	}
 	if status.ExternalURL != "https://ics-mcp.vookie.net" {
 		t.Fatalf("external URL = %q, want trimmed vookie URL", status.ExternalURL)
+	}
+}
+
+func TestUpdateCheckFetchesLatestReleaseAndCachesForAnHour(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	now := time.Date(2026, 7, 6, 18, 0, 0, 0, time.UTC)
+	var calls atomic.Int32
+	svc := NewService(store, ServiceOptions{
+		BuildInfo: BuildInfo{Version: "v2.0.9", Commit: "abc123", Date: "2026-07-01T17:28:58Z"},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			if got := req.URL.String(); got != defaultUpdateCheckURL {
+				t.Fatalf("update check URL = %q, want %q", got, defaultUpdateCheckURL)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"tag_name":"v2.0.10","html_url":"https://github.com/jeeftor/ics-mcp/releases/tag/v2.0.10","published_at":"2026-07-06T17:00:00Z"}`)),
+			}, nil
+		})},
+	})
+	svc.SetClock(func() time.Time { return now })
+
+	first, err := svc.UpdateCheck(ctx)
+	if err != nil {
+		t.Fatalf("UpdateCheck(first) error = %v", err)
+	}
+	if !first.Enabled || !first.Outdated || first.CurrentVersion != "v2.0.9" || first.LatestVersion != "v2.0.10" || first.ReleaseURL == "" || first.Error != "" {
+		t.Fatalf("first update check = %#v", first)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls after first check = %d, want 1", calls.Load())
+	}
+
+	second, err := svc.UpdateCheck(ctx)
+	if err != nil {
+		t.Fatalf("UpdateCheck(second) error = %v", err)
+	}
+	if !second.Outdated || calls.Load() != 1 {
+		t.Fatalf("second update check = %#v calls=%d, want cached outdated result", second, calls.Load())
+	}
+
+	svc.SetClock(func() time.Time { return now.Add(61 * time.Minute) })
+	third, err := svc.UpdateCheck(ctx)
+	if err != nil {
+		t.Fatalf("UpdateCheck(third) error = %v", err)
+	}
+	if !third.Outdated || calls.Load() != 2 {
+		t.Fatalf("third update check = %#v calls=%d, want refreshed outdated result", third, calls.Load())
+	}
+}
+
+func TestUpdateCheckCanBeDisabled(t *testing.T) {
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{DisableUpdateCheck: true, BuildInfo: BuildInfo{Version: "v2.0.9"}})
+
+	got, err := svc.UpdateCheck(context.Background())
+	if err != nil {
+		t.Fatalf("UpdateCheck() disabled error = %v", err)
+	}
+	if got.Enabled || got.Outdated || got.CurrentVersion != "v2.0.9" || got.LatestVersion != "" || got.Error != "update check disabled" {
+		t.Fatalf("disabled update check = %#v", got)
 	}
 }
 

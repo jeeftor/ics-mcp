@@ -182,6 +182,7 @@
       </div>
       <div class="status-pills">
         <span class="pill">Version <code id="version-label">loading</code></span>
+        <span class="pill">Update <code id="update-label">checking</code></span>
         <span class="pill">Timezone <code id="timezone-label">loading</code></span>
         <span class="pill">Calendars <code id="calendar-count-label">0</code></span>
       </div>
@@ -233,6 +234,7 @@
         <h2>Runtime Config</h2>
         <div class="block kv">
           <div class="kv-row"><span class="muted">Build</span><code id="config-build">loading</code></div>
+          <div class="kv-row"><span class="muted">Update</span><code id="config-update">checking</code></div>
           <div class="kv-row"><span class="muted">Commit</span><code id="config-commit">loading</code></div>
           <div class="kv-row"><span class="muted">Build Date</span><code id="config-date">loading</code></div>
           <div class="kv-row"><span class="muted">Display Timezone</span><code id="config-timezone">loading</code></div>
@@ -678,6 +680,7 @@
       renderCalendars(calendars);
       syncMeetingFieldsInput();
       syncMeetingArgsFromControls();
+      await loadUpdateCheck();
       await loadMeetings();
       await loadTools();
     }
@@ -697,6 +700,38 @@
       document.querySelector('#config-timezone').textContent = status.timezone || 'local';
       document.querySelector('#config-external').textContent = status.external_url || 'None';
       document.querySelector('#config-origin').textContent = window.location.origin;
+    }
+
+    async function loadUpdateCheck() {
+      try {
+        renderUpdateCheck(await api('/api/update-check'));
+      } catch (error) {
+        renderUpdateCheck({ enabled: true, error: error.message || String(error) });
+      }
+    }
+
+    function renderUpdateCheck(update) {
+      const label = document.querySelector('#update-label');
+      const detail = document.querySelector('#config-update');
+      if (!update || update.enabled === false) {
+        label.textContent = 'disabled';
+        detail.textContent = 'disabled';
+        return;
+      }
+      if (update.error) {
+        label.textContent = 'check failed';
+        detail.textContent = update.error;
+        return;
+      }
+      if (update.outdated) {
+        label.textContent = `update ${update.latest_version}`;
+        detail.innerHTML = update.release_url
+          ? `<a href="${escapeHTML(update.release_url)}">${escapeHTML(update.current_version || 'current')} -&gt; ${escapeHTML(update.latest_version || 'latest')}</a>`
+          : `${escapeHTML(update.current_version || 'current')} -&gt; ${escapeHTML(update.latest_version || 'latest')}`;
+        return;
+      }
+      label.textContent = 'current';
+      detail.textContent = update.latest_version ? `current (${update.latest_version})` : 'current';
     }
 
     function renderCalendars(calendars) {
@@ -1660,6 +1695,7 @@
     load().catch((error) => {
       tbody.innerHTML = `<tr><td colspan="8" class="error">${escapeHTML(error.message)}</td></tr>`;
     });
+    setInterval(loadUpdateCheck, 60 * 60 * 1000);
   </script>
 </body>
 </html>

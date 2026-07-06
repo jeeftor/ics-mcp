@@ -246,7 +246,7 @@ func TestRunServeCreatesDatabaseDirAndReturnsStartupImportError(t *testing.T) {
 	dbPath := filepath.Join(dir, "nested", "icsmcp.sqlite3")
 	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
 
-	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, []string{"missing-separator"}, logger, appBuildInfo(), "UTC", "")
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, []string{"missing-separator"}, logger, appBuildInfo(), "UTC", "", true)
 	if err == nil || !strings.Contains(err.Error(), "calendar must be name=url") {
 		t.Fatalf("runServe() error = %v, want startup calendar import error", err)
 	}
@@ -264,7 +264,7 @@ func TestRunServeReportsDatabaseDirectoryCreationErrors(t *testing.T) {
 	dbPath := filepath.Join(parentFile, "icsmcp.sqlite3")
 	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
 
-	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "", true)
 	if err == nil || !strings.Contains(err.Error(), "create database directory") {
 		t.Fatalf("runServe() error = %v, want database directory context", err)
 	}
@@ -274,7 +274,7 @@ func TestRunServeReportsOpenStoreErrors(t *testing.T) {
 	dbPath := t.TempDir()
 	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
 
-	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	err := runServe(context.Background(), "127.0.0.1:0", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "", true)
 	if err == nil || !strings.Contains(err.Error(), "migrate sqlite") {
 		t.Fatalf("runServe() error = %v, want sqlite migration context", err)
 	}
@@ -285,7 +285,7 @@ func TestRunServeReportsListenErrors(t *testing.T) {
 	dbPath := filepath.Join(dir, "icsmcp.sqlite3")
 	logger := slog.New(newPlainSlogHandler(io.Discard, slog.LevelError))
 
-	err := runServe(context.Background(), "not-a-valid-listen-address", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "")
+	err := runServe(context.Background(), "not-a-valid-listen-address", dbPath, time.Minute, nil, logger, appBuildInfo(), "UTC", "", true)
 	if err == nil || !strings.Contains(err.Error(), "serve http") {
 		t.Fatalf("runServe() error = %v, want serve http context", err)
 	}
@@ -302,7 +302,7 @@ func TestRunServeExitsCleanlyWhenContextIsCancelled(t *testing.T) {
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- runServe(ctx, "127.0.0.1:0", dbPath, time.Minute, nil, logger, buildInfo, "UTC", "")
+		errCh <- runServe(ctx, "127.0.0.1:0", dbPath, time.Minute, nil, logger, buildInfo, "UTC", "", true)
 	}()
 
 	timer := time.NewTimer(50 * time.Millisecond)

@@ -62,6 +62,14 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		status, err := svc.Status(r.Context())
 		writeJSON(w, status, err)
 	})
+	mux.HandleFunc("/api/update-check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		update, err := svc.UpdateCheck(r.Context())
+		writeJSON(w, update, err)
+	})
 	mux.HandleFunc("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -1367,6 +1375,7 @@ func openAPISpec() map[string]any {
 		},
 		"paths": map[string]any{
 			"/api/rest/{tool_name}":            map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},
+			"/api/update-check":                map[string]any{"get": map[string]any{"summary": "Check latest GitHub release version"}},
 			"/api/events":                      map[string]any{"get": map[string]any{"summary": "Upcoming events"}},
 			"/api/events/by-calendar":          map[string]any{"get": map[string]any{"summary": "Upcoming events grouped by calendar"}},
 			"/api/events/today":                map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day"}},

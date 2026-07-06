@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,15 +19,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const defaultUpdateCheckURL = "https://api.github.com/repos/jeeftor/ics-mcp/releases/latest"
+
 // ServiceOptions configures Service behavior.
 type ServiceOptions struct {
-	RefreshInterval time.Duration
-	Lookahead       time.Duration
-	HTTPClient      *http.Client
-	Logger          *slog.Logger
-	BuildInfo       BuildInfo
-	Timezone        string
-	ExternalURL     string
+	RefreshInterval     time.Duration
+	Lookahead           time.Duration
+	HTTPClient          *http.Client
+	Logger              *slog.Logger
+	BuildInfo           BuildInfo
+	Timezone            string
+	ExternalURL         string
+	DisableUpdateCheck  bool
+	UpdateCheckURL      string
+	UpdateCheckInterval time.Duration
 }
 
 // Service coordinates calendar config, refreshes, and meeting queries.
@@ -40,6 +46,12 @@ type Service struct {
 	location        *time.Location
 	timezone        string
 	externalURL     string
+	updateCheckURL  string
+	updateCheck     bool
+	updateInterval  time.Duration
+	updateMu        sync.Mutex
+	updateCached    UpdateCheck
+	updateExpires   time.Time
 	clockMu         sync.RWMutex
 	clock           func() time.Time
 }
@@ -58,6 +70,12 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	if opts.UpdateCheckURL == "" {
+		opts.UpdateCheckURL = defaultUpdateCheckURL
+	}
+	if opts.UpdateCheckInterval == 0 {
+		opts.UpdateCheckInterval = time.Hour
+	}
 	location, timezone := resolveLocation(opts.Timezone, opts.Logger)
 	return &Service{
 		store:           store,
@@ -69,6 +87,9 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		location:        location,
 		timezone:        timezone,
 		externalURL:     normalizeExternalURL(opts.ExternalURL),
+		updateCheckURL:  strings.TrimSpace(opts.UpdateCheckURL),
+		updateCheck:     !opts.DisableUpdateCheck,
+		updateInterval:  opts.UpdateCheckInterval,
 		clock:           time.Now,
 	}
 }
@@ -786,6 +807,102 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	return Status{Now: s.now(), Version: localizeBuildInfoDate(s.buildInfo, s.location), Timezone: s.timezone, ExternalURL: s.externalURL, Calendars: calendars}, nil
+}
+
+// UpdateCheck returns the latest-release status, cached for the configured interval.
+func (s *Service) UpdateCheck(ctx context.Context) (UpdateCheck, error) {
+	current := s.buildInfo.Version
+	if !s.updateCheck {
+		return UpdateCheck{Enabled: false, CurrentVersion: current, Error: "update check disabled"}, nil
+	}
+	now := s.now()
+	s.updateMu.Lock()
+	if !s.updateExpires.IsZero() && now.Before(s.updateExpires) {
+		cached := s.updateCached
+		s.updateMu.Unlock()
+		return cached, nil
+	}
+	s.updateMu.Unlock()
+
+	check := s.fetchUpdateCheck(ctx, now, current)
+	s.updateMu.Lock()
+	s.updateCached = check
+	s.updateExpires = now.Add(s.updateInterval)
+	s.updateMu.Unlock()
+	return check, nil
+}
+
+func (s *Service) fetchUpdateCheck(ctx context.Context, now time.Time, current string) UpdateCheck {
+	check := UpdateCheck{Enabled: true, CurrentVersion: current, CheckedAt: now.Format(time.RFC3339)}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.updateCheckURL, nil)
+	if err != nil {
+		check.Error = err.Error()
+		return check
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "ics-mcp/"+current)
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		check.Error = err.Error()
+		return check
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		check.Error = fmt.Sprintf("latest release request returned status %d", resp.StatusCode)
+		return check
+	}
+	var latest struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&latest); err != nil {
+		check.Error = err.Error()
+		return check
+	}
+	check.LatestVersion = latest.TagName
+	check.ReleaseURL = latest.HTMLURL
+	check.Outdated = isVersionOutdated(current, latest.TagName)
+	return check
+}
+
+func isVersionOutdated(current string, latest string) bool {
+	currentVersion, okCurrent := parseVersionParts(current)
+	latestVersion, okLatest := parseVersionParts(latest)
+	if !okCurrent || !okLatest {
+		return false
+	}
+	for index := range currentVersion {
+		if latestVersion[index] > currentVersion[index] {
+			return true
+		}
+		if latestVersion[index] < currentVersion[index] {
+			return false
+		}
+	}
+	return false
+}
+
+func parseVersionParts(value string) ([3]int, bool) {
+	var version [3]int
+	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
+	parts := strings.Split(value, ".")
+	if len(parts) != len(version) {
+		return version, false
+	}
+	for index, part := range parts {
+		if part == "" {
+			return version, false
+		}
+		var parsed int
+		for _, char := range part {
+			if char < '0' || char > '9' {
+				return version, false
+			}
+			parsed = parsed*10 + int(char-'0')
+		}
+		version[index] = parsed
+	}
+	return version, true
 }
 
 // ValidateCalendar fetches and parses an ICS feed without saving it.

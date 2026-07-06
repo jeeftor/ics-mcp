@@ -5,6 +5,8 @@
 ### Added
 - Added calendar-scoped numbered meeting shortcuts such as `/{calendar}/1`, `/{calendar}/upcoming/1`, and `/{calendar}/ongoing/1`.
 - Added the `calendar_meeting` MCP/read REST tool for selecting one meeting from one calendar by 1-based index.
+- Added `/api/update-check` and an admin UI update badge that checks the latest GitHub Release through the backend and caches results for one hour.
+- Added `ICSMCP_UPDATE_CHECK=false` / `--update-check=false` to disable outbound update checks.
 
 ## v2.0.9 - 2026-07-01
 

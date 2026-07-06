@@ -68,6 +68,7 @@ func NewRootCommand() *cobra.Command {
 			refreshInterval := viper.GetDuration("refresh-interval")
 			timezone := viper.GetString("timezone")
 			externalURL := viper.GetString("external-url")
+			updateCheck := viper.GetBool("update-check")
 			logLevel, err := parseLogLevel(viper.GetString("log-level"))
 			if err != nil {
 				return err
@@ -77,7 +78,7 @@ func NewRootCommand() *cobra.Command {
 				Version: Version,
 				Commit:  Commit,
 				Date:    Date,
-			}, timezone, externalURL)
+			}, timezone, externalURL, updateCheck)
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
@@ -86,6 +87,7 @@ func NewRootCommand() *cobra.Command {
 	serve.Flags().Duration("refresh-interval", 5*time.Minute, "Feed refresh interval")
 	serve.Flags().String("timezone", "", "Display timezone for meeting output, for example America/Denver; defaults to ICSMCP_TIMEZONE or UTC")
 	serve.Flags().String("external-url", "", "External base URL shown in the admin setup UI, for example https://ics-mcp.example.net")
+	serve.Flags().Bool("update-check", true, "Check GitHub latest release from the admin UI")
 	serve.Flags().String("log-level", "info", "Log level: debug, info, warn, or error")
 	serve.Flags().Bool("log-color", true, "Colorize slog output")
 	serve.Flags().Var(&calendars, "calendar", "Startup calendar in name=url form; repeatable")
@@ -95,6 +97,7 @@ func NewRootCommand() *cobra.Command {
 	_ = viper.BindPFlag("refresh-interval", serve.Flags().Lookup("refresh-interval"))
 	_ = viper.BindPFlag("timezone", serve.Flags().Lookup("timezone"))
 	_ = viper.BindPFlag("external-url", serve.Flags().Lookup("external-url"))
+	_ = viper.BindPFlag("update-check", serve.Flags().Lookup("update-check"))
 	_ = viper.BindPFlag("log-level", serve.Flags().Lookup("log-level"))
 	_ = viper.BindPFlag("log-color", serve.Flags().Lookup("log-color"))
 	viper.SetEnvPrefix("ICSMCP")
@@ -121,7 +124,7 @@ func resolveDBPath(configDir string, dbPath string) string {
 	return filepath.Join(configDir, "icsmcp.sqlite3")
 }
 
-func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string) error {
+func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
@@ -130,7 +133,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, DisableUpdateCheck: !updateCheck})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}

@@ -45,6 +45,17 @@ type Status struct {
 	Calendars   []CalendarStatus `json:"calendars"`
 }
 
+// UpdateCheck describes whether a newer GitHub release is available.
+type UpdateCheck struct {
+	Enabled        bool   `json:"enabled"`
+	CurrentVersion string `json:"current_version"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	Outdated       bool   `json:"outdated"`
+	CheckedAt      string `json:"checked_at,omitempty"`
+	ReleaseURL     string `json:"release_url,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
 // AddCalendarInput creates or upserts a calendar.
 type AddCalendarInput struct {
 	Key  string `json:"key,omitempty"`
