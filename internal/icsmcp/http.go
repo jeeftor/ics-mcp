@@ -22,7 +22,7 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpServer
-	}, &mcp.StreamableHTTPOptions{JSONResponse: true}))
+	}, &mcp.StreamableHTTPOptions{JSONResponse: true, Stateless: true}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)

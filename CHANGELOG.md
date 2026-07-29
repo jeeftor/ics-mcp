@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.11 - 2026-07-29
+
+### Added
+- Enabled MCP `2026-07-28` protocol support via stateless streamable HTTP transport. The SDK negotiates the highest mutually-supported protocol version at connect time; existing clients on `2025-11-25` and earlier continue to work unchanged. New clients get the stateless protocol core with header-based routing (`Mcp-Method`/`Mcp-Name`), cacheable list results, and no `initialize` handshake.
+
 ## v2.0.10 - 2026-07-06
 
 ### Added
