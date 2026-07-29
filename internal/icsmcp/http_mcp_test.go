@@ -1549,7 +1549,7 @@ func TestMCPToolsExposeMeetingsAndAdminMutations(t *testing.T) {
 	mcpServer := NewMCPServer(svc)
 	httpServer := httptest.NewServer(mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpServer
-	}, &mcp.StreamableHTTPOptions{JSONResponse: true}))
+	}, &mcp.StreamableHTTPOptions{JSONResponse: true, Stateless: true}))
 	defer httpServer.Close()
 
 	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
