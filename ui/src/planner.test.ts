@@ -19,8 +19,10 @@ describe('planner placement', () => {
   it('wraps timed titles only when the card has room for them', () => {
     expect(timedEventTitleLines(30, false)).toBe(1);
     expect(timedEventTitleLines(44, false)).toBe(2);
+    expect(timedEventTitleLines(82, false)).toBe(3);
     expect(timedEventTitleLines(60, true)).toBe(1);
     expect(timedEventTitleLines(68, true)).toBe(2);
+    expect(timedEventTitleLines(108, true)).toBe(3);
   });
 
   it('keeps all-day overflow compact', () => {

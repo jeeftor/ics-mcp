@@ -39,7 +39,7 @@ export function eventPreviewDetails(meeting: Meeting, calendar: Calendar | undef
 /** Returns the single useful, non-description detail permitted on a compact event card. */
 export function eventCardSecondaryLine(meeting: Meeting): string | undefined {
   const location = meeting.description?.match(/(?:^|\n)(?:location|where)\s*:\s*([^\n]+)/i)?.[1]?.trim();
-  return location || (meeting.meeting_url ? 'Online meeting' : undefined);
+  return location || (meeting.meeting_url ? 'Online meeting' : undefined) || (meeting.cancelled ? 'Cancelled' : undefined);
 }
 
 /**
