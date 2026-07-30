@@ -348,6 +348,35 @@ func TestParseICSDetectsAllDayAndCancelledEvents(t *testing.T) {
 	}
 }
 
+func TestParseICSIncludesExclusiveEndAllDayEventAtWindowStart(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
+		"BEGIN:VEVENT\r\nUID:august-ooo\r\nDTSTAMP:20260730T120000Z\r\nDTSTART;VALUE=DATE:20260803\r\nDTEND;VALUE=DATE:20260804\r\nSUMMARY:Jeff out (some or all of 1st week in August)\r\nEND:VEVENT\r\n"+
+		"END:VCALENDAR\r\n", now, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want the all-day event at the window start", events)
+	}
+	if !events[0].AllDay || events[0].Start.Format(time.RFC3339) != "2026-08-03T00:00:00Z" || events[0].End.Format(time.RFC3339) != "2026-08-04T00:00:00Z" {
+		t.Fatalf("event = %#v, want all-day Aug 3 through exclusive Aug 4", events[0])
+	}
+}
+
+func TestParseICSPreservesExclusiveEndForMultiDayAllDayEvent(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
+		"BEGIN:VEVENT\r\nUID:august-ooo-multi\r\nDTSTAMP:20260730T120000Z\r\nDTSTART;VALUE=DATE:20260803\r\nDTEND;VALUE=DATE:20260805\r\nSUMMARY:Jeff out (some or all of 1st week in August)\r\nEND:VEVENT\r\n"+
+		"END:VCALENDAR\r\n", now, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 || !events[0].AllDay || events[0].End.Format(time.RFC3339) != "2026-08-05T00:00:00Z" {
+		t.Fatalf("events = %#v, want all-day event with exclusive Aug 5 end", events)
+	}
+}
+
 func TestParseICSDetectsCancelledSummaryWithoutStatus(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"+
