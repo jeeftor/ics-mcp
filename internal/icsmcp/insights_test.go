@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,11 +22,11 @@ func TestInsightInquiriesPersistScopeAndStarterTemplatesAreOptional(t *testing.T
 	got, err := svc.SaveInsightInquiry(ctx, "school_today", SaveInsightInquiryInput{
 		Question: "Do the kids have school today?", CalendarIDs: []string{"school"}, Tags: []string{"School"}, Trigger: InsightTriggerScheduled, Schedule: "06:00", Enabled: &enabled,
 	})
-	if err != nil || got.Enabled || got.Trigger != InsightTriggerScheduled || got.Schedule != "06:00" || len(got.CalendarIDs) != 1 || len(got.Tags) != 1 {
+	if err != nil || got.Enabled || got.Trigger != InsightTriggerScheduled || got.Schedule != "06:00" || got.DateScope != InsightDateScopeToday || len(got.CalendarIDs) != 1 || len(got.Tags) != 1 {
 		t.Fatalf("SaveInsightInquiry = %#v, %v", got, err)
 	}
 	starter, err := svc.GetInsightInquiry(ctx, "daily_briefing")
-	if err != nil || !starter.Builtin || starter.Enabled {
+	if err != nil || !starter.Builtin || starter.Enabled || starter.DateScope != InsightDateScopeToday {
 		t.Fatalf("daily briefing starter = %#v, %v", starter, err)
 	}
 	if _, err := svc.GetInsightInquiry(ctx, "weekly_outlook"); !errors.Is(err, sql.ErrNoRows) {
@@ -36,6 +37,56 @@ func TestInsightInquiriesPersistScopeAndStarterTemplatesAreOptional(t *testing.T
 	}
 	if _, err := svc.GetInsightInquiry(ctx, "school_today"); err != nil {
 		t.Fatalf("GetInsightInquiry = %v", err)
+	}
+}
+
+func TestInsightDateScopeFiltersCalendarDataBeforeLLMRequest(t *testing.T) {
+	var payload string
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		payload = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	svc.SetClock(func() time.Time { return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC) })
+	ctx := context.Background()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.store.replaceEvents(ctx, cal.ID, []EventInstance{
+		{ID: "today", UID: "today", Name: "Today only", Description: "private description", MeetingURL: "https://secret.example", Start: time.Date(2026, 7, 30, 15, 0, 0, 0, time.UTC), End: time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC)},
+		{ID: "tomorrow", UID: "tomorrow", Name: "Tomorrow only", Start: time.Date(2026, 7, 31, 15, 0, 0, 0, time.UTC), End: time.Date(2026, 7, 31, 16, 0, 0, 0, time.UTC)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: provider.URL, Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What is today?", DateScope: InsightDateScopeToday}); err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"Tomorrow only", "private description", "secret.example"} {
+		if strings.Contains(payload, absent) {
+			t.Fatalf("LLM payload unexpectedly included %q: %s", absent, payload)
+		}
+	}
+	if !strings.Contains(payload, "Today only") {
+		t.Fatalf("LLM payload omitted today event: %s", payload)
+	}
+}
+
+func TestInsightCustomDateScopeValidation(t *testing.T) {
+	for _, input := range []SaveInsightInquiryInput{
+		{Question: "Q", DateScope: InsightDateScopeCustom, StartDate: "2026-07-31", EndDate: "2026-07-30"},
+		{Question: "Q", DateScope: InsightDateScopeCustom, StartDate: "2026-07-01", EndDate: "2026-08-03"},
+	} {
+		if _, err := newTestService(t).SaveInsightInquiry(context.Background(), "custom", input); err == nil {
+			t.Fatalf("SaveInsightInquiry(%#v) error = nil", input)
+		}
 	}
 }
 
