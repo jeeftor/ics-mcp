@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.2 - 2026-07-30
+
+- Make inquiry data selection explicit with a current-event-window summary and distinct Calendar selection and Tag selection labels.
+
 ## v2.6.1 - 2026-07-30
 
 - Add the ICS MCP SVG application mark, favicon, and header identity.
