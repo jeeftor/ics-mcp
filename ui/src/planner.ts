@@ -25,6 +25,27 @@ export type AllDayPlacement = {
   row: number;
 };
 
+/**
+ * Keeps the all-day strip compact until a person expands a specific day.
+ * A multi-day event is revealed when any day it occupies is expanded, so its
+ * bar stays continuous instead of being cut into misleading fragments.
+ */
+export function visibleAllDayPlacements(
+  placements: AllDayPlacement[],
+  days: number,
+  maximumRows: number,
+  expandedDays: ReadonlySet<number>,
+): { visible: AllDayPlacement[]; overflowByDay: number[]; rows: number } {
+  const overflowByDay = Array.from({ length: days }, () => 0);
+  for (const placement of placements) {
+    if (placement.row < maximumRows) continue;
+    for (let day = placement.start; day < Math.min(days, placement.start + placement.span); day += 1) overflowByDay[day] += 1;
+  }
+  const visible = placements.filter(placement => placement.row < maximumRows || Array.from({ length: placement.span }, (_, index) => expandedDays.has(placement.start + index)).some(Boolean));
+  const rows = Math.max(1, ...visible.map(placement => placement.row + 1));
+  return { visible, overflowByDay, rows };
+}
+
 const minutesInDay = 24 * 60;
 
 /** Returns the event's local start and end minutes, clamped to one calendar day. */
