@@ -22,6 +22,9 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .planner-scroll { max-height:min(68vh,720px); overflow:auto; overscroll-behavior:contain; }
 .week-grid { min-height:1440px; }
 .day-column { min-width:0; padding:0 3px; }
+.event-card { position:relative; }
+.event-card[class*="attendance-"]::before { position:absolute; top:5px; bottom:5px; left:3px; width:3px; border-radius:99px; content:""; background:var(--attendance-color); box-shadow:0 0 0 1px color-mix(in srgb,var(--attendance-color),white 45%); }
+.event-card[class*="attendance-"] > strong,.event-card[class*="attendance-"] > span,.event-card[class*="attendance-"] > small { padding-left:4px; }
 .event-card.timed-event { min-width:0; padding:4px 5px; border-radius:6px; }
 .event-card.timed-event span { line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .event-card.timed-event { z-index:2; }

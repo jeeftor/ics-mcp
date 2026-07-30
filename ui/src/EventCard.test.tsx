@@ -16,4 +16,18 @@ describe('all-day event cards', () => {
     expect(markup).toContain('RSVP: Tentative');
     expect(markup).not.toContain('person@example.test');
   });
+
+  it('adds an Outlook-style RSVP edge cue without replacing the calendar color', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03', attendance_status: 'tentative' }} selected={false} onSelect={() => undefined} timeFormat="12h"/>);
+
+    expect(markup).toContain('event-card attendance-tentative');
+    expect(markup).toContain('--event-color:#4f8f72;--attendance-color:#d49a24');
+  });
+
+  it('does not add an RSVP edge cue when the feed supplies no attendee status', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03' }} selected={false} onSelect={() => undefined} timeFormat="12h"/>);
+
+    expect(markup).not.toContain('attendance-accepted');
+    expect(markup).not.toContain('--attendance-color');
+  });
 });
