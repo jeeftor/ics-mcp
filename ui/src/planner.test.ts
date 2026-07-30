@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDayRows, meetingMinutes, meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings } from './planner';
+import { allDayRows, meetingMinutes, meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings, visibleAllDayPlacements } from './planner';
 import { Meeting } from './api';
 
 const event = (start: string, end: string): Meeting => ({ name: start, date: '2026-07-30', start, end });
@@ -40,6 +40,23 @@ describe('planner placement', () => {
       { name: 'Same day', date: '2026-07-31', end_date: '2026-07-31', all_day: true },
     ];
     expect(placeAllDayMeetings(meetings, '2026-07-30', 3).map(item => [item.start, item.span])).toEqual([[0, 1], [1, 1]]);
+  });
+
+  it('counts all-day overflow per day and expands only the chosen day', () => {
+    const placements = placeAllDayMeetings([
+      { name: 'One', date: '2026-07-30', all_day: true },
+      { name: 'Two', date: '2026-07-30', all_day: true },
+      { name: 'Three', date: '2026-07-30', all_day: true },
+      { name: 'Four', date: '2026-07-30', all_day: true },
+      { name: 'Friday', date: '2026-07-31', all_day: true },
+    ], '2026-07-30', 2);
+    const compact = visibleAllDayPlacements(placements, 2, 2, new Set());
+    expect(compact.overflowByDay).toEqual([2, 0]);
+    expect(compact.visible.map(item => item.meeting.name)).not.toContain('Three');
+
+    const expanded = visibleAllDayPlacements(placements, 2, 2, new Set([0]));
+    expect(expanded.visible.map(item => item.meeting.name)).toContain('Three');
+    expect(expanded.rows).toBe(4);
   });
 
   it('filters an already fetched range locally when a calendar is hidden', () => {

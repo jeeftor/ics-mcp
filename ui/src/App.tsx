@@ -3,7 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Code2, ExternalLink, LoaderCir
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarGlyph, calendarColor, calendarIconChoices } from './CalendarGlyph';
 import { addDays, dateKey, meetingDate, meetingTime, startOfWeek, weekRangeLabel } from './calendarUtils';
-import { meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings } from './planner';
+import { meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings, visibleAllDayPlacements } from './planner';
 import { api, apiText, Calendar, calendarAPI, EnvironmentVariable, Insight, InsightInquiry, insightsAPI, LLMProfile, Meeting, parseTags, RuntimeConfig, Status, Tag as CalendarTag, Tool, ToolCallResponse, UpdateCheck } from './api';
 import { mcpClientConfig, setupBaseURL, setupEndpoints, updateCheckMessage } from './setup';
 import { JSONOutput } from './JSONOutput';
@@ -63,9 +63,8 @@ function CalendarWorkspace({ calendars, tags, timezone, timeFormat, sideTimezone
     setLoading(true); api<Meeting[]>(`/api/meetings?${query}`).then(setMeetings).finally(() => setLoading(false));
   }, [week, view, enabledCalendarKey]);
   useEffect(() => {
-    const minute = minuteInTimezoneForDay(week, timezone, now);
-    const target = minute === undefined ? 7 * 60 : Math.max(0, minute - 3 * 60);
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: target, behavior: 'auto' }));
+    // Open on the useful part of the day; the full 24-hour grid stays scrollable.
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 7 * 60, behavior: 'auto' }));
   }, [week, view, timezone, loading]);
 
   const calendarByID = useMemo(() => new Map(calendars.map(calendar => [calendar.id, { ...calendar, icon: calendar.icon || tags.find(tag => calendar.tags.includes(tag.name))?.icon || 'calendar' }])), [calendars, tags]);
@@ -92,7 +91,22 @@ function minuteInTimezoneForDay(day: Date, timezone: string | undefined, now: Da
   return value('hour') * 60 + value('minute');
 }
 
-function AllDayGrid({ meetings, rangeStart, days, calendarByID, selected, onSelect, timeFormat }: { meetings: Meeting[]; rangeStart: string; days: number; calendarByID: Map<string, Calendar>; selected?: Meeting; onSelect: (meeting: Meeting) => void; timeFormat: '12h' | '24h' }) { const placements = placeAllDayMeetings(meetings, rangeStart, days); const maximumRows = 2; const visible = placements.filter(placement => placement.row < maximumRows); const overflow = placements.length - visible.length; const rows = Math.max(1, Math.min(maximumRows, visible.reduce((maximum, placement) => Math.max(maximum, placement.row + 1), 0))); return <div className="all-day-grid" style={{ '--day-count': days, gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, 34px)` } as React.CSSProperties}>{visible.map(placement => <EventCard meeting={placement.meeting} calendar={calendarByID.get(placement.meeting.calendar_id || '')} selected={selected === placement.meeting} onSelect={onSelect} timeFormat={timeFormat} key={`${placement.meeting.calendar_id}-${placement.meeting.name}-${placement.meeting.date}`} allDayPlacement={placement}/>)}{overflow > 0 && <span className="all-day-overflow" aria-label={`${overflow} additional all-day events`}>+{overflow} more</span>}</div>; }
+function AllDayGrid({ meetings, rangeStart, days, calendarByID, selected, onSelect, timeFormat }: { meetings: Meeting[]; rangeStart: string; days: number; calendarByID: Map<string, Calendar>; selected?: Meeting; onSelect: (meeting: Meeting) => void; timeFormat: '12h' | '24h' }) {
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(() => new Set());
+  const placements = placeAllDayMeetings(meetings, rangeStart, days);
+  const { visible, overflowByDay, rows } = visibleAllDayPlacements(placements, days, 2, expandedDays);
+  const hasOverflow = overflowByDay.some(Boolean);
+  useEffect(() => setExpandedDays(new Set()), [rangeStart, days]);
+  const toggleDay = (day: number) => setExpandedDays(current => {
+    const next = new Set(current);
+    next.has(day) ? next.delete(day) : next.add(day);
+    return next;
+  });
+  return <div className="all-day-grid" style={{ '--day-count': days, gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows + (hasOverflow ? 1 : 0)}, 34px)` } as React.CSSProperties}>
+    {visible.map(placement => <EventCard meeting={placement.meeting} calendar={calendarByID.get(placement.meeting.calendar_id || '')} selected={selected === placement.meeting} onSelect={onSelect} timeFormat={timeFormat} key={`${placement.meeting.calendar_id}-${placement.meeting.name}-${placement.meeting.date}`} allDayPlacement={placement}/>)}
+    {overflowByDay.map((overflow, day) => overflow > 0 && <button className="all-day-overflow" style={{ gridColumn: day + 1, gridRow: rows + 1 }} aria-expanded={expandedDays.has(day)} aria-label={`${expandedDays.has(day) ? 'Hide' : 'Show'} ${overflow} additional all-day events for this day`} onClick={() => toggleDay(day)} key={day}>{expandedDays.has(day) ? '⌃' : `+${overflow}⌄`}</button>)}
+  </div>;
+}
 function DayColumn({ meetings, calendarByID, selected, onSelect, timeFormat, currentMinute }: { meetings: Meeting[]; calendarByID: Map<string, Calendar>; selected?: Meeting; onSelect: (meeting: Meeting) => void; timeFormat: '12h' | '24h'; currentMinute?: number }) { const placements = placeTimedMeetings(meetings); return <div className="day-column" style={{ position: 'relative', display: 'block', minHeight: 1440, backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 29px, #f0ece5 30px, transparent 31px, transparent 59px, #e6e1d8 60px)' }}>{currentMinute !== undefined && <span className="current-time-line" style={{ top: `${currentMinute}px` }} aria-label="Current time"/>}{meetings.length === 0 && <span className="day-empty">No timed events</span>}{placements.map(placement => <EventCard meeting={placement.meeting} calendar={calendarByID.get(placement.meeting.calendar_id || '')} selected={selected === placement.meeting} onSelect={onSelect} timeFormat={timeFormat} placement={placement} key={`${placement.meeting.calendar_id}-${placement.meeting.name}-${placement.meeting.start}-${placement.meeting.date}`}/>)}</div>; }
 function EventCard({ meeting, calendar, selected, onSelect, timeFormat, placement, allDayPlacement }: { meeting: Meeting; calendar?: Calendar; selected: boolean; onSelect: (meeting: Meeting) => void; timeFormat: '12h' | '24h'; placement?: ReturnType<typeof placeTimedMeetings>[number]; allDayPlacement?: ReturnType<typeof placeAllDayMeetings>[number] }) { const color = calendar ? calendarColor(calendar) : '#4f8f72'; const detail = `${meeting.name}. ${meetingTime(meeting, timeFormat)}. ${meeting.date}${meeting.end_date && meeting.end_date !== meeting.date ? ` through ${meeting.end_date}` : ''}. ${calendar?.name || meeting.calendar_name || 'Calendar'}.`; const style = placement ? { '--event-color': color, position: 'absolute', overflow: 'hidden', minHeight: 22, top: `${placement.top}px`, height: `${placement.height}px`, left: `calc(${placement.lane} * (100% / ${placement.lanes}) + 3px)`, width: `calc(100% / ${placement.lanes} - 6px)` } : allDayPlacement ? { '--event-color': color, gridColumn: `${allDayPlacement.start + 1} / span ${allDayPlacement.span}`, gridRow: allDayPlacement.row + 1, margin: '3px' } : { '--event-color': color }; return <button className={`${placement ? 'event-card timed-event' : 'event-card'}${selected ? ' selected' : ''}`} style={style as React.CSSProperties} title={detail} aria-label={detail} aria-pressed={selected} onClick={() => onSelect(meeting)}><span>{meetingTime(meeting, timeFormat)}</span><strong><CalendarGlyph icon={calendar?.icon} color={color} size={13}/>{meeting.name}</strong></button>; }
 function TimeRuler({ timezones, day }: { timezones: string[]; day: Date }) { return <aside className="time-ruler" style={{ gridTemplateRows: '24px repeat(24, 60px)' }}><strong>{timezones.map(zone => zone.split('/').at(-1)?.slice(0, 3).toUpperCase()).join(' / ') || 'Time'}</strong>{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{timezones.map(zone => new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: 'numeric', hour12: true }).format(new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour))).join(' / ')}</span>)}</aside>; }
