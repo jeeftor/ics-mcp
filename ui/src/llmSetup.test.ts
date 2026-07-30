@@ -41,7 +41,7 @@ describe('LLM setup flow', () => {
       .toEqual({ question: 'What should I know?', calendar_ids: ['emily'], tags: ['Personal'], date_scope: 'custom', start_date: '2026-07-30', end_date: '2026-08-01' });
   });
 
-  it('offers bounded date choices and only reveals a range through Custom', () => {
-    expect(inquiryDateScopeOptions).toEqual([['today', 'Today'], ['tomorrow', 'Tomorrow'], ['this_week', 'This week'], ['next_7_days', 'Next 7 days'], ['all', 'All upcoming'], ['custom', 'Custom range']]);
+  it('offers an explicit LLM calendar data window while preserving stored scope values', () => {
+    expect(inquiryDateScopeOptions).toEqual([['today', 'Send today'], ['tomorrow', 'Send tomorrow'], ['this_week', 'Send this week'], ['next_7_days', 'Send next 7 days'], ['all', 'Send all upcoming events'], ['custom', 'Custom date range']]);
   });
 });
