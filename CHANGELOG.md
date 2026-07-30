@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.9 - 2026-07-30
+
+- Extract the JSON answer from reasoning-model output embedded in chain-of-thought prose or markdown code fences, so Insight runs complete against Qwen3.x and other reasoning models that emit their thinking trace before the answer.
+- Give Lemonade-hosted reasoning models a larger output token budget (4096) so the chain-of-thought trace is not truncated before the final JSON answer is produced. Cloud OpenAI-compatible APIs keep the smaller cap.
+- Log a warning with content field, content length, and JSON parse error when the model answer cannot be parsed as JSON.
+
 ## v2.6.8 - 2026-07-30
 
 - Fall back to message.reasoning_content (and choices[].text) when message.content is empty, so Insight runs complete against reasoning models (DeepSeek-R1, Qwen-QwQ, o1-style, some Lemonade models) that leave content empty/null.

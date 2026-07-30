@@ -21,6 +21,12 @@ const (
 	llmProbeTimeout     = 20 * time.Second
 	llmInferenceTimeout = 120 * time.Second
 	llmMaxOutputTokens  = 512
+	// llmReasoningMaxOutputTokens gives reasoning models room for a
+	// chain-of-thought trace before the final JSON answer. Reasoning models
+	// (DeepSeek-R1, Qwen-QwQ, Qwen3.x thinking, o1-style) emit the trace into
+	// reasoning_content and the small llmMaxOutputTokens budget is exhausted
+	// before the answer is produced.
+	llmReasoningMaxOutputTokens = 4096
 )
 
 // LLMProfile is the safe, redacted configuration returned to clients.
@@ -1025,11 +1031,20 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, err
 	}
 	hash := sha256.Sum256(events)
-	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}, "max_tokens": llmMaxOutputTokens}
+	// Reasoning models emit a chain-of-thought trace before the final JSON
+	// answer. Give Lemonade (local LLMs where reasoning models like Qwen3.x
+	// live) a larger budget so the trace is not truncated before the answer.
+	// Cloud OpenAI-compatible APIs keep the smaller cap since tokens cost money
+	// and most cloud models return JSON directly.
+	maxOutputTokens := llmMaxOutputTokens
+	if p.Backend == LLMBackendLemonade {
+		maxOutputTokens = llmReasoningMaxOutputTokens
+	}
+	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}, "max_tokens": maxOutputTokens}
 	if p.Backend == LLMBackendOllama {
 		payload["stream"] = false
 		delete(payload, "max_tokens")
-		payload["options"] = map[string]any{"num_predict": llmMaxOutputTokens}
+		payload["options"] = map[string]any{"num_predict": maxOutputTokens}
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatURL(p.Backend, p.Endpoint), bytes.NewReader(body))
@@ -1113,7 +1128,15 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		Evidence []string `json:"evidence"`
 		Caveat   string   `json:"caveat"`
 	}{}
-	if err := json.Unmarshal([]byte(content), &answer); err != nil {
+	jsonText := extractInsightJSON(content)
+	if err := json.Unmarshal([]byte(jsonText), &answer); err != nil {
+		s.logger.Warn("llm answer was not valid JSON",
+			"action", action,
+			"backend", p.Backend,
+			"model", p.Model,
+			"content_field", contentFrom,
+			"content_len", len(content),
+			"json_error", err.Error())
 		return Insight{}, fmt.Errorf("LLM answer must be JSON: %w", err)
 	}
 	if strings.TrimSpace(answer.Answer) == "" {
@@ -1238,6 +1261,58 @@ type cancelOnCloseBody struct {
 func (b *cancelOnCloseBody) Close() error {
 	b.once.Do(b.cancel)
 	return b.ReadCloser.Close()
+}
+
+// extractInsightJSON finds the JSON object in content that may be embedded in
+// reasoning-model prose or a markdown code fence. Reasoning models (Qwen3.x,
+// DeepSeek-R1, Qwen-QwQ) emit a chain-of-thought trace with the final answer
+// embedded as a JSON object inside ```json ... ``` fences or as a bare {...}.
+// If the content is already valid JSON, it is returned as-is.
+func extractInsightJSON(content string) string {
+	trimmed := strings.TrimSpace(content)
+	// Fast path: the content is already a JSON object.
+	if strings.HasPrefix(trimmed, "{") {
+		return trimmed
+	}
+	// Try markdown code fences: ```json\n{...}\n``` or ```\n{...}\n```
+	for _, fence := range []string{"```json", "```"} {
+		if idx := strings.Index(strings.ToLower(content), strings.ToLower(fence)); idx >= 0 {
+			rest := content[idx+len(fence):]
+			if end := strings.Index(rest, "```"); end >= 0 {
+				candidate := strings.TrimSpace(rest[:end])
+				if strings.HasPrefix(candidate, "{") {
+					return candidate
+				}
+			}
+		}
+	}
+	// Try finding the first { ... } object in the prose.
+	start := strings.Index(content, "{")
+	if start >= 0 {
+		// Find the matching closing brace by scanning from the last { to the end.
+		// The JSON answer object is the last balanced object in the trace.
+		rest := content[start:]
+		end := strings.LastIndex(rest, "}")
+		if end > 0 {
+			candidate := rest[:end+1]
+			if json.Valid([]byte(candidate)) {
+				return candidate
+			}
+			// Try the first balanced object instead.
+			depth := 0
+			for i, ch := range rest {
+				if ch == '{' {
+					depth++
+				} else if ch == '}' {
+					depth--
+					if depth == 0 {
+						return rest[:i+1]
+					}
+				}
+			}
+		}
+	}
+	return trimmed
 }
 
 // insightGroundingEvent is the intentionally small, untrusted calendar record
