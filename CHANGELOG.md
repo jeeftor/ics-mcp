@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.5.0 - 2026-07-30
+
+- Add persisted inquiry date scopes and custom ranges, filtering calendar data before it is sent to an LLM.
+- Make Daily Briefing default to Today, with an editor control for Today, Tomorrow, This week, Next 7 days, All upcoming, or a custom range.
+
 ## v2.4.1 - 2026-07-30
 
 - Fix the calendar appearance button and add supported-browser color sampling with an eyedropper.
