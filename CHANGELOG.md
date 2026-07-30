@@ -5,7 +5,7 @@
 - Fix date-only ICS events so one-day and multi-day all-day events render on their correct days.
 - Add cache-only versioned prompt-output and bounded-history REST/MCP reads for scheduled named inquiries.
 - Improve calendar inventory, tag assignment, environment-source visibility, planner title wrapping, and the non-reflowing MDI picker.
-- Clarify LLM server presets and setup errors for CamSpeak/OpenAI-compatible, Lemonade, and Ollama providers.
+- Clarify LLM server presets and setup errors for OpenAI-compatible, Lemonade, and Ollama providers.
 - Make Telegram delivery non-blocking when the configured chat is inaccessible.
 
 ## v2.2.4 - 2026-07-30
