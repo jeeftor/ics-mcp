@@ -197,6 +197,26 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			insight, err := svc.GetInsight(ctx, in.Name)
 			return nil, insight, err
 		})
+	mcp.AddTool(server, &mcp.Tool{Name: "list_prompt_outputs", Description: "List saved prompt definitions with their latest cached outputs. This never invokes an LLM."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, []PromptOutput, error) {
+			outputs, err := svc.ListPromptOutputs(ctx)
+			return nil, outputs, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_prompt_output", Description: "Read a named prompt's latest cached output. This never invokes an LLM."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in struct {
+			ID string `json:"id"`
+		}) (*mcp.CallToolResult, PromptOutput, error) {
+			output, err := svc.GetPromptOutput(ctx, in.ID)
+			return nil, output, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_prompt_history", Description: "Read retained outcomes for a named prompt. This never invokes an LLM."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in struct {
+			ID    string `json:"id"`
+			Limit int    `json:"limit,omitempty"`
+		}) (*mcp.CallToolResult, []PromptRun, error) {
+			history, err := svc.ListPromptHistory(ctx, in.ID, in.Limit)
+			return nil, history, err
+		})
 	mcp.AddTool(server, &mcp.Tool{Name: "get_config", Description: "Return effective runtime configuration and each setting source."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, configOutput, error) {
 			return nil, configOutput{Config: svc.RuntimeConfig()}, nil

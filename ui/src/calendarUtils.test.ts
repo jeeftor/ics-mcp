@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, dateKey, meetingDate, meetingTime, startOfWeek, weekRangeLabel } from './calendarUtils';
+import { addDays, dateKey, meetingDate, meetingTime, plannerViewAnchor, startOfWeek, weekRangeLabel } from './calendarUtils';
 
 describe('calendar planner date helpers', () => {
   it('anchors every planner range on Monday at local midnight', () => {
@@ -18,6 +18,14 @@ describe('calendar planner date helpers', () => {
     expect(dateKey(start)).toBe('2026-12-28');
     expect(dateKey(end)).toBe('2027-01-03');
     expect(weekRangeLabel(start)).toBe('Dec 28 – Jan 3, 2027');
+  });
+
+  it('returns to today whenever the planner view changes', () => {
+    const today = new Date(2026, 6, 30, 15, 45);
+
+    expect(dateKey(plannerViewAnchor(1, today))).toBe('2026-07-30');
+    expect(dateKey(plannerViewAnchor(3, today))).toBe('2026-07-30');
+    expect(dateKey(plannerViewAnchor(7, today))).toBe('2026-07-27');
   });
 
   it('keeps all-day events separate from timed event labels', () => {

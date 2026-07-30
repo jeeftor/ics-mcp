@@ -83,6 +83,18 @@ func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
 	}
 	meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
 	cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
+	start := parsed.Start.UTC()
+	end := parsed.End.UTC()
+	allDay := end.Sub(start) >= 24*time.Hour
+	// gocal expands VALUE=DATE DTEND into the final day at 23:59:59.999.
+	// Canonicalize that inclusive representation back to the RFC 5545 exclusive
+	// midnight boundary. Without this, a one-day all-day event is 1 ms short of
+	// 24 hours and is incorrectly rendered as a timed event.
+	if start.Hour() == 0 && start.Minute() == 0 && start.Second() == 0 && start.Nanosecond() == 0 &&
+		end.Hour() == 23 && end.Minute() == 59 && end.Second() == 59 && end.Nanosecond() == 999000000 {
+		allDay = true
+		end = end.Add(time.Millisecond)
+	}
 	return EventInstance{
 		ID:             uuid.NewString(),
 		UID:            uid,
@@ -91,11 +103,11 @@ func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
 		MeetingURL:     meetingURL,
 		MeetingURLType: meetingURLType,
 		Cancelled:      cancelled,
-		AllDay:         parsed.End.Sub(*parsed.Start) >= 24*time.Hour,
+		AllDay:         allDay,
 		Recurring:      parsed.IsRecurring || parsed.RecurrenceID != "",
 		RecurrenceID:   parsed.RecurrenceID,
-		Start:          parsed.Start.UTC(),
-		End:            parsed.End.UTC(),
+		Start:          start,
+		End:            end,
 	}, true
 }
 

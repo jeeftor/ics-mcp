@@ -293,6 +293,25 @@ Update `CHANGELOG.md` before tagging a release.
 Release builds inject version, commit, and build date into `icsmcp version`, `/api/status`, the MCP implementation metadata, and the debug UI.
 When the injected build date is an RFC3339 timestamp, status output and startup logs render it in the configured display timezone.
 
+### Telegram release notifications
+
+After a tagged release has published its GitHub release notes and multi-architecture Docker image, GitHub Actions can announce it to Telegram. This is optional: add these repository secrets to enable it:
+
+```bash
+gh secret set TELEGRAM_TOKEN --repo $(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh secret set TELEGRAM_TO --repo $(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh variable set TELEGRAM_RELEASE_NOTIFICATIONS --body true --repo $(gh repo view --json nameWithOwner -q .nameWithOwner)
+```
+
+- `TELEGRAM_TOKEN` — the bot token from [@BotFather](https://t.me/BotFather).
+- `TELEGRAM_TO` — your channel ID, either `@yourchannel` or a private-channel ID such as `-1001234567890`.
+
+Add the bot to the destination channel before publishing. If the workflow reports `Bad Request: chat not found`, verify that `TELEGRAM_TO` is the channel's exact `@name` or numeric ID and that the bot is a member (and an administrator when your channel requires it). A Telegram delivery failure is non-blocking: release artifacts and notes still publish normally.
+
+Telegram publishing is disabled by default. Set the repository variable `TELEGRAM_RELEASE_NOTIFICATIONS` to `true` only when you want tagged releases announced; set it to `false` or remove it to disable the action entirely.
+
+Run the manual **Telegram test** workflow from the GitHub Actions page after changing either secret. It sends one clearly labeled test message using the same secret pair as release publishing.
+
 ## Development
 
 ```bash

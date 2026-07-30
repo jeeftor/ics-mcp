@@ -14,6 +14,15 @@ export type TimedPlacement = {
   lanes: number;
 };
 
+/**
+ * Uses the card's actual vertical budget to decide whether a timed event can
+ * safely show a second title line. Short meetings stay single-line so their
+ * labels do not collide with adjacent events.
+ */
+export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 {
+  return height >= (showTime ? 68 : 44) ? 2 : 1;
+}
+
 /** A clipped all-day event segment for the planner's current date range. */
 export type AllDayPlacement = {
   meeting: Meeting;
@@ -24,6 +33,27 @@ export type AllDayPlacement = {
   /** Zero-based collision-free all-day row. */
   row: number;
 };
+
+/**
+ * Keeps the all-day strip compact until a person expands a specific day.
+ * A multi-day event is revealed when any day it occupies is expanded, so its
+ * bar stays continuous instead of being cut into misleading fragments.
+ */
+export function visibleAllDayPlacements(
+  placements: AllDayPlacement[],
+  days: number,
+  maximumRows: number,
+  expandedDays: ReadonlySet<number>,
+): { visible: AllDayPlacement[]; overflowByDay: number[]; rows: number } {
+  const overflowByDay = Array.from({ length: days }, () => 0);
+  for (const placement of placements) {
+    if (placement.row < maximumRows) continue;
+    for (let day = placement.start; day < Math.min(days, placement.start + placement.span); day += 1) overflowByDay[day] += 1;
+  }
+  const visible = placements.filter(placement => placement.row < maximumRows || Array.from({ length: placement.span }, (_, index) => expandedDays.has(placement.start + index)).some(Boolean));
+  const rows = Math.max(1, ...visible.map(placement => placement.row + 1));
+  return { visible, overflowByDay, rows };
+}
 
 const minutesInDay = 24 * 60;
 

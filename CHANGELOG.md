@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.2.5 - 2026-07-30
+
+- Fix date-only ICS events so one-day and multi-day all-day events render on their correct days.
+- Add cache-only versioned prompt-output and bounded-history REST/MCP reads for scheduled named inquiries.
+- Improve calendar inventory, tag assignment, environment-source visibility, planner title wrapping, and the non-reflowing MDI picker.
+- Clarify LLM server presets and setup errors for CamSpeak/OpenAI-compatible, Lemonade, and Ollama providers.
+- Make Telegram delivery non-blocking when the configured chat is inaccessible.
+
+## v2.2.4 - 2026-07-30
+
+- Fix the release workflow syntax so optional Telegram notifications do not prevent a release from starting.
+
+## v2.2.3 - 2026-07-30
+
+- Add a safe optional Telegram announcement after a tagged release has published its notes and Docker artifacts.
+- Restore per-day all-day overflow disclosure, today-anchored planner views, optional event-card times, and a visual refresh-interval picker.
+- Improve the REST/OpenAPI reference and make environment overrides readable on desktop and mobile without exposing secrets.
+- Add staged LLM provider setup with OpenAI-compatible, Ollama-compatible, and Lemonade presets; test endpoints, discover and select models, or enter a custom model before saving.
+
 ## v2.2.2 - 2026-07-30
 
 - Replace the overflowing MDI icon grid with a compact, scrollable autocomplete picker.
