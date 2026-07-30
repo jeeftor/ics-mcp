@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.12 - 2026-07-30
+
+- Add global and per-inquiry Insight enablement, removable disabled starter templates, and visible cache-only output/history endpoints.
+
 ## v2.2.11 - 2026-07-30
 
 - Tighten all-day planner rows and overlay overflow controls instead of reserving empty band space.
