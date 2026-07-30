@@ -5,6 +5,7 @@
 .llm-profile > div { max-width:440px; }.llm-profile form { display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:11px; flex:1; }
 .llm-profile label { display:grid; gap:5px; color:#5e584e; font-size:12px; font-weight:750; }.llm-profile label small { color:#827b70; font-weight:500; }
 .llm-profile input,.dialog textarea { width:100%; border:1px solid #ddd8ce; border-radius:8px; padding:9px 10px; color:#39352d; background:#fffdfa; }
+.llm-profile .llm-status { grid-column:1/-1; margin:0; padding:8px 10px; border-radius:8px; background:#f0f5ef; color:#365f41; }
 .llm-profile .check-label { grid-column:1/-1; display:flex; align-items:center; gap:7px; }.llm-profile .check-label input,.check-label input { width:17px; height:17px; accent-color:#3f704b; }.llm-profile .button-row { grid-column:1/-1; }
 .insight-header { display:flex; justify-content:space-between; align-items:end; margin-top:8px; }.inquiry-list { display:grid; gap:11px; }
 .inquiry-card { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; padding:18px; border:1px solid #e2ddd3; border-radius:14px; background:#fffefa; }.inquiry-main > div { display:flex; align-items:center; gap:8px; }.inquiry-main strong { color:#312d27; font-size:15px; text-transform:capitalize; }.inquiry-main p { margin:7px 0; color:#645e55; font-size:13px; line-height:1.45; }

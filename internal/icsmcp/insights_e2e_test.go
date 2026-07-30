@@ -27,6 +27,11 @@ func TestInsightLifecycleOverHTTPAndMCP(t *testing.T) {
 	mode := "success"
 	var seenTest, seenRun bool
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"fake-model"}]}`))
+			return
+		}
 		if r.URL.Path != "/v1/chat/completions" && r.URL.Path != "/chat/completions" {
 			t.Errorf("provider path = %q", r.URL.Path)
 			http.NotFound(w, r)
@@ -83,6 +88,15 @@ func TestInsightLifecycleOverHTTPAndMCP(t *testing.T) {
 	}
 	if strings.Contains(string(profileJSON), "local-test-key") {
 		t.Fatalf("profile exposed API key: %s", profileJSON)
+	}
+	var discovered struct { Models []string `json:"models"` }
+	doJSON(t, http.MethodPost, api.URL+"/api/llm-profile/models", LLMConnectionInput{Endpoint: provider.URL + "/v1", APIKey: "local-test-key"}, &discovered)
+	if len(discovered.Models) != 1 || discovered.Models[0] != "fake-model" {
+		t.Fatalf("discovered models = %#v", discovered)
+	}
+	discoveredJSON, _ := json.Marshal(discovered)
+	if strings.Contains(string(discoveredJSON), "local-test-key") {
+		t.Fatalf("model discovery exposed API key: %s", discoveredJSON)
 	}
 
 	var profileTest map[string]bool

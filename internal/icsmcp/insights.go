@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ import (
 // LLMProfile is the safe, redacted configuration returned to clients.
 type LLMProfile struct {
 	Enabled          bool   `json:"enabled"`
+	Backend          string `json:"backend"`
 	Endpoint         string `json:"endpoint,omitempty"`
 	Model            string `json:"model,omitempty"`
 	APIKeyConfigured bool   `json:"api_key_configured"`
@@ -28,9 +30,24 @@ type LLMProfile struct {
 // Environment values take precedence and cannot be changed through this input.
 type UpdateLLMProfileInput struct {
 	Enabled  *bool  `json:"enabled,omitempty"`
+	Backend  string `json:"backend,omitempty"`
 	Endpoint string `json:"endpoint,omitempty"`
 	Model    string `json:"model,omitempty"`
 	APIKey   string `json:"api_key,omitempty"`
+}
+
+// LLMConnectionInput is a temporary OpenAI-compatible connection. It is used
+// only for staged admin checks and is never persisted or returned to clients.
+type LLMConnectionInput struct {
+	Backend  string `json:"backend,omitempty"`
+	Endpoint string `json:"endpoint"`
+	APIKey   string `json:"api_key"`
+}
+
+// LLMModelTestInput adds the selected model to a temporary connection check.
+type LLMModelTestInput struct {
+	LLMConnectionInput
+	Model string `json:"model"`
 }
 
 // Insight is a cached, grounded answer. It never includes an API key or prompt.
@@ -97,19 +114,28 @@ type llmProfileSecret struct {
 	apiKey string
 }
 
+const (
+	LLMBackendOpenAI   = "openai"
+	LLMBackendOllama   = "ollama"
+	LLMBackendLemonade = "lemonade"
+)
+
 func (s *Service) llmProfile(ctx context.Context) (llmProfileSecret, error) {
 	var enabled int
-	var endpoint, model, key string
-	if err := s.store.db.QueryRowContext(ctx, `SELECT enabled, endpoint, model, api_key FROM llm_profile WHERE id = 1`).Scan(&enabled, &endpoint, &model, &key); err != nil {
+	var endpoint, model, key, backend string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT enabled, backend, endpoint, model, api_key FROM llm_profile WHERE id = 1`).Scan(&enabled, &backend, &endpoint, &model, &key); err != nil {
 		return llmProfileSecret{}, fmt.Errorf("load llm profile: %w", err)
 	}
-	p := llmProfileSecret{LLMProfile: LLMProfile{Enabled: enabled != 0, Endpoint: endpoint, Model: model, APIKeyConfigured: key != "", Source: "database"}, apiKey: key}
+	p := llmProfileSecret{LLMProfile: LLMProfile{Enabled: enabled != 0, Backend: normalizeLLMBackend(backend), Endpoint: endpoint, Model: model, APIKeyConfigured: key != "", Source: "database"}, apiKey: key}
 	if value, ok := os.LookupEnv("ICSMCP_LLM_ENABLED"); ok {
 		p.Enabled = strings.EqualFold(value, "true") || value == "1"
 		p.Source = "environment"
 	}
 	if value, ok := os.LookupEnv("ICSMCP_LLM_ENDPOINT"); ok {
 		p.Endpoint, p.Source = strings.TrimSpace(value), "environment"
+	}
+	if value, ok := os.LookupEnv("ICSMCP_LLM_BACKEND"); ok {
+		p.Backend, p.Source = normalizeLLMBackend(value), "environment"
 	}
 	if value, ok := os.LookupEnv("ICSMCP_LLM_MODEL"); ok {
 		p.Model, p.Source = strings.TrimSpace(value), "environment"
@@ -138,6 +164,12 @@ func (s *Service) UpdateLLMProfile(ctx context.Context, in UpdateLLMProfileInput
 	if in.Enabled != nil {
 		current.Enabled = *in.Enabled
 	}
+	if in.Backend != "" {
+		if !validLLMBackend(in.Backend) {
+			return LLMProfile{}, fmt.Errorf("LLM backend must be openai, ollama, or lemonade")
+		}
+		current.Backend = normalizeLLMBackend(in.Backend)
+	}
 	if strings.TrimSpace(in.Endpoint) != "" {
 		current.Endpoint = strings.TrimSpace(in.Endpoint)
 	}
@@ -147,7 +179,7 @@ func (s *Service) UpdateLLMProfile(ctx context.Context, in UpdateLLMProfileInput
 	if in.APIKey != "" {
 		current.apiKey = in.APIKey
 	}
-	if _, err := s.store.db.ExecContext(ctx, `UPDATE llm_profile SET enabled = ?, endpoint = ?, model = ?, api_key = ? WHERE id = 1`, boolInt(current.Enabled), current.Endpoint, current.Model, current.apiKey); err != nil {
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE llm_profile SET enabled = ?, backend = ?, endpoint = ?, model = ?, api_key = ? WHERE id = 1`, boolInt(current.Enabled), current.Backend, current.Endpoint, current.Model, current.apiKey); err != nil {
 		return LLMProfile{}, fmt.Errorf("save llm profile: %w", err)
 	}
 	current.APIKeyConfigured = current.apiKey != ""
@@ -160,23 +192,123 @@ func (s *Service) TestLLMProfile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !p.Enabled || p.Endpoint == "" || p.Model == "" || p.apiKey == "" {
-		return fmt.Errorf("LLM endpoint, model, API key, and enabled state are required")
+	if !p.Enabled || p.Endpoint == "" || p.Model == "" {
+		return fmt.Errorf("LLM endpoint, model, and enabled state are required")
 	}
-	body, _ := json.Marshal(map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "user", "content": "Reply with OK."}}, "max_tokens": 4})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatCompletionsURL(p.Endpoint), bytes.NewReader(body))
+	return s.testLLMModel(ctx, p, p.Model)
+}
+
+// TestLLMEndpoint verifies an unsaved endpoint and optional bearer key. When
+// the active profile is environment-managed, that effective profile remains
+// authoritative and user-provided staging values are ignored.
+func (s *Service) TestLLMEndpoint(ctx context.Context, in LLMConnectionInput) error {
+	_, err := s.DiscoverLLMModels(ctx, in)
+	return err
+}
+
+// DiscoverLLMModels reads IDs from an OpenAI-compatible GET /models response.
+// It never persists or returns the bearer key.
+func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) ([]string, error) {
+	p, err := s.stagedLLMProfile(ctx, in)
 	if err != nil {
-		return fmt.Errorf("create LLM test request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.Endpoint == "" {
+		return nil, fmt.Errorf("LLM endpoint is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, llmModelsURL(p.Backend, p.Endpoint), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create LLM model discovery request: %w", err)
+	}
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("test LLM profile: %w", err)
+		return nil, fmt.Errorf("discover LLM models: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("LLM test returned %s", resp.Status)
+		return nil, fmt.Errorf("LLM model discovery returned %s", resp.Status)
+	}
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if p.Backend == LLMBackendOllama {
+		var ollama struct { Models []struct { Name string `json:"name"` } `json:"models"` }
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&ollama); err != nil { return nil, fmt.Errorf("decode Ollama model discovery response: %w", err) }
+		for _, item := range ollama.Models { payload.Data = append(payload.Data, struct { ID string `json:"id"` }{ID: item.Name}) }
+	} else if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode LLM model discovery response: %w", err)
+	}
+	models := make([]string, 0, len(payload.Data))
+	seen := make(map[string]struct{}, len(payload.Data))
+	for _, item := range payload.Data {
+		id := strings.TrimSpace(item.ID)
+		if id == "" || len(id) > 256 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		models = append(models, id)
+		if len(models) == 500 {
+			break
+		}
+	}
+	return models, nil
+}
+
+// TestLLMModel sends a minimal completion using unsaved staged values.
+func (s *Service) TestLLMModel(ctx context.Context, in LLMModelTestInput) error {
+	p, err := s.stagedLLMProfile(ctx, in.LLMConnectionInput)
+	if err != nil {
+		return err
+	}
+	return s.testLLMModel(ctx, p, strings.TrimSpace(in.Model))
+}
+
+func (s *Service) stagedLLMProfile(ctx context.Context, in LLMConnectionInput) (llmProfileSecret, error) {
+	p, err := s.llmProfile(ctx)
+	if err != nil || p.Source == "environment" {
+		return p, err
+	}
+	if endpoint := strings.TrimSpace(in.Endpoint); endpoint != "" {
+		p.Endpoint = endpoint
+	}
+	if in.Backend != "" && validLLMBackend(in.Backend) { p.Backend = normalizeLLMBackend(in.Backend) }
+	if in.APIKey != "" {
+		p.apiKey = in.APIKey
+		p.APIKeyConfigured = true
+	}
+	return p, nil
+}
+
+func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model string) error {
+	if p.Endpoint == "" || model == "" {
+		return fmt.Errorf("LLM endpoint and model are required")
+	}
+	payload := map[string]any{"model": model, "messages": []map[string]string{{"role": "user", "content": "Reply with OK."}}, "max_tokens": 4}
+	if p.Backend == LLMBackendOllama { payload["stream"] = false; delete(payload, "max_tokens") }
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatURL(p.Backend, p.Endpoint), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create LLM model test request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("test LLM model: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("LLM model test returned %s", resp.Status)
 	}
 	return nil
 }
@@ -377,8 +509,8 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 	if !p.Enabled {
 		return Insight{}, fmt.Errorf("LLM insights are disabled")
 	}
-	if p.Endpoint == "" || p.Model == "" || p.apiKey == "" {
-		return Insight{}, fmt.Errorf("LLM endpoint, model, and API key are required")
+	if p.Endpoint == "" || p.Model == "" {
+		return Insight{}, fmt.Errorf("LLM endpoint and model are required")
 	}
 	// Calendar titles and times are sufficient grounding for this optional feature.
 	// Descriptions and links commonly contain more sensitive, untrusted text, so they
@@ -393,13 +525,14 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 	}
 	hash := sha256.Sum256(events)
 	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}}
+	if p.Backend == LLMBackendOllama { payload["stream"] = false }
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatCompletionsURL(p.Endpoint), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatURL(p.Backend, p.Endpoint), bytes.NewReader(body))
 	if err != nil {
 		return Insight{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.apiKey != "" { req.Header.Set("Authorization", "Bearer "+p.apiKey) }
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return Insight{}, fmt.Errorf("call LLM: %w", err)
@@ -414,11 +547,14 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Message struct { Content string `json:"content"` } `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
 		return Insight{}, fmt.Errorf("decode LLM response: %w", err)
 	}
-	if len(wire.Choices) == 0 || strings.TrimSpace(wire.Choices[0].Message.Content) == "" {
+	content := wire.Message.Content
+	if len(wire.Choices) > 0 { content = wire.Choices[0].Message.Content }
+	if strings.TrimSpace(content) == "" {
 		return Insight{}, fmt.Errorf("LLM returned no answer")
 	}
 	answer := struct {
@@ -426,7 +562,7 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 		Evidence []string `json:"evidence"`
 		Caveat   string   `json:"caveat"`
 	}{}
-	if err := json.Unmarshal([]byte(wire.Choices[0].Message.Content), &answer); err != nil {
+	if err := json.Unmarshal([]byte(content), &answer); err != nil {
 		return Insight{}, fmt.Errorf("LLM answer must be JSON: %w", err)
 	}
 	if strings.TrimSpace(answer.Answer) == "" {
@@ -454,6 +590,38 @@ func llmChatCompletionsURL(endpoint string) string {
 	}
 	return endpoint + "/chat/completions"
 }
+
+// llmModelsURL maps either an API base or a full chat-completions endpoint to
+// the corresponding OpenAI-compatible models collection.
+func llmModelsURL(backend, endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if normalizeLLMBackend(backend) == LLMBackendOllama {
+		if strings.HasSuffix(strings.ToLower(endpoint), "/api/chat") { endpoint = endpoint[:len(endpoint)-len("/api/chat")] }
+		return endpoint + "/api/tags"
+	}
+	if strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
+		return endpoint[:len(endpoint)-len("/chat/completions")] + "/models"
+	}
+	if strings.HasSuffix(strings.ToLower(endpoint), "/models") {
+		return endpoint
+	}
+	return endpoint + "/models"
+}
+
+func llmChatURL(backend, endpoint string) string {
+	if normalizeLLMBackend(backend) != LLMBackendOllama { return llmChatCompletionsURL(endpoint) }
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if strings.HasSuffix(strings.ToLower(endpoint), "/api/chat") { return endpoint }
+	return endpoint + "/api/chat"
+}
+
+func normalizeLLMBackend(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), LLMBackendOllama) { return LLMBackendOllama }
+	if strings.EqualFold(strings.TrimSpace(value), LLMBackendLemonade) { return LLMBackendLemonade }
+	return LLMBackendOpenAI
+}
+
+func validLLMBackend(value string) bool { return normalizeLLMBackend(value) == strings.ToLower(strings.TrimSpace(value)) }
 
 func (s *Service) recordInsightFailure(ctx context.Context, in RunInsightInput, runErr error) error {
 	now := s.now().UTC().Format(time.RFC3339Nano)
