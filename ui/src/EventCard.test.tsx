@@ -40,10 +40,10 @@ describe('all-day event cards', () => {
     expect(markup).not.toContain('--attendance-color');
   });
 
-  it('uses tall timed cards for three title lines and a useful secondary detail', () => {
+  it('uses tall timed cards for their available title space and keeps context adjacent', () => {
     const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Cancelled: long planning meeting with the team', date: '2026-08-03', start: '12:00', end: '14:00', cancelled: true }} selected={false} onSelect={() => undefined} timeFormat="12h" placement={{ meeting: { name: 'Cancelled: long planning meeting with the team' }, top: 720, height: 120, lane: 0, lanes: 1 }}/>);
 
-    expect(markup).toContain('three-line-title');
+    expect(markup).toContain('title-lines-4');
     expect(markup).toContain('has-event-secondary');
     expect(markup).toContain('event-card-secondary">Cancelled');
   });
