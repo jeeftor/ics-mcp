@@ -128,6 +128,43 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 		writeJSON(w, map[string]bool{"ok": true}, svc.TestLLMProfile(r.Context()))
 	})
+	mux.HandleFunc("/api/llm-profile/endpoint-test", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in LLMConnectionInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "message": "Endpoint reached."}, svc.TestLLMEndpoint(r.Context(), in))
+	})
+	mux.HandleFunc("/api/llm-profile/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in LLMConnectionInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		models, err := svc.DiscoverLLMModels(r.Context(), in)
+		writeJSON(w, map[string]any{"models": models}, err)
+	})
+	mux.HandleFunc("/api/llm-profile/model-test", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in LLMModelTestInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "message": "Model responded."}, svc.TestLLMModel(r.Context(), in))
+	})
 	mux.HandleFunc("/api/insight-inquiries", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1596,6 +1633,9 @@ func openAPISpec(build ...BuildInfo) map[string]any {
 			"/api/update-check":                      get("Check latest GitHub release version"),
 			"/api/llm-profile":                       map[string]any{"get": operation("Read redacted optional LLM profile"), "put": write("put", "Update optional LLM profile")["put"]},
 			"/api/llm-profile/test":                  map[string]any{"post": map[string]any{"summary": "Test the effective optional LLM profile without exposing its API key"}},
+			"/api/llm-profile/endpoint-test":         write("post", "Test an unsaved OpenAI-compatible endpoint") ,
+			"/api/llm-profile/models":                write("post", "Discover models from an unsaved OpenAI-compatible endpoint"),
+			"/api/llm-profile/model-test":            write("post", "Test an unsaved OpenAI-compatible model"),
 			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
 			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete a custom insight inquiry and its cached output")},
 			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},

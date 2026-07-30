@@ -115,10 +115,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS llm_profile (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			enabled INTEGER NOT NULL DEFAULT 0,
+			backend TEXT NOT NULL DEFAULT 'openai',
 			endpoint TEXT NOT NULL DEFAULT '',
 			model TEXT NOT NULL DEFAULT '',
 			api_key TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE llm_profile ADD COLUMN backend TEXT NOT NULL DEFAULT 'openai'`,
 		`INSERT OR IGNORE INTO llm_profile (id) VALUES (1)`,
 		`CREATE TABLE IF NOT EXISTS insights (
 			name TEXT PRIMARY KEY,

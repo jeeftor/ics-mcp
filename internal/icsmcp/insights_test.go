@@ -3,6 +3,7 @@ package icsmcp
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +59,72 @@ func TestInsightsAreDisabledAndProfileIsRedacted(t *testing.T) {
 	profile, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{APIKey: "secret-key", Endpoint: "https://example.invalid", Model: "test"})
 	if err != nil || !profile.APIKeyConfigured || strings.Contains(profile.Endpoint, "secret-key") {
 		t.Fatalf("redacted profile = %#v, %v", profile, err)
+	}
+}
+
+func TestLLMConnectionStagingUsesUnsavedValuesWithoutLeakingTheBearerKey(t *testing.T) {
+	const bearer = "staged-secret-key"
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+bearer {
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"alpha"},{"id":"beta"},{"id":"alpha"},{"id":""}]}`))
+		case "/v1/chat/completions":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"OK"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	ctx := context.Background()
+	input := LLMConnectionInput{Endpoint: provider.URL + "/v1/chat/completions", APIKey: bearer}
+	if err := svc.TestLLMEndpoint(ctx, input); err != nil {
+		t.Fatalf("TestLLMEndpoint = %v", err)
+	}
+	models, err := svc.DiscoverLLMModels(ctx, input)
+	if err != nil || len(models) != 2 || models[0] != "alpha" || models[1] != "beta" {
+		t.Fatalf("DiscoverLLMModels = %#v, %v", models, err)
+	}
+	if err := svc.TestLLMModel(ctx, LLMModelTestInput{LLMConnectionInput: input, Model: "beta"}); err != nil {
+		t.Fatalf("TestLLMModel = %v", err)
+	}
+	profile, err := svc.LLMProfile(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(profile)
+	if strings.Contains(string(encoded), bearer) || profile.Endpoint != "" || profile.Model != "" {
+		t.Fatalf("staged test persisted or leaked secrets: %s", encoded)
+	}
+}
+
+func TestOllamaProfileUsesTagsAndChatEndpoints(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_, _ = w.Write([]byte(`{"models":[{"name":"llama3.2"}]}`))
+		case "/api/chat":
+			_, _ = w.Write([]byte(`{"message":{"content":"OK"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	input := LLMConnectionInput{Backend: LLMBackendOllama, Endpoint: provider.URL}
+	models, err := svc.DiscoverLLMModels(context.Background(), input)
+	if err != nil || len(models) != 1 || models[0] != "llama3.2" {
+		t.Fatalf("DiscoverLLMModels Ollama = %#v, %v", models, err)
+	}
+	if err := svc.TestLLMModel(context.Background(), LLMModelTestInput{LLMConnectionInput: input, Model: "llama3.2"}); err != nil {
+		t.Fatalf("TestLLMModel Ollama = %v", err)
 	}
 }
 
