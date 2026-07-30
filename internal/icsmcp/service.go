@@ -24,6 +24,9 @@ const defaultUpdateCheckURL = "https://api.github.com/repos/jeeftor/ics-mcp/rele
 
 const defaultMaxCalendarBytes int64 = 8 << 20
 
+// MaxCalendarCustomIconBytes is the maximum accepted SVG or GIF calendar icon size.
+const MaxCalendarCustomIconBytes int64 = 256 << 10
+
 // ServiceOptions configures Service behavior.
 type ServiceOptions struct {
 	RefreshInterval           time.Duration
@@ -256,12 +259,30 @@ func (s *Service) AddCalendarAndRefresh(ctx context.Context, in AddCalendarInput
 
 // ListCalendars returns configured calendars.
 func (s *Service) ListCalendars(ctx context.Context) ([]Calendar, error) {
-	return s.store.listCalendars(ctx)
+	calendars, err := s.store.listCalendars(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range calendars {
+		if err := s.setCustomIconReference(ctx, &calendars[i]); err != nil {
+			return nil, err
+		}
+	}
+	return calendars, nil
 }
 
 // ListCalendarStatus returns calendars with refresh state.
 func (s *Service) ListCalendarStatus(ctx context.Context) ([]CalendarStatus, error) {
-	return s.store.listCalendarStatus(ctx)
+	statuses, err := s.store.listCalendarStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range statuses {
+		if err := s.setCustomIconReference(ctx, &statuses[i].Calendar); err != nil {
+			return nil, err
+		}
+	}
+	return statuses, nil
 }
 
 // ListTags returns available tags and their calendar counts.
@@ -276,7 +297,37 @@ func (s *Service) UpdateTag(ctx context.Context, name string, in UpdateCalendarT
 
 // UpdateCalendar updates a calendar by ID.
 func (s *Service) UpdateCalendar(ctx context.Context, id string, in UpdateCalendarInput) (Calendar, error) {
-	return s.store.updateCalendar(ctx, id, in)
+	cal, err := s.store.updateCalendar(ctx, id, in)
+	if err != nil {
+		return Calendar{}, err
+	}
+	return cal, s.setCustomIconReference(ctx, &cal)
+}
+
+// SetCalendarCustomIcon stores one validated custom icon for a calendar.
+func (s *Service) SetCalendarCustomIcon(ctx context.Context, id, contentType string, data []byte) error {
+	return s.store.setCalendarCustomIcon(ctx, id, contentType, data)
+}
+
+// CalendarCustomIcon returns the stored custom icon without exposing it through calendar JSON.
+func (s *Service) CalendarCustomIcon(ctx context.Context, id string) (string, []byte, error) {
+	return s.store.calendarCustomIcon(ctx, id)
+}
+
+// ClearCalendarCustomIcon removes a calendar custom icon and restores the MDI fallback.
+func (s *Service) ClearCalendarCustomIcon(ctx context.Context, id string) error {
+	return s.store.clearCalendarCustomIcon(ctx, id)
+}
+
+func (s *Service) setCustomIconReference(ctx context.Context, cal *Calendar) error {
+	exists, err := s.store.hasCalendarCustomIcon(ctx, cal.ID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		cal.CustomIconURL = "/api/calendars/" + cal.ID + "/custom-icon"
+	}
+	return nil
 }
 
 // GeneralQueryCalendars returns calendar IDs included in default generalized meeting queries.

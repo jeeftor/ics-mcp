@@ -1,14 +1,17 @@
 package icsmcp
 
 import (
+	"bytes"
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -497,6 +500,10 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			writeJSON(w, map[string]bool{"ok": true}, svc.RefreshCalendar(r.Context(), id, svc.now()))
 			return
 		}
+		if action == "custom-icon" {
+			handleCalendarCustomIcon(w, r, svc, id)
+			return
+		}
 		switch r.Method {
 		case http.MethodPatch:
 			var in UpdateCalendarInput
@@ -530,6 +537,134 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		http.ServeFileFS(w, r, webFiles, "web/dist/index.html")
 	})
 	return authMiddleware(mux, options.BearerToken)
+}
+
+func handleCalendarCustomIcon(w http.ResponseWriter, r *http.Request, svc *Service, id string) {
+	switch r.Method {
+	case http.MethodGet:
+		contentType, data, err := svc.CalendarCustomIcon(r.Context(), id)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, errors.New("calendar custom icon not found"))
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(data)
+	case http.MethodPut:
+		contentType, err := calendarIconContentType(r.Header.Get("Content-Type"))
+		if err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, err)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, MaxCalendarCustomIconBytes+1)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("calendar icon must be at most %d KiB", MaxCalendarCustomIconBytes>>10))
+			return
+		}
+		if int64(len(data)) > MaxCalendarCustomIconBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("calendar icon must be at most %d KiB", MaxCalendarCustomIconBytes>>10))
+			return
+		}
+		if err := validateCalendarCustomIcon(contentType, data); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := svc.SetCalendarCustomIcon(r.Context(), id, contentType, data); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, map[string]string{"custom_icon_url": "/api/calendars/" + id + "/custom-icon"}, nil)
+	case http.MethodDelete:
+		if err := svc.ClearCalendarCustomIcon(r.Context(), id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true}, nil)
+	default:
+		methodNotAllowed(w)
+	}
+}
+
+func calendarIconContentType(header string) (string, error) {
+	contentType, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		return "", fmt.Errorf("parse icon content type: %w", err)
+	}
+	if contentType != "image/svg+xml" && contentType != "image/gif" {
+		return "", errors.New("calendar icon must be image/svg+xml or image/gif")
+	}
+	return contentType, nil
+}
+
+func validateCalendarCustomIcon(contentType string, data []byte) error {
+	if len(data) == 0 {
+		return errors.New("calendar icon is empty")
+	}
+	if contentType == "image/gif" {
+		if len(data) < 6 || (!bytes.Equal(data[:6], []byte("GIF87a")) && !bytes.Equal(data[:6], []byte("GIF89a"))) {
+			return errors.New("calendar icon is not a valid GIF")
+		}
+		return nil
+	}
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	rootSeen := false
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return errors.New("calendar icon is not valid SVG")
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		name := strings.ToLower(start.Name.Local)
+		if !rootSeen {
+			if name != "svg" {
+				return errors.New("calendar icon SVG must have an svg root element")
+			}
+			rootSeen = true
+		}
+		if name == "script" || name == "foreignobject" || name == "iframe" || name == "object" || name == "embed" || name == "style" {
+			return errors.New("calendar icon SVG contains an unsafe element")
+		}
+		for _, attr := range start.Attr {
+			attrName := strings.ToLower(attr.Name.Local)
+			value := strings.TrimSpace(strings.ToLower(attr.Value))
+			if attr.Name.Space == "xmlns" || attrName == "xmlns" {
+				continue
+			}
+			if strings.HasPrefix(attrName, "on") || attrName == "style" {
+				return errors.New("calendar icon SVG contains an unsafe attribute")
+			}
+			if strings.HasPrefix(value, "javascript:") || strings.HasPrefix(value, "data:") || strings.HasPrefix(value, "http:") || strings.HasPrefix(value, "https:") || strings.HasPrefix(value, "//") {
+				return errors.New("calendar icon SVG contains an external reference")
+			}
+			if (attrName == "href" || attrName == "src") && value != "" && !strings.HasPrefix(value, "#") {
+				return errors.New("calendar icon SVG contains an external reference")
+			}
+		}
+	}
+	if !rootSeen {
+		return errors.New("calendar icon SVG must have an svg root element")
+	}
+	return nil
 }
 
 func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {

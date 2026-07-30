@@ -15,6 +15,7 @@ type Calendar struct {
 	URL                     string        `json:"url"`
 	Color                   string        `json:"color,omitempty"`
 	Icon                    string        `json:"icon,omitempty"`
+	CustomIconURL           string        `json:"custom_icon_url,omitempty"`
 	RefreshInterval         string        `json:"refresh_interval,omitempty"`
 	Enabled                 bool          `json:"enabled"`
 	IncludeInGeneralQueries bool          `json:"include_in_general_queries"`
