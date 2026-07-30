@@ -89,7 +89,9 @@ func TestInsightLifecycleOverHTTPAndMCP(t *testing.T) {
 	if strings.Contains(string(profileJSON), "local-test-key") {
 		t.Fatalf("profile exposed API key: %s", profileJSON)
 	}
-	var discovered struct { Models []string `json:"models"` }
+	var discovered struct {
+		Models []string `json:"models"`
+	}
 	doJSON(t, http.MethodPost, api.URL+"/api/llm-profile/models", LLMConnectionInput{Endpoint: provider.URL + "/v1", APIKey: "local-test-key"}, &discovered)
 	if len(discovered.Models) != 1 || discovered.Models[0] != "fake-model" {
 		t.Fatalf("discovered models = %#v", discovered)
@@ -164,6 +166,24 @@ func TestInsightLifecycleOverHTTPAndMCP(t *testing.T) {
 	decodeStructured(t, listResult.StructuredContent, &mcpList)
 	if len(mcpList) != 1 || mcpList[0].Name != "school_today" || !mcpList[0].Stale {
 		t.Fatalf("list_insights MCP = %#v", mcpList)
+	}
+	promptResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_prompt_output", Arguments: map[string]any{"id": "school_today"}})
+	if err != nil {
+		t.Fatalf("get_prompt_output MCP: %v", err)
+	}
+	var promptCached PromptOutput
+	decodeStructured(t, promptResult.StructuredContent, &promptCached)
+	if promptCached.Result != ran.Answer || !promptCached.Stale || promptCached.ID != "school_today" {
+		t.Fatalf("get_prompt_output MCP = %#v", promptCached)
+	}
+	historyResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_prompt_history", Arguments: map[string]any{"id": "school_today"}})
+	if err != nil {
+		t.Fatalf("get_prompt_history MCP: %v", err)
+	}
+	var promptHistory []PromptRun
+	decodeStructured(t, historyResult.StructuredContent, &promptHistory)
+	if len(promptHistory) != 1 || promptHistory[0].Result != ran.Answer || promptHistory[0].Model != ran.Model {
+		t.Fatalf("get_prompt_history MCP = %#v", promptHistory)
 	}
 
 	// Explicit execution failures are retained as cached errors and do not leak

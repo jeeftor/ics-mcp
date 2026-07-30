@@ -47,6 +47,9 @@ func ToolInfos() []ToolInfo {
 		{Name: "update_config", Description: "Persist and apply unlocked runtime configuration settings.", Category: "admin", InputExample: `{"refresh_interval":"5m","timezone":"America/Denver","external_url":"https://ics.example.test","update_check":true}`, DefaultArguments: map[string]any{}},
 		{Name: "list_insights", Description: "List cached LLM insights. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "get_insight", Description: "Read one cached LLM insight. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{"name":"daily_briefing"}`, DefaultArguments: map[string]any{}},
+		{Name: "list_prompt_outputs", Description: "List saved prompts and their latest cached outputs. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "get_prompt_output", Description: "Read a named prompt's latest cached output. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{"id":"daily_briefing"}`, DefaultArguments: map[string]any{}},
+		{Name: "get_prompt_history", Description: "Read retained outcomes for a named prompt. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{"id":"daily_briefing","limit":10}`, DefaultArguments: map[string]any{"limit": 10}},
 		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "validate_calendar", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
 		{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed","include_in_general_queries":true}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed", "include_in_general_queries": true}},
@@ -167,6 +170,34 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 		}
 		insight, err := svc.GetInsight(ctx, in.Name)
 		return ToolCallResponse{Tool: name, Result: insight}, err
+	case "list_prompt_outputs":
+		outputs, err := svc.ListPromptOutputs(ctx)
+		return ToolCallResponse{Tool: name, Result: outputs}, err
+	case "get_prompt_output":
+		var in struct {
+			ID string `json:"id"`
+		}
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		if in.ID == "" {
+			return ToolCallResponse{Tool: name, Result: PromptOutput{}}, nil
+		}
+		output, err := svc.GetPromptOutput(ctx, in.ID)
+		return ToolCallResponse{Tool: name, Result: output}, err
+	case "get_prompt_history":
+		var in struct {
+			ID    string `json:"id"`
+			Limit int    `json:"limit,omitempty"`
+		}
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		if in.ID == "" {
+			return ToolCallResponse{Tool: name, Result: []PromptRun{}}, nil
+		}
+		history, err := svc.ListPromptHistory(ctx, in.ID, in.Limit)
+		return ToolCallResponse{Tool: name, Result: history}, err
 	case "add_calendar":
 		var in AddCalendarInput
 		if err := decodeToolArgs(raw, &in); err != nil {
