@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, llmProfileFormValues, shouldReplaceLLMEndpoint } from './App';
+import { inquiryDateScopeOptions, inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, llmProfileFormValues, shouldReplaceLLMEndpoint } from './App';
 
 describe('LLM setup flow', () => {
   it('only replaces an empty or prior preset default server URL', () => {
@@ -37,7 +37,11 @@ describe('LLM setup flow', () => {
   });
 
   it('tests only the unsaved question and scope, never a save or run payload', () => {
-    expect(inquiryPreviewInput({ name: 'daily_briefing', question: ' What should I know? ', calendar_ids: ['emily'], tags: ['Personal'], trigger: 'scheduled', schedule_mode: 'repeat', repeat_interval: '1h', enabled: false }))
-      .toEqual({ question: 'What should I know?', calendar_ids: ['emily'], tags: ['Personal'] });
+    expect(inquiryPreviewInput({ name: 'daily_briefing', question: ' What should I know? ', calendar_ids: ['emily'], tags: ['Personal'], date_scope: 'custom', start_date: '2026-07-30', end_date: '2026-08-01', trigger: 'scheduled', schedule_mode: 'repeat', repeat_interval: '1h', enabled: false }))
+      .toEqual({ question: 'What should I know?', calendar_ids: ['emily'], tags: ['Personal'], date_scope: 'custom', start_date: '2026-07-30', end_date: '2026-08-01' });
+  });
+
+  it('offers bounded date choices and only reveals a range through Custom', () => {
+    expect(inquiryDateScopeOptions).toEqual([['today', 'Today'], ['tomorrow', 'Tomorrow'], ['this_week', 'This week'], ['next_7_days', 'Next 7 days'], ['all', 'All upcoming'], ['custom', 'Custom range']]);
   });
 });
