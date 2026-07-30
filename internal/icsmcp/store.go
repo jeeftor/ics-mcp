@@ -133,6 +133,21 @@ func (s *Store) migrate(ctx context.Context) error {
 			generated_at TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE insights ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS insight_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			question TEXT NOT NULL,
+			answer TEXT NOT NULL DEFAULT '',
+			evidence_json TEXT NOT NULL DEFAULT '[]',
+			caveat TEXT NOT NULL DEFAULT '',
+			source_hash TEXT NOT NULL DEFAULT '',
+			source_at TEXT NOT NULL,
+			generated_at TEXT NOT NULL,
+			model TEXT NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_insight_runs_name_generated ON insight_runs(name, generated_at DESC, id DESC)`,
 		`CREATE TABLE IF NOT EXISTS insight_inquiries (
 			name TEXT PRIMARY KEY,
 			question TEXT NOT NULL,

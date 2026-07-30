@@ -243,6 +243,66 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 		writeJSON(w, insight, err)
 	})
+	// Versioned prompt routes expose saved inquiry definitions and their cached
+	// LLM outputs. They are intentionally read-only: no GET route invokes a
+	// provider or changes prompt state.
+	mux.HandleFunc("/api/v1/prompts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		outputs, err := svc.ListPromptOutputs(r.Context())
+		writeJSON(w, outputs, err)
+	})
+	mux.HandleFunc("/api/v1/prompts/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/prompts/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 0 || parts[0] == "" || len(parts) > 2 {
+			http.NotFound(w, r)
+			return
+		}
+		name := parts[0]
+		if len(parts) == 1 {
+			inquiry, err := svc.GetInsightInquiry(r.Context(), name)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, inquiry, err)
+			return
+		}
+		switch parts[1] {
+		case "output":
+			output, err := svc.GetPromptOutput(r.Context(), name)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, output, err)
+		case "history":
+			limit := 10
+			if raw := r.URL.Query().Get("limit"); raw != "" {
+				var err error
+				limit, err = strconv.Atoi(raw)
+				if err != nil || limit < 1 {
+					writeError(w, http.StatusBadRequest, fmt.Errorf("limit must be a positive integer"))
+					return
+				}
+			}
+			history, err := svc.ListPromptHistory(r.Context(), name, limit)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, history, err)
+		default:
+			http.NotFound(w, r)
+		}
+	})
 	mux.HandleFunc("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -1633,13 +1693,17 @@ func openAPISpec(build ...BuildInfo) map[string]any {
 			"/api/update-check":                      get("Check latest GitHub release version"),
 			"/api/llm-profile":                       map[string]any{"get": operation("Read redacted optional LLM profile"), "put": write("put", "Update optional LLM profile")["put"]},
 			"/api/llm-profile/test":                  map[string]any{"post": map[string]any{"summary": "Test the effective optional LLM profile without exposing its API key"}},
-			"/api/llm-profile/endpoint-test":         write("post", "Test an unsaved OpenAI-compatible endpoint") ,
+			"/api/llm-profile/endpoint-test":         write("post", "Test an unsaved OpenAI-compatible endpoint"),
 			"/api/llm-profile/models":                write("post", "Discover models from an unsaved OpenAI-compatible endpoint"),
 			"/api/llm-profile/model-test":            write("post", "Test an unsaved OpenAI-compatible model"),
 			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
 			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete a custom insight inquiry and its cached output")},
 			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},
 			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
+			"/api/v1/prompts":                        get("List saved prompts with latest cached outputs without invoking an LLM"),
+			"/api/v1/prompts/{id}":                   get("Read one saved prompt definition"),
+			"/api/v1/prompts/{id}/output":            get("Read one prompt's latest cached output without invoking an LLM"),
+			"/api/v1/prompts/{id}/history":           get("Read up to ten retained prompt outcomes without invoking an LLM"),
 			"/api/rest/{tool_name}":                  map[string]any{"get": operation("Call a read-only MCP tool"), "post": write("post", "Call an admin MCP tool")["post"]},
 			"/api/meetings":                          eventAlias("Upcoming meetings"),
 			"/api/meetings/by-calendar":              eventAlias("Upcoming meetings grouped by calendar"),
