@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.8 - 2026-07-30
+
+- Add distinct RSVP-status cues to planner event edges while retaining calendar identity colors.
+
 ## v2.2.7 - 2026-07-30
 
 - Show three all-day planner rows before using per-day overflow disclosure.
