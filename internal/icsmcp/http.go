@@ -113,6 +113,62 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/llm-profile/test", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true}, svc.TestLLMProfile(r.Context()))
+	})
+	mux.HandleFunc("/api/insight-inquiries", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			inquiries, err := svc.ListInsightInquiries(r.Context())
+			writeJSON(w, inquiries, err)
+		case http.MethodPost:
+			var body struct {
+				Name string `json:"name"`
+				SaveInsightInquiryInput
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			inquiry, err := svc.SaveInsightInquiry(r.Context(), body.Name, body.SaveInsightInquiryInput)
+			writeJSON(w, inquiry, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
+	mux.HandleFunc("/api/insight-inquiries/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/insight-inquiries/")
+		switch r.Method {
+		case http.MethodGet:
+			inquiry, err := svc.GetInsightInquiry(r.Context(), name)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, inquiry, err)
+		case http.MethodPut:
+			var in SaveInsightInquiryInput
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			inquiry, err := svc.SaveInsightInquiry(r.Context(), name, in)
+			writeJSON(w, inquiry, err)
+		case http.MethodDelete:
+			err := svc.DeleteInsightInquiry(r.Context(), name)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, map[string]bool{"ok": true}, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
 	mux.HandleFunc("/api/insights", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1503,6 +1559,9 @@ func openAPISpec() map[string]any {
 			"/api/config":                            map[string]any{"get": map[string]any{"summary": "Read runtime configuration"}, "put": map[string]any{"summary": "Update runtime configuration"}},
 			"/api/update-check":                      get("Check latest GitHub release version"),
 			"/api/llm-profile":                       map[string]any{"get": map[string]any{"summary": "Read redacted optional LLM profile"}, "put": map[string]any{"summary": "Update optional LLM profile"}},
+			"/api/llm-profile/test":                  map[string]any{"post": map[string]any{"summary": "Test the effective optional LLM profile without exposing its API key"}},
+			"/api/insight-inquiries":                 map[string]any{"get": map[string]any{"summary": "List saved insight inquiries without invoking an LLM"}, "post": map[string]any{"summary": "Create a saved insight inquiry"}},
+			"/api/insight-inquiries/{name}":          map[string]any{"get": map[string]any{"summary": "Read one saved insight inquiry"}, "put": map[string]any{"summary": "Update a saved insight inquiry"}, "delete": map[string]any{"summary": "Delete a custom insight inquiry and its cached output"}},
 			"/api/insights":                          map[string]any{"get": map[string]any{"summary": "List cached insights without invoking an LLM"}, "post": map[string]any{"summary": "Explicitly run and cache an insight"}},
 			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
 			"/api/rest/{tool_name}":                  map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},

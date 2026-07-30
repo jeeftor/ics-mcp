@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.0 - 2026-07-30
+
+- Complete calendar administration with feed testing, URL and enablement editing, refresh status, and atomic default-query selection.
+- Add configurable tag presentation, ordering, refresh inheritance, and a searchable local MDI picker with clear-to-inherit support.
+- Complete the planner's all-day range layout and accessible event details.
+- Restore the full meeting-preview, REST-explorer, and setup workflows.
+- Add the LLM Insights console with redacted profile configuration, connection testing, saved briefings and custom inquiries, scopes, optional schedules, and cached results.
+
 ## v2.1.1 - 2026-07-30
 
 - Document the MCP endpoint and optional LLM profile and insight routes in the OpenAPI inventory.

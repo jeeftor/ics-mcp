@@ -83,6 +83,8 @@ type UpdateCalendarInput struct {
 	Color                   string    `json:"color,omitempty"`
 	Icon                    string    `json:"icon,omitempty"`
 	RefreshInterval         string    `json:"refresh_interval,omitempty"`
+	ClearIcon               bool      `json:"clear_icon,omitempty"`
+	ClearRefreshInterval    bool      `json:"clear_refresh_interval,omitempty"`
 }
 
 // CalendarTag describes a tag available for calendar and meeting queries.
@@ -97,10 +99,12 @@ type CalendarTag struct {
 
 // UpdateCalendarTagInput updates reusable tag presentation and refresh defaults.
 type UpdateCalendarTagInput struct {
-	Color           string `json:"color,omitempty"`
-	Icon            string `json:"icon,omitempty"`
-	RefreshInterval string `json:"refresh_interval,omitempty"`
-	Position        *int   `json:"position,omitempty"`
+	Color                string `json:"color,omitempty"`
+	Icon                 string `json:"icon,omitempty"`
+	RefreshInterval      string `json:"refresh_interval,omitempty"`
+	ClearIcon            bool   `json:"clear_icon,omitempty"`
+	ClearRefreshInterval bool   `json:"clear_refresh_interval,omitempty"`
+	Position             *int   `json:"position,omitempty"`
 }
 
 // RuntimeConfig exposes editable service settings and where each effective value came from.

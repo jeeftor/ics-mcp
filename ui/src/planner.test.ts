@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDayRows, meetingMinutes, placeTimedMeetings } from './planner';
+import { allDayRows, meetingMinutes, placeAllDayMeetings, placeTimedMeetings } from './planner';
 import { Meeting } from './api';
 
 const event = (start: string, end: string): Meeting => ({ name: start, date: '2026-07-30', start, end });
@@ -20,5 +20,25 @@ describe('planner placement', () => {
     const rows = allDayRows([event('00:00', '00:30'), event('00:00', '00:30'), event('00:00', '00:30'), event('00:00', '00:30')]);
     expect(rows.visible).toHaveLength(3);
     expect(rows.overflow).toBe(1);
+  });
+
+  it('clips multi-day all-day events to the visible range and gives overlaps separate rows', () => {
+    const meetings: Meeting[] = [
+      { name: 'Camping', date: '2026-07-28', end_date: '2026-08-01', all_day: true },
+      { name: 'One day', date: '2026-07-30', end_date: '2026-07-31', all_day: true },
+      { name: 'After range', date: '2026-08-03', end_date: '2026-08-04', all_day: true },
+    ];
+    expect(placeAllDayMeetings(meetings, '2026-07-29', 3).map(item => [item.meeting.name, item.start, item.span, item.row])).toEqual([
+      ['Camping', 0, 3, 0],
+      ['One day', 1, 1, 1],
+    ]);
+  });
+
+  it('treats omitted and same-day all-day end dates as one day', () => {
+    const meetings: Meeting[] = [
+      { name: 'No end', date: '2026-07-30', all_day: true },
+      { name: 'Same day', date: '2026-07-31', end_date: '2026-07-31', all_day: true },
+    ];
+    expect(placeAllDayMeetings(meetings, '2026-07-30', 3).map(item => [item.start, item.span])).toEqual([[0, 1], [1, 1]]);
   });
 });

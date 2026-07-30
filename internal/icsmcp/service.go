@@ -428,6 +428,7 @@ func tagRefreshIntervals(tags []CalendarTag) []string {
 
 // RefreshDueCalendars refreshes enabled calendars whose next refresh has arrived.
 func (s *Service) RefreshDueCalendars(ctx context.Context) {
+	defer s.RunDueInsights(ctx)
 	now := s.now()
 	statuses, err := s.ListCalendarStatus(ctx)
 	if err != nil {

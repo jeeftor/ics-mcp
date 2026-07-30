@@ -104,6 +104,8 @@ type updateInput struct {
 	Color                   string    `json:"color,omitempty"`
 	Icon                    string    `json:"icon,omitempty"`
 	RefreshInterval         string    `json:"refresh_interval,omitempty"`
+	ClearIcon               bool      `json:"clear_icon,omitempty"`
+	ClearRefreshInterval    bool      `json:"clear_refresh_interval,omitempty"`
 }
 
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
@@ -195,11 +197,6 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			insight, err := svc.GetInsight(ctx, in.Name)
 			return nil, insight, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "run_insight", Description: "Explicitly generate and cache a grounded optional LLM insight."},
-		func(ctx context.Context, req *mcp.CallToolRequest, in RunInsightInput) (*mcp.CallToolResult, Insight, error) {
-			insight, err := svc.RunInsight(ctx, in)
-			return nil, insight, err
-		})
 	mcp.AddTool(server, &mcp.Tool{Name: "get_config", Description: "Return effective runtime configuration and each setting source."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, configOutput, error) {
 			return nil, configOutput{Config: svc.RuntimeConfig()}, nil
@@ -216,7 +213,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, calendarOutput, error) {
-			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries, Tags: in.Tags, TagOrder: in.TagOrder, Color: in.Color, Icon: in.Icon, RefreshInterval: in.RefreshInterval})
+			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries, Tags: in.Tags, TagOrder: in.TagOrder, Color: in.Color, Icon: in.Icon, RefreshInterval: in.RefreshInterval, ClearIcon: in.ClearIcon, ClearRefreshInterval: in.ClearRefreshInterval})
 			return nil, calendarOutput{Calendar: cal}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_calendar", Description: "Remove a calendar and its cached events."},
