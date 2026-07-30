@@ -1,12 +1,14 @@
 package icsmcp
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +16,46 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLLMActionLogsRedactInquiryData(t *testing.T) {
+	const question = "Private question that must not be logged"
+	const calendarTitle = "Confidential calendar title"
+	const token = "private-bearer-token"
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	var logs bytes.Buffer
+	svc.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	ctx := context.Background()
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "private", URL: "https://example.test/private.ics"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.store.replaceEvents(ctx, cal.ID, []EventInstance{{ID: "private", UID: "private", Name: calendarTitle, Start: time.Now().UTC(), End: time.Now().UTC().Add(time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: provider.URL, Model: "test-model", APIKey: token}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: question, DateScope: InsightDateScopeToday}); err != nil {
+		t.Fatal(err)
+	}
+	got := logs.String()
+	for _, secret := range []string{provider.URL, token, question, calendarTitle} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("LLM action logs exposed %q: %s", secret, got)
+		}
+	}
+	for _, want := range []string{"msg=\"llm action started\"", "msg=\"llm action completed\"", "action=inquiry_preview", "event_count=1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("LLM action logs missing %q: %s", want, got)
+		}
+	}
+}
 
 func TestInsightInquiriesPersistScopeAndStarterTemplatesAreOptional(t *testing.T) {
 	svc := newTestService(t)
