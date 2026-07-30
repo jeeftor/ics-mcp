@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.0 - 2026-07-30
+
+- Add Lemonade model readiness management: check loaded state, explicitly load the selected model, poll safely for readiness, then allow model testing and Insight execution.
+
 ## v2.5.0 - 2026-07-30
 
 - Add persisted inquiry date scopes and custom ranges, filtering calendar data before it is sent to an LLM.
