@@ -96,7 +96,7 @@ function minuteInTimezoneForDay(day: Date, timezone: string | undefined, now: Da
 function AllDayGrid({ meetings, rangeStart, days, calendarByID, selected, onSelect, timeFormat }: { meetings: Meeting[]; rangeStart: string; days: number; calendarByID: Map<string, Calendar>; selected?: Meeting; onSelect: (meeting: Meeting) => void; timeFormat: '12h' | '24h' }) {
   const [expandedDays, setExpandedDays] = useState<Set<number>>(() => new Set());
   const placements = placeAllDayMeetings(meetings, rangeStart, days);
-  const { visible, overflowByDay, rows } = visibleAllDayPlacements(placements, days, 2, expandedDays);
+  const { visible, overflowByDay, rows } = visibleAllDayPlacements(placements, days, 3, expandedDays);
   const hasOverflow = overflowByDay.some(Boolean);
   useEffect(() => setExpandedDays(new Set()), [rangeStart, days]);
   const toggleDay = (day: number) => setExpandedDays(current => {

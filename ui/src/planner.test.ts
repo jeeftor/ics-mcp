@@ -49,7 +49,7 @@ describe('planner placement', () => {
     expect(placeAllDayMeetings(meetings, '2026-07-30', 3).map(item => [item.start, item.span])).toEqual([[0, 1], [1, 1]]);
   });
 
-  it('counts all-day overflow per day and expands only the chosen day', () => {
+  it('shows three all-day rows before counting overflow, then expands only the chosen day', () => {
     const placements = placeAllDayMeetings([
       { name: 'One', date: '2026-07-30', all_day: true },
       { name: 'Two', date: '2026-07-30', all_day: true },
@@ -57,12 +57,14 @@ describe('planner placement', () => {
       { name: 'Four', date: '2026-07-30', all_day: true },
       { name: 'Friday', date: '2026-07-31', all_day: true },
     ], '2026-07-30', 2);
-    const compact = visibleAllDayPlacements(placements, 2, 2, new Set());
-    expect(compact.overflowByDay).toEqual([2, 0]);
-    expect(compact.visible.map(item => item.meeting.name)).not.toContain('Three');
+    const compact = visibleAllDayPlacements(placements, 2, 3, new Set());
+    expect(compact.overflowByDay).toEqual([1, 0]);
+    expect(compact.visible).toHaveLength(4);
+    expect(compact.visible.map(item => item.row)).not.toContain(3);
+    expect(compact.visible.map(item => item.meeting.name)).not.toContain('Two');
 
-    const expanded = visibleAllDayPlacements(placements, 2, 2, new Set([0]));
-    expect(expanded.visible.map(item => item.meeting.name)).toContain('Three');
+    const expanded = visibleAllDayPlacements(placements, 2, 3, new Set([0]));
+    expect(expanded.visible.map(item => item.meeting.name)).toContain('Two');
     expect(expanded.rows).toBe(4);
   });
 
