@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inquiryDateScopeOptions, inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, llmProfileFormValues, shouldReplaceLLMEndpoint } from './App';
+import { calendarDataWindowSummary, inquiryDateScopeOptions, inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, llmProfileFormValues, shouldReplaceLLMEndpoint } from './App';
 
 describe('LLM setup flow', () => {
   it('only replaces an empty or prior preset default server URL', () => {
@@ -43,5 +43,7 @@ describe('LLM setup flow', () => {
 
   it('offers an explicit LLM calendar data window while preserving stored scope values', () => {
     expect(inquiryDateScopeOptions).toEqual([['today', 'Send today'], ['tomorrow', 'Send tomorrow'], ['this_week', 'Send this week'], ['next_7_days', 'Send next 7 days'], ['all', 'Send all upcoming events'], ['custom', 'Custom date range']]);
+    expect(calendarDataWindowSummary('today')).toBe('events today');
+    expect(calendarDataWindowSummary('custom', '2026-07-30', '2026-08-01')).toBe('events from 2026-07-30 to 2026-08-01');
   });
 });
