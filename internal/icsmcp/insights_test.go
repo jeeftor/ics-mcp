@@ -787,3 +787,44 @@ func jsonQuote(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+// TestInsightPromptIncludesCurrentDateAndTimezone ensures the LLM prompt
+// includes the current date and configured timezone so the model can reason
+// about "today" in the user's local time, and does not use the word
+// "untrusted" which the model echoes back into the caveat.
+func TestInsightPromptIncludesCurrentDateAndTimezone(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	var capturedPayload map[string]any
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		_ = json.Unmarshal(body, &capturedPayload)
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know today?"}); err != nil {
+		t.Fatal(err)
+	}
+	messages, ok := capturedPayload["messages"].([]any)
+	if !ok || len(messages) < 2 {
+		t.Fatalf("payload missing messages: %v", capturedPayload)
+	}
+	systemMsg, _ := messages[0].(map[string]any)
+	userMsg, _ := messages[1].(map[string]any)
+	systemContent, _ := systemMsg["content"].(string)
+	userContent, _ := userMsg["content"].(string)
+	combined := systemContent + "\n" + userContent
+	if strings.Contains(strings.ToLower(combined), "untrusted") {
+		t.Errorf("prompt still contains 'untrusted' (model echoes it back): %q", combined)
+	}
+	// The prompt must include the current date so the model knows what "today" is.
+	if !strings.Contains(combined, "2026") {
+		t.Errorf("prompt missing current date: %q", combined)
+	}
+	// The prompt must include the timezone so the model can reason about local time.
+	if !strings.Contains(combined, "UTC") {
+		t.Errorf("prompt missing timezone: %q", combined)
+	}
+}

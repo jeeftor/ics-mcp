@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.12 - 2026-07-30
+
+- Include the current date, time, day of week, and configured timezone in the LLM prompt so the model can reason about "today" in the user's local time instead of seeing only UTC timestamps with no reference point.
+- Remove the word "untrusted" from the prompt (replaced with "may be incomplete or stale") so the model stops echoing it back in the caveat. The safety intent is preserved without the model parroting the label.
+- Expand the system prompt to clearly describe the expected JSON shape (answer, evidence, caveat) and the assistant role.
+
 ## v2.6.11 - 2026-07-30
 
 - Detect and syntax-highlight HTML/XML responses in the insight output component. Tags, attribute names, attribute values, and comments are color-coded alongside the existing JSON highlighting; plain text still renders as-is.

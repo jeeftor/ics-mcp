@@ -1040,7 +1040,17 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if p.Backend == LLMBackendLemonade {
 		maxOutputTokens = llmReasoningMaxOutputTokens
 	}
-	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}, "max_tokens": maxOutputTokens}
+	now := s.now().In(s.location)
+	systemPrompt := "You are a calendar briefing assistant. Answer the user's question using only the supplied calendar data. " +
+		"The data may be incomplete or stale, so do not assume it is exhaustive. " +
+		"Return a JSON object with three fields: \"answer\" (a concise natural-language response), " +
+		"\"evidence\" (an array of event IDs or titles that support the answer), and " +
+		"\"caveat\" (any limitation of the answer, or an empty string if none)."
+	userPrompt := "Current date and time: " + now.Format("2006-01-02 15:04 MST (Monday)") + "\n" +
+		"Timezone: " + s.timezone + "\n" +
+		"Question: " + in.Question + "\n" +
+		"Calendar data: " + string(events)
+	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": systemPrompt}, {"role": "user", "content": userPrompt}}, "max_tokens": maxOutputTokens}
 	if p.Backend == LLMBackendOllama {
 		payload["stream"] = false
 		delete(payload, "max_tokens")
@@ -1143,20 +1153,20 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, fmt.Errorf("LLM answer is missing answer")
 	}
 	phase = "cache"
-	now := s.now().UTC()
+	cacheNow := s.now().UTC()
 	if !persist {
 		phase = "completed"
-		return Insight{Name: in.Name, Question: in.Question, Answer: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: now, GeneratedAt: now, Model: p.Model}, nil
+		return Insight{Name: in.Name, Question: in.Question, Answer: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: cacheNow, GeneratedAt: cacheNow, Model: p.Model}, nil
 	}
 	encodedEvidence, _ := json.Marshal(answer.Evidence)
-	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insights (name, question, answer, evidence_json, caveat, source_hash, source_at, generated_at, model, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '') ON CONFLICT(name) DO UPDATE SET question=excluded.question, answer=excluded.answer, evidence_json=excluded.evidence_json, caveat=excluded.caveat, source_hash=excluded.source_hash, source_at=excluded.source_at, generated_at=excluded.generated_at, model=excluded.model, error=''`, in.Name, in.Question, answer.Answer, string(encodedEvidence), answer.Caveat, hex.EncodeToString(hash[:]), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), p.Model)
+	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insights (name, question, answer, evidence_json, caveat, source_hash, source_at, generated_at, model, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '') ON CONFLICT(name) DO UPDATE SET question=excluded.question, answer=excluded.answer, evidence_json=excluded.evidence_json, caveat=excluded.caveat, source_hash=excluded.source_hash, source_at=excluded.source_at, generated_at=excluded.generated_at, model=excluded.model, error=''`, in.Name, in.Question, answer.Answer, string(encodedEvidence), answer.Caveat, hex.EncodeToString(hash[:]), cacheNow.Format(time.RFC3339Nano), cacheNow.Format(time.RFC3339Nano), p.Model)
 	if err != nil {
 		return Insight{}, fmt.Errorf("cache insight: %w", err)
 	}
-	if _, err = s.store.db.ExecContext(ctx, `UPDATE insight_inquiries SET last_run_at = ? WHERE name = ?`, now.Format(time.RFC3339Nano), in.Name); err != nil {
+	if _, err = s.store.db.ExecContext(ctx, `UPDATE insight_inquiries SET last_run_at = ? WHERE name = ?`, cacheNow.Format(time.RFC3339Nano), in.Name); err != nil {
 		return Insight{}, fmt.Errorf("record inquiry run: %w", err)
 	}
-	if err := s.recordPromptRun(ctx, PromptRun{PromptID: in.Name, Text: in.Question, Result: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: now, RunAt: now, Model: p.Model}); err != nil {
+	if err := s.recordPromptRun(ctx, PromptRun{PromptID: in.Name, Text: in.Question, Result: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: cacheNow, RunAt: cacheNow, Model: p.Model}); err != nil {
 		return Insight{}, err
 	}
 	phase = "completed"
@@ -1315,9 +1325,9 @@ func extractInsightJSON(content string) string {
 	return trimmed
 }
 
-// insightGroundingEvent is the intentionally small, untrusted calendar record
-// sent to an LLM. It is separate from the public Meeting representation so
-// future Meeting fields cannot broaden the model payload accidentally.
+// insightGroundingEvent is the intentionally small calendar record sent to an
+// LLM. It is separate from the public Meeting representation so future Meeting
+// fields cannot broaden the model payload accidentally.
 type insightGroundingEvent struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
