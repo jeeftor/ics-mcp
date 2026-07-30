@@ -211,6 +211,7 @@ func (q UpcomingQuery) limit(defaultLimit int) int {
 
 // Meeting is the MCP-facing meeting representation.
 type Meeting struct {
+	ID               string    `json:"-"`
 	When             string    `json:"when,omitempty"`
 	Title            string    `json:"title,omitempty"`
 	Calendar         string    `json:"calendar,omitempty"`
