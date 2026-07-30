@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.4.0 - 2026-07-30
+
+- Add addressable Calendar, Config, and API workspace routes with direct-link and browser-history support.
+- Safely report unreachable LLM servers without exposing endpoint, credentials, prompts, or calendar data.
+
 ## v2.3.0 - 2026-07-30
 
 - Add non-persistent question previews for LLM inquiries, with result/evidence display before saving.
