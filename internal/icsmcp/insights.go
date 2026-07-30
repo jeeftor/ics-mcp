@@ -730,7 +730,7 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 
 // llmChatCompletionsURL accepts either an OpenAI-compatible API base such as
 // https://provider.example/v1 or the provider's exact chat completions URL.
-// CamSpeak deployments commonly publish the latter directly.
+// Some OpenAI-compatible deployments publish the latter directly.
 func llmChatCompletionsURL(endpoint string) string {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
