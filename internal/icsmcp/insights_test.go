@@ -128,6 +128,44 @@ func TestOllamaProfileUsesTagsAndChatEndpoints(t *testing.T) {
 	}
 }
 
+func TestModelDiscoveryExplainsHTMLResponse(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html>not an API</html>"))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	_, err := svc.DiscoverLLMModels(context.Background(), LLMConnectionInput{Endpoint: provider.URL + "/v1"})
+	if err == nil || !strings.Contains(err.Error(), "returned HTML") || strings.Contains(err.Error(), "invalid character") {
+		t.Fatalf("DiscoverLLMModels HTML error = %v", err)
+	}
+}
+
+func TestLemonadeOriginUsesOpenAICompatibleV1Routes(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"lemonade-model"}]}`))
+		case "/v1/chat/completions":
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"OK"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	input := LLMConnectionInput{Backend: LLMBackendLemonade, Endpoint: provider.URL}
+	models, err := svc.DiscoverLLMModels(context.Background(), input)
+	if err != nil || len(models) != 1 || models[0] != "lemonade-model" {
+		t.Fatalf("DiscoverLLMModels Lemonade = %#v, %v", models, err)
+	}
+	if err := svc.TestLLMModel(context.Background(), LLMModelTestInput{LLMConnectionInput: input, Model: "lemonade-model"}); err != nil {
+		t.Fatalf("TestLLMModel Lemonade = %v", err)
+	}
+}
+
 func TestRunInsightCachesStructuredAnswer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {

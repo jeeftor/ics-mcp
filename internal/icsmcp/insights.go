@@ -273,22 +273,29 @@ func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) 
 			ID string `json:"id"`
 		} `json:"data"`
 	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read LLM model discovery response: %w", err)
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(body)), "<") {
+		return nil, fmt.Errorf("model listing at %s returned HTML; check the Server preset and enter the API base URL or full chat-completions URL", llmModelsURL(p.Backend, p.Endpoint))
+	}
 	if p.Backend == LLMBackendOllama {
 		var ollama struct {
 			Models []struct {
 				Name string `json:"name"`
 			} `json:"models"`
 		}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&ollama); err != nil {
-			return nil, fmt.Errorf("decode Ollama model discovery response: %w", err)
+		if err := json.Unmarshal(body, &ollama); err != nil {
+			return nil, fmt.Errorf("model listing at %s was not an Ollama response; check the Server preset or enter a custom model name", llmModelsURL(p.Backend, p.Endpoint))
 		}
 		for _, item := range ollama.Models {
 			payload.Data = append(payload.Data, struct {
 				ID string `json:"id"`
 			}{ID: item.Name})
 		}
-	} else if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode LLM model discovery response: %w", err)
+	} else if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("model listing at %s was not JSON; check the Server preset or enter a custom model name", llmModelsURL(p.Backend, p.Endpoint))
 	}
 	models := make([]string, 0, len(payload.Data))
 	seen := make(map[string]struct{}, len(payload.Data))
@@ -742,6 +749,9 @@ func llmModelsURL(backend, endpoint string) string {
 		}
 		return endpoint + "/api/tags"
 	}
+	if normalizeLLMBackend(backend) == LLMBackendLemonade {
+		endpoint = lemonadeOpenAIBaseURL(endpoint)
+	}
 	if strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
 		return endpoint[:len(endpoint)-len("/chat/completions")] + "/models"
 	}
@@ -753,6 +763,9 @@ func llmModelsURL(backend, endpoint string) string {
 
 func llmChatURL(backend, endpoint string) string {
 	if normalizeLLMBackend(backend) != LLMBackendOllama {
+		if normalizeLLMBackend(backend) == LLMBackendLemonade {
+			endpoint = lemonadeOpenAIBaseURL(endpoint)
+		}
 		return llmChatCompletionsURL(endpoint)
 	}
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
@@ -760,6 +773,17 @@ func llmChatURL(backend, endpoint string) string {
 		return endpoint
 	}
 	return endpoint + "/api/chat"
+}
+
+// lemonadeOpenAIBaseURL accepts the Lemonade server origin as documented by
+// Lemonade as well as its OpenAI-compatible /v1 base or full endpoint.
+func lemonadeOpenAIBaseURL(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	lower := strings.ToLower(endpoint)
+	if strings.HasSuffix(lower, "/v1") || strings.Contains(lower, "/v1/") {
+		return endpoint
+	}
+	return endpoint + "/v1"
 }
 
 func normalizeLLMBackend(value string) string {
