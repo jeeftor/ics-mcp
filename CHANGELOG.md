@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.7 - 2026-07-30
+
+- Show three all-day planner rows before using per-day overflow disclosure.
+
 ## v2.2.6 - 2026-07-30
 
 - Restore all-day planner titles and normalize date-only event boundaries.
