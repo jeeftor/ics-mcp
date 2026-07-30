@@ -38,7 +38,7 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .all-day-band > span { padding:10px; }
 .all-day-grid { grid-auto-rows:34px; min-height:34px; }
 .all-day-grid .event-card { min-height:28px; padding:3px 5px; border-radius:6px; }
-.all-day-grid .event-card span { display:none; }
+.all-day-grid .event-card > strong .event-title { display:inline; }
 .time-ruler { position:relative; grid-template-rows:repeat(24,60px) !important; padding-top:0; }
 .time-ruler strong { position:absolute; z-index:2; top:4px; right:0; padding-right:10px; color:#526b56; background:#fbfaf7; }
 .time-ruler span { padding:2px 10px 0 0; }
