@@ -211,15 +211,17 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			methodNotAllowed(w)
 			return
 		}
-		writeJSON(w, openAPISpec(), nil)
+		status, _ := svc.Status(r.Context())
+		writeJSON(w, openAPISpec(status.Version), nil)
 	})
 	mux.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
 			return
 		}
+		status, _ := svc.Status(r.Context())
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html><html><head><title>ICS MCP REST docs</title></head><body><h1>REST API</h1><p>Use the REST tab in the admin UI for an interactive tester.</p><p><a href="/">Open admin UI</a> · <a href="/openapi.json">OpenAPI JSON</a></p></body></html>`))
+		_, _ = w.Write([]byte(openAPIDocs(status.Version)))
 	})
 	mux.HandleFunc("/api/rest/", func(w http.ResponseWriter, r *http.Request) {
 		handleRESTTool(w, r, svc)
@@ -1537,24 +1539,49 @@ func writeBusyText(b *strings.Builder, busy []BusyBlock) {
 	}
 }
 
-func openAPISpec() map[string]any {
-	get := func(summary string) map[string]any {
-		return map[string]any{"get": map[string]any{"summary": summary}}
+func openAPISpec(build ...BuildInfo) map[string]any {
+	version := "dev"
+	if len(build) > 0 && build[0].Version != "" {
+		version = build[0].Version
 	}
-	post := func(summary string) map[string]any {
-		return map[string]any{"post": map[string]any{"summary": summary}}
+	response := func(description string) map[string]any {
+		return map[string]any{"200": map[string]any{"description": description, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"$ref": "#/components/schemas/JSONValue"}}}}}
+	}
+	operation := func(summary string) map[string]any {
+		return map[string]any{"summary": summary, "responses": response("Successful response")}
+	}
+	get := func(summary string) map[string]any { return map[string]any{"get": operation(summary)} }
+	post := func(summary string) map[string]any { return map[string]any{"post": operation(summary)} }
+	write := func(method, summary string) map[string]any {
+		op := operation(summary)
+		op["requestBody"] = map[string]any{
+			"required": true,
+			"content": map[string]any{
+				"application/json": map[string]any{"schema": map[string]any{"$ref": "#/components/schemas/JSONValue"}},
+			},
+		}
+		return map[string]any{method: op}
+	}
+	meetingParameters := []map[string]any{
+		{"name": "limit", "in": "query", "schema": map[string]any{"type": "integer"}, "description": "Maximum meetings to return."},
+		{"name": "calendar_id", "in": "query", "schema": map[string]any{"type": "string"}, "description": "Repeat to select calendars by ID."},
+		{"name": "tag", "in": "query", "schema": map[string]any{"type": "string"}, "description": "Repeat to select calendars by tag."},
+		{"name": "after", "in": "query", "schema": map[string]any{"type": "string", "format": "date-time"}},
+		{"name": "before", "in": "query", "schema": map[string]any{"type": "string", "format": "date-time"}},
+		{"name": "format", "in": "query", "schema": map[string]any{"type": "string", "enum": []string{"json", "html", "md", "txt", "ascii", "csv", "tg-text", "tg-html"}}, "description": "Output format; suffixes are also supported."},
 	}
 	eventAlias := func(summary string) map[string]any {
-		return map[string]any{"get": map[string]any{
-			"summary":     summary,
-			"description": "Supports the shared meeting query parameters and format negotiation through format, Accept, or a .json, .html, .md, .txt, .ascii, or .csv suffix.",
-		}}
+		op := operation(summary)
+		op["description"] = "Supports shared meeting query parameters and format negotiation through `format`, `Accept`, or a `.json`, `.html`, `.md`, `.txt`, `.ascii`, or `.csv` suffix."
+		op["parameters"] = meetingParameters
+		return map[string]any{"get": op}
 	}
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
-			"title":   "ICS MCP REST API",
-			"version": "2.0.0",
+			"title":       "ICS MCP REST API",
+			"version":     version,
+			"description": "Calendar reads, admin configuration, cached insights, and a REST bridge for MCP tools. Administrative operations are explicit and never run an LLM during ordinary reads.",
 		},
 		"paths": map[string]any{
 			"/mcp":                                   post("Streamable HTTP MCP endpoint"),
@@ -1564,16 +1591,16 @@ func openAPISpec() map[string]any {
 			"/openapi.json":                          get("OpenAPI document"),
 			"/docs":                                  get("REST API documentation page"),
 			"/api/status":                            get("Service status"),
-			"/api/config":                            map[string]any{"get": map[string]any{"summary": "Read runtime configuration"}, "put": map[string]any{"summary": "Update runtime configuration"}},
+			"/api/config":                            map[string]any{"get": operation("Read runtime configuration"), "put": write("put", "Update runtime configuration")["put"]},
 			"/api/environment":                       get("List recognized environment settings with secret values redacted"),
 			"/api/update-check":                      get("Check latest GitHub release version"),
-			"/api/llm-profile":                       map[string]any{"get": map[string]any{"summary": "Read redacted optional LLM profile"}, "put": map[string]any{"summary": "Update optional LLM profile"}},
+			"/api/llm-profile":                       map[string]any{"get": operation("Read redacted optional LLM profile"), "put": write("put", "Update optional LLM profile")["put"]},
 			"/api/llm-profile/test":                  map[string]any{"post": map[string]any{"summary": "Test the effective optional LLM profile without exposing its API key"}},
-			"/api/insight-inquiries":                 map[string]any{"get": map[string]any{"summary": "List saved insight inquiries without invoking an LLM"}, "post": map[string]any{"summary": "Create a saved insight inquiry"}},
-			"/api/insight-inquiries/{name}":          map[string]any{"get": map[string]any{"summary": "Read one saved insight inquiry"}, "put": map[string]any{"summary": "Update a saved insight inquiry"}, "delete": map[string]any{"summary": "Delete a custom insight inquiry and its cached output"}},
-			"/api/insights":                          map[string]any{"get": map[string]any{"summary": "List cached insights without invoking an LLM"}, "post": map[string]any{"summary": "Explicitly run and cache an insight"}},
+			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
+			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete a custom insight inquiry and its cached output")},
+			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},
 			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
-			"/api/rest/{tool_name}":                  map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},
+			"/api/rest/{tool_name}":                  map[string]any{"get": operation("Call a read-only MCP tool"), "post": write("post", "Call an admin MCP tool")["post"]},
 			"/api/meetings":                          eventAlias("Upcoming meetings"),
 			"/api/meetings/by-calendar":              eventAlias("Upcoming meetings grouped by calendar"),
 			"/api/events":                            eventAlias("Upcoming events"),
@@ -1587,20 +1614,34 @@ func openAPISpec() map[string]any {
 			"/api/events/search":                     eventAlias("Search events"),
 			"/api/free-busy":                         eventAlias("Free/busy blocks"),
 			"/api/tools":                             get("MCP tool catalog"),
-			"/api/tools/{tool_name}/call":            post("Preview an MCP tool call"),
-			"/api/calendars":                         map[string]any{"get": map[string]any{"summary": "List calendar status"}, "post": map[string]any{"summary": "Add and refresh a calendar"}},
-			"/api/calendars/general-query-selection": map[string]any{"get": map[string]any{"summary": "Get default-query calendar selection"}, "put": map[string]any{"summary": "Atomically save default-query calendar selection"}},
-			"/api/calendars/validate":                post("Validate a calendar feed"),
-			"/api/calendars/{calendar}":              map[string]any{"patch": map[string]any{"summary": "Update a calendar"}, "delete": map[string]any{"summary": "Remove a calendar"}},
+			"/api/tools/{tool_name}/call":            write("post", "Preview an MCP tool call"),
+			"/api/calendars":                         map[string]any{"get": operation("List calendar status"), "post": write("post", "Add and refresh a calendar")["post"]},
+			"/api/calendars/general-query-selection": map[string]any{"get": operation("Get default-query calendar selection"), "put": write("put", "Atomically save default-query calendar selection")["put"]},
+			"/api/calendars/validate":                write("post", "Validate a calendar feed"),
+			"/api/calendars/{calendar}":              map[string]any{"patch": write("patch", "Update a calendar")["patch"], "delete": operation("Remove a calendar")},
 			"/api/calendars/{calendar}/refresh":      post("Refresh a calendar"),
 			"/api/calendars/{calendar}/events":       eventAlias("Events for one calendar"),
 			"/api/calendars/{calendar}/today":        eventAlias("Events that overlap the current display day for one calendar"),
 			"/api/tags":                              get("List calendar tags"),
+			"/api/tags/{name}":                       map[string]any{"put": write("put", "Update a reusable calendar tag")["put"], "patch": write("patch", "Partially update a reusable calendar tag")["patch"]},
 			"/{calendar}/{index}":                    eventAlias("One upcoming event for one calendar by 1-based index"),
 			"/{calendar}/upcoming/{index}":           eventAlias("One upcoming event for one calendar by 1-based index"),
 			"/{calendar}/ongoing/{index}":            eventAlias("One ongoing event for one calendar by 1-based index"),
 		},
+		"components": map[string]any{"schemas": map[string]any{
+			"JSONValue": map[string]any{"description": "JSON response or request body. See the operation description and the tool catalog for concrete fields."},
+			"Error":     map[string]any{"type": "object", "required": []string{"error"}, "properties": map[string]any{"error": map[string]any{"type": "string"}}},
+		}},
 	}
+}
+
+// openAPIDocs provides a human-readable landing page without requiring a JavaScript bundle.
+func openAPIDocs(build BuildInfo) string {
+	version := build.Version
+	if version == "" {
+		version = "dev"
+	}
+	return fmt.Sprintf(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICS MCP API reference</title><style>body{max-width:960px;margin:3rem auto;padding:0 1.25rem;font:16px/1.5 system-ui,sans-serif;color:#292720;background:#faf9f5}h1{margin-bottom:.25rem}code{padding:.15rem .35rem;border-radius:.25rem;background:#ece9e1}table{width:100%%;border-collapse:collapse;margin:1.5rem 0}th,td{padding:.65rem;text-align:left;border-bottom:1px solid #ded9cf}a{color:#245b39}.note{padding:1rem;border-radius:.5rem;background:#eaf3e8}</style></head><body><h1>ICS MCP API reference</h1><p>Version <code>%s</code>. This page describes the public HTTP interface; use the <a href="/">admin console</a> for interactive configuration and the REST Explorer for meeting-format controls.</p><p class="note">Read routes never invoke an LLM. An insight runs only through its explicit <code>POST /api/insights</code> operation. Secrets are redacted from <code>/api/environment</code> and LLM-profile reads.</p><h2>Documents and service status</h2><table><tr><th>Route</th><th>Purpose</th></tr><tr><td><code>GET /openapi.json</code></td><td>Machine-readable OpenAPI 3.1 inventory.</td></tr><tr><td><code>GET /api/status</code></td><td>Build, timezone, and calendar refresh status.</td></tr><tr><td><code>GET /api/config</code>, <code>/api/environment</code></td><td>Runtime configuration and redacted environment inventory.</td></tr></table><h2>Calendar reads</h2><p><code>GET /api/events</code>, <code>/api/meetings</code>, <code>/api/free-busy</code>, and their documented aliases accept <code>limit</code>, repeated <code>calendar_id</code>/<code>tag</code>, <code>after</code>, <code>before</code>, and <code>format</code>. Calendar-scoped routes are available at <code>/api/calendars/{calendar}/events</code> and <code>/today</code>.</p><h2>Administration and insights</h2><p>Calendar and tag mutations require explicit <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code>. Tag updates are available at <code>PUT|PATCH /api/tags/{name}</code>. Cached insight reads are <code>GET /api/insights</code>; invoke generation explicitly with <code>POST /api/insights</code>.</p><h2>MCP REST bridge</h2><p><code>GET /api/rest/{tool_name}</code> calls read-only MCP tools. <code>POST /api/rest/{tool_name}</code> is reserved for admin tools and accepts either a JSON arguments object or <code>{"arguments": {...}}</code>. Inspect <code>GET /api/tools</code> for the current catalog.</p><p><a href="/openapi.json">Open OpenAPI JSON</a> · <a href="/">Open admin console</a></p></body></html>`, version)
 }
 
 func parseBoolQuery(value string) bool {
