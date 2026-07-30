@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.14 - 2026-07-30
+
+- Replace the sparse meetings list with a week-based calendar workspace, event details, calendar legend, and date navigation.
+- Move calendar administration into Config alongside runtime settings.
+- Add persisted calendar colors and selectable Material Design Icons for recognizable calendar events and inventory rows.
+
 ## v2.0.13 - 2026-07-30
 
 - Replace the embedded debug page with a responsive React calendar control center.

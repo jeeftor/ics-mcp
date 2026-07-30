@@ -1,5 +1,5 @@
 export type Calendar = {
-  id: string; key: string; name: string; url: string; tags: string[]; enabled: boolean;
+  id: string; key: string; name: string; url: string; color?: string; icon?: string; tags: string[]; enabled: boolean;
   include_in_general_queries: boolean; event_count: number; last_success?: string;
   next_refresh?: string; last_error?: string;
 };
@@ -15,7 +15,7 @@ export type RuntimeConfig = {
 };
 
 export type Tag = { name: string; calendar_count: number };
-export type Meeting = { name: string; when?: string; start_time?: string; end_time?: string; calendar_name?: string; ongoing?: boolean; all_day?: boolean; meeting_url?: string };
+export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; meeting_url?: string };
 export type Tool = { name: string; description: string; category: string; read_only: boolean; destructive: boolean; default_arguments: Record<string, unknown> };
 
 export function parseTags(value: string): string[] {
@@ -47,8 +47,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const calendarAPI = {
   list: () => api<Calendar[]>('/api/calendars'),
   tags: () => api<Tag[]>('/api/tags'),
-  add: (body: { name: string; url: string; tags: string[] }) => api<Calendar>('/api/calendars', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: Partial<Pick<Calendar, 'name' | 'tags' | 'enabled' | 'include_in_general_queries'>>) => api<Calendar>(`/api/calendars/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  add: (body: { name: string; url: string; tags: string[]; color?: string; icon?: string }) => api<Calendar>('/api/calendars', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<Pick<Calendar, 'name' | 'tags' | 'color' | 'icon' | 'enabled' | 'include_in_general_queries'>>) => api<Calendar>(`/api/calendars/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   remove: (id: string) => api<void>(`/api/calendars/${id}`, { method: 'DELETE' }),
   refresh: (id: string) => api<void>(`/api/calendars/${id}/refresh`, { method: 'POST' }),
   refreshAll: () => api<unknown>('/api/rest/refresh_all_calendars', { method: 'POST', body: '{}' })

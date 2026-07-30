@@ -1203,7 +1203,7 @@ func calendarFromInput(in AddCalendarInput) (Calendar, error) {
 	if name == "" {
 		name = strings.ReplaceAll(key, "_", " ")
 	}
-	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true, IncludeInGeneralQueries: true, Tags: in.Tags}, nil
+	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Color: strings.TrimSpace(in.Color), Icon: strings.TrimSpace(in.Icon), Enabled: true, IncludeInGeneralQueries: true, Tags: in.Tags}, nil
 }
 
 func normalizeKey(value string) string {

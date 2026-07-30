@@ -13,6 +13,8 @@ type Calendar struct {
 	Key                     string   `json:"key"`
 	Name                    string   `json:"name"`
 	URL                     string   `json:"url"`
+	Color                   string   `json:"color,omitempty"`
+	Icon                    string   `json:"icon,omitempty"`
 	Enabled                 bool     `json:"enabled"`
 	IncludeInGeneralQueries bool     `json:"include_in_general_queries"`
 	Tags                    []string `json:"tags"`
@@ -63,6 +65,8 @@ type AddCalendarInput struct {
 	Name string   `json:"name"`
 	URL  string   `json:"url"`
 	Tags []string `json:"tags,omitempty"`
+	Color string   `json:"color,omitempty"`
+	Icon  string   `json:"icon,omitempty"`
 }
 
 // UpdateCalendarInput updates mutable calendar fields.
@@ -72,6 +76,8 @@ type UpdateCalendarInput struct {
 	Enabled                 *bool     `json:"enabled,omitempty"`
 	IncludeInGeneralQueries *bool     `json:"include_in_general_queries,omitempty"`
 	Tags                    *[]string `json:"tags,omitempty"`
+	Color                   string    `json:"color,omitempty"`
+	Icon                    string    `json:"icon,omitempty"`
 }
 
 // CalendarTag describes a tag available for calendar and meeting queries.
