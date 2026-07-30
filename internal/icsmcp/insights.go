@@ -50,6 +50,25 @@ type LLMModelTestInput struct {
 	Model string `json:"model"`
 }
 
+// LemonadeModelState describes whether Lemonade can accept requests for the
+// selected model. It is intentionally free of provider connection details.
+type LemonadeModelState string
+
+const (
+	LemonadeModelStateUnreachable LemonadeModelState = "unreachable"
+	LemonadeModelStateAbsent      LemonadeModelState = "model_absent"
+	LemonadeModelStateLoading     LemonadeModelState = "loading"
+	LemonadeModelStateReady       LemonadeModelState = "ready"
+	LemonadeModelStateLoadFailed  LemonadeModelState = "load_failed"
+	LemonadeModelStateTimedOut    LemonadeModelState = "timed_out"
+)
+
+// LemonadeModelLifecycle is the redacted outcome of a selected-model check or load.
+type LemonadeModelLifecycle struct {
+	State   LemonadeModelState `json:"state"`
+	Message string             `json:"message"`
+}
+
 // Insight is a cached, grounded answer. It never includes an API key or prompt.
 type Insight struct {
 	Name        string    `json:"name"`
@@ -360,6 +379,114 @@ func (s *Service) TestLLMModel(ctx context.Context, in LLMModelTestInput) error 
 		return err
 	}
 	return s.testLLMModel(ctx, p, strings.TrimSpace(in.Model))
+}
+
+// LemonadeModelStatus checks whether the selected Lemonade model is resident.
+// It does not load models and is only valid for the Lemonade backend.
+func (s *Service) LemonadeModelStatus(ctx context.Context, in LLMModelTestInput) (LemonadeModelLifecycle, error) {
+	p, err := s.stagedLLMProfile(ctx, in.LLMConnectionInput)
+	if err != nil {
+		return LemonadeModelLifecycle{}, err
+	}
+	if p.Backend != LLMBackendLemonade || strings.TrimSpace(in.Model) == "" || p.Endpoint == "" {
+		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
+	}
+	loaded, reachable := s.lemonadeModelLoaded(ctx, p, strings.TrimSpace(in.Model))
+	if !reachable {
+		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
+	}
+	if !loaded {
+		return LemonadeModelLifecycle{State: LemonadeModelStateAbsent, Message: "The selected Lemonade model is not loaded. Load it before testing."}, nil
+	}
+	return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
+}
+
+// LoadLemonadeModel requests the selected model be pinned, then waits at most
+// two minutes for Lemonade health to report it as loaded.
+func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (LemonadeModelLifecycle, error) {
+	p, err := s.stagedLLMProfile(ctx, in.LLMConnectionInput)
+	if err != nil {
+		return LemonadeModelLifecycle{}, err
+	}
+	if p.Backend != LLMBackendLemonade || strings.TrimSpace(in.Model) == "" || p.Endpoint == "" {
+		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
+	}
+	model := strings.TrimSpace(in.Model)
+	loaded, reachable := s.lemonadeModelLoaded(ctx, p, model)
+	if !reachable {
+		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
+	}
+	if loaded {
+		return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
+	}
+	body, _ := json.Marshal(map[string]any{"model_name": model, "pinned": true})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, lemonadeManagementURL(p.Endpoint)+"/v1/load", bytes.NewReader(body))
+	if err != nil {
+		return LemonadeModelLifecycle{}, fmt.Errorf("create Lemonade load request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
+	}
+	resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return LemonadeModelLifecycle{State: LemonadeModelStateLoadFailed, Message: "Lemonade did not accept the model load request."}, nil
+	}
+
+	deadline := time.Now().Add(120 * time.Second)
+	interval := s.lemonadePollInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	for time.Now().Before(deadline) {
+		if loaded, reachable = s.lemonadeModelLoaded(ctx, p, model); loaded {
+			return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
+		} else if !reachable {
+			return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade became unreachable while loading the model."}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return LemonadeModelLifecycle{State: LemonadeModelStateTimedOut, Message: "Timed out waiting for Lemonade to load the selected model."}, nil
+		case <-time.After(interval):
+		}
+	}
+	return LemonadeModelLifecycle{State: LemonadeModelStateTimedOut, Message: "Timed out waiting for Lemonade to load the selected model."}, nil
+}
+
+func (s *Service) lemonadeModelLoaded(ctx context.Context, p llmProfileSecret, model string) (bool, bool) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, lemonadeManagementURL(p.Endpoint)+"/v1/health", nil)
+	if err != nil {
+		return false, false
+	}
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return false, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, false
+	}
+	var health struct {
+		AllModelsLoaded []struct {
+			ModelName string `json:"model_name"`
+		} `json:"all_models_loaded"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&health); err != nil {
+		return false, false
+	}
+	for _, item := range health.AllModelsLoaded {
+		if strings.TrimSpace(item.ModelName) == model {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 func (s *Service) stagedLLMProfile(ctx context.Context, in LLMConnectionInput) (llmProfileSecret, error) {
@@ -937,6 +1064,15 @@ func lemonadeOpenAIBaseURL(endpoint string) string {
 		return endpoint
 	}
 	return endpoint + "/v1"
+}
+
+func lemonadeManagementURL(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	lower := strings.ToLower(endpoint)
+	if index := strings.Index(lower, "/v1"); index >= 0 {
+		return endpoint[:index]
+	}
+	return endpoint
 }
 
 func normalizeLLMBackend(value string) string {

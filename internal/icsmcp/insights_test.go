@@ -282,6 +282,46 @@ func TestLemonadeOriginUsesOpenAICompatibleV1Routes(t *testing.T) {
 	}
 }
 
+func TestLemonadeModelLifecycleLoadsAndWaitsForTheSelectedModel(t *testing.T) {
+	var loaded bool
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/health":
+			if loaded {
+				_, _ = w.Write([]byte(`{"all_models_loaded":[{"model_name":"lemonade-model"}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"all_models_loaded":[]}`))
+		case "/v1/load":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["model_name"] != "lemonade-model" || body["pinned"] != true {
+				t.Errorf("load body = %#v", body)
+			}
+			loaded = true
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	svc.lemonadePollInterval = time.Millisecond
+	input := LLMModelTestInput{LLMConnectionInput: LLMConnectionInput{Backend: LLMBackendLemonade, Endpoint: provider.URL}, Model: "lemonade-model"}
+	if got, err := svc.LemonadeModelStatus(context.Background(), input); err != nil || got.State != LemonadeModelStateAbsent {
+		t.Fatalf("LemonadeModelStatus = %#v, %v", got, err)
+	}
+	got, err := svc.LoadLemonadeModel(context.Background(), input)
+	if err != nil || got.State != LemonadeModelStateReady {
+		t.Fatalf("LoadLemonadeModel = %#v, %v", got, err)
+	}
+	encoded, _ := json.Marshal(got)
+	if strings.Contains(string(encoded), provider.URL) || strings.Contains(string(encoded), "lemonade-model") {
+		t.Fatalf("lifecycle response leaked connection details: %s", encoded)
+	}
+}
+
 func TestRunInsightCachesStructuredAnswer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {

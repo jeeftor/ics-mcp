@@ -614,6 +614,8 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 		"/api/llm-profile/endpoint-test":         {http.MethodPost},
 		"/api/llm-profile/models":                {http.MethodPost},
 		"/api/llm-profile/model-test":            {http.MethodPost},
+		"/api/llm-profile/lemonade/model-status": {http.MethodPost},
+		"/api/llm-profile/lemonade/model-load":   {http.MethodPost},
 		"/api/insight-inquiries":                 {http.MethodGet, http.MethodPost},
 		"/api/insight-inquiries/{name}":          {http.MethodGet, http.MethodPut, http.MethodDelete},
 		"/api/insights":                          {http.MethodGet, http.MethodPost},
@@ -802,6 +804,39 @@ func TestHTTPLLMEndpointTestReturnsSafeTimeoutError(t *testing.T) {
 	}
 	if strings.Contains(body.Error, endpoint) || strings.Contains(body.Error, apiKey) || strings.Contains(body.Error, "context deadline exceeded") {
 		t.Fatalf("endpoint test leaked private transport details: %q", body.Error)
+	}
+}
+
+func TestHTTPLemonadeLifecycleRedactsConnectionDetails(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/health" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"all_models_loaded":[]}`))
+	}))
+	defer provider.Close()
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	request := `{"backend":"lemonade","endpoint":"` + provider.URL + `","model":"private-model","api_key":"private-key"}`
+	resp, err := http.Post(server.URL+"/api/llm-profile/lemonade/model-status", "application/json", bytes.NewBufferString(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"state":"model_absent"`)) {
+		t.Fatalf("lifecycle response = status %d, body %s", resp.StatusCode, body)
+	}
+	for _, private := range []string{provider.URL, "private-model", "private-key"} {
+		if bytes.Contains(body, []byte(private)) {
+			t.Fatalf("lifecycle response leaked %q: %s", private, body)
+		}
 	}
 }
 
