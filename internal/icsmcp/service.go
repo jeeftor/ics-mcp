@@ -832,6 +832,7 @@ func (s *Service) meetingsFromEvents(events []EventInstance, now time.Time, quer
 			meetingURLType = ""
 		}
 		meeting := Meeting{
+			ID:               event.ID,
 			Day:              localStart.Format("Mon"),
 			Date:             localStart.Format("2006-01-02"),
 			EndDate:          localEnd.Format("2006-01-02"),

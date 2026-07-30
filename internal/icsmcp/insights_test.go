@@ -121,6 +121,102 @@ func TestInsightDateScopeFiltersCalendarDataBeforeLLMRequest(t *testing.T) {
 	}
 }
 
+func TestInsightInferenceUsesLongerDeadlineAndCompactGroundingPayload(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.SetClock(func() time.Time { return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC) })
+	var deadlines []time.Duration
+	var bodies [][]byte
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		deadline, ok := req.Context().Deadline()
+		if !ok {
+			t.Fatal("LLM request has no deadline")
+		}
+		deadlines = append(deadlines, time.Until(deadline))
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bodies = append(bodies, body)
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))}, nil
+	})}
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 7, 30, 15, 0, 0, 0, time.UTC)
+	if err := svc.store.replaceEvents(ctx, cal.ID, []EventInstance{{ID: "event-1", UID: "uid-1", Name: "Private planning", Description: "do not send", MeetingURL: "https://secret.example", RecurrenceID: "recurrence-1", Start: start, End: start.Add(time.Hour), CalendarID: cal.ID, CalendarName: "Work"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TestLLMModel(ctx, LLMModelTestInput{Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?", DateScope: InsightDateScopeToday}); err != nil {
+		t.Fatal(err)
+	}
+	if len(deadlines) != 2 || deadlines[0] > llmProbeTimeout || deadlines[1] > llmInferenceTimeout || deadlines[1] < time.Minute || deadlines[0] > 30*time.Second {
+		t.Fatalf("LLM request deadlines = %#v, want probe about %s and inference about %s", deadlines, llmProbeTimeout, llmInferenceTimeout)
+	}
+	var testPayload, insightPayload map[string]any
+	if err := json.Unmarshal(bodies[0], &testPayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(bodies[1], &insightPayload); err != nil {
+		t.Fatal(err)
+	}
+	if got := testPayload["max_tokens"]; got != float64(4) {
+		t.Fatalf("model-test max_tokens = %#v, want 4", got)
+	}
+	if got := insightPayload["max_tokens"]; got != float64(llmMaxOutputTokens) {
+		t.Fatalf("inference max_tokens = %#v, want %d", got, llmMaxOutputTokens)
+	}
+	encoded := string(bodies[1])
+	for _, absent := range []string{"do not send", "secret.example", "recurrence-1", "meeting_url", "description", "recurrence_id", "attendance_status"} {
+		if strings.Contains(encoded, absent) {
+			t.Fatalf("insight payload leaked %q: %s", absent, encoded)
+		}
+	}
+	for _, present := range []string{"event-1", "Private planning", `\"start\"`, `\"end\"`, `\"calendar\"`, `\"all_day\"`, `\"cancelled\"`} {
+		if !strings.Contains(encoded, present) {
+			t.Fatalf("insight payload omitted %q: %s", present, encoded)
+		}
+	}
+}
+
+func TestInsightOllamaPayloadCapsGeneratedOutput(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	var body []byte
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var err error
+		body, err = io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Backend: LLMBackendOllama, Endpoint: "http://ollama.test", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"}); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := payload["max_tokens"]; exists {
+		t.Fatalf("Ollama payload unexpectedly has max_tokens: %s", body)
+	}
+	options, ok := payload["options"].(map[string]any)
+	if !ok || options["num_predict"] != float64(llmMaxOutputTokens) || payload["stream"] != false {
+		t.Fatalf("Ollama payload = %s, want stream=false and num_predict=%d", body, llmMaxOutputTokens)
+	}
+}
+
 func TestInsightCustomDateScopeValidation(t *testing.T) {
 	for _, input := range []SaveInsightInquiryInput{
 		{Question: "Q", DateScope: InsightDateScopeCustom, StartDate: "2026-07-31", EndDate: "2026-07-30"},

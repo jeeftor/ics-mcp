@@ -16,6 +16,12 @@ import (
 	"time"
 )
 
+const (
+	llmProbeTimeout     = 20 * time.Second
+	llmInferenceTimeout = 120 * time.Second
+	llmMaxOutputTokens  = 512
+)
+
 // LLMProfile is the safe, redacted configuration returned to clients.
 type LLMProfile struct {
 	Enabled          bool   `json:"enabled"`
@@ -346,7 +352,7 @@ func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) 
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
 		return nil, safeLLMTransportError(err)
 	}
@@ -481,7 +487,7 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
 		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
 	}
@@ -519,7 +525,7 @@ func (s *Service) lemonadeModelLoaded(ctx context.Context, p llmProfileSecret, m
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
 		return false, false
 	}
@@ -584,7 +590,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
 		return safeLLMTransportError(err)
 	}
@@ -927,28 +933,29 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, fmt.Errorf("LLM endpoint and model are required")
 	}
 	phase = "calendar_query"
-	// Calendar titles and times are sufficient grounding for this optional feature.
-	// Descriptions and links commonly contain more sensitive, untrusted text, so they
-	// are deliberately excluded from the model payload.
+	// Use a dedicated, compact grounding shape. Calendar descriptions, links, attendee
+	// state, recurrence identifiers, and raw provider content never reach the model.
 	after, before, err := s.insightDateRange(in.DateScope, in.StartDate, in.EndDate)
 	if err != nil {
 		return Insight{}, err
 	}
 	includeLinks := false
-	meetings, err := s.UpcomingMeetings(ctx, UpcomingQuery{CalendarIDs: in.CalendarIDs, Tags: in.Tags, Limit: 100, Detail: "full", After: after, Before: before, OverlapWindow: true, IncludeDescription: false, IncludeLinks: &includeLinks, IncludeDisabled: false})
+	meetings, err := s.UpcomingMeetings(ctx, UpcomingQuery{CalendarIDs: in.CalendarIDs, Tags: in.Tags, Limit: 100, After: after, Before: before, OverlapWindow: true, IncludeDescription: false, IncludeLinks: &includeLinks, IncludeDisabled: false})
 	if err != nil {
 		return Insight{}, err
 	}
 	eventCount = len(meetings)
 	phase = "request"
-	events, err := json.Marshal(meetings)
+	events, err := json.Marshal(insightGroundingEvents(meetings))
 	if err != nil {
 		return Insight{}, err
 	}
 	hash := sha256.Sum256(events)
-	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}}
+	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}, "max_tokens": llmMaxOutputTokens}
 	if p.Backend == LLMBackendOllama {
 		payload["stream"] = false
+		delete(payload, "max_tokens")
+		payload["options"] = map[string]any{"num_predict": llmMaxOutputTokens}
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatURL(p.Backend, p.Endpoint), bytes.NewReader(body))
@@ -959,7 +966,7 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.doLLMRequest(ctx, req, llmInferenceTimeout)
 	if err != nil {
 		return Insight{}, safeLLMTransportError(err)
 	}
@@ -1082,6 +1089,47 @@ func safeLLMTransportError(err error) error {
 		return errors.New("LLM server did not respond before the request timed out; no response headers were received. Check that the server is running and reachable from ICS MCP, then test the server connection again.")
 	}
 	return errors.New("LLM server could not be reached; no response headers were received. Check that the server address is reachable from ICS MCP, then test the server connection again.")
+}
+
+// doLLMRequest gives model calls their own bounded client and request deadline.
+// Calendar refreshes keep using the service's normal HTTP client and timeout.
+func (s *Service) doLLMRequest(ctx context.Context, req *http.Request, timeout time.Duration) (*http.Response, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	client := *s.httpClient
+	client.Timeout = timeout
+	return client.Do(req.WithContext(requestCtx))
+}
+
+// insightGroundingEvent is the intentionally small, untrusted calendar record
+// sent to an LLM. It is separate from the public Meeting representation so
+// future Meeting fields cannot broaden the model payload accidentally.
+type insightGroundingEvent struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Start     string `json:"start"`
+	End       string `json:"end"`
+	Calendar  string `json:"calendar"`
+	AllDay    bool   `json:"all_day"`
+	Cancelled bool   `json:"cancelled"`
+	Status    string `json:"status,omitempty"`
+}
+
+func insightGroundingEvents(meetings []Meeting) []insightGroundingEvent {
+	events := make([]insightGroundingEvent, 0, len(meetings))
+	for _, meeting := range meetings {
+		events = append(events, insightGroundingEvent{
+			ID:        meeting.ID,
+			Title:     meeting.Name,
+			Start:     meeting.StartTime.UTC().Format(time.RFC3339),
+			End:       meeting.EndTime.UTC().Format(time.RFC3339),
+			Calendar:  meeting.CalendarName,
+			AllDay:    meeting.AllDay,
+			Cancelled: meeting.Cancelled,
+			Status:    meeting.AttendanceStatus,
+		})
+	}
+	return events
 }
 
 // llmChatCompletionsURL accepts either an OpenAI-compatible API base such as
