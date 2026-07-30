@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.4.1 - 2026-07-30
+
+- Fix the calendar appearance button and add supported-browser color sampling with an eyedropper.
+
 ## v2.4.0 - 2026-07-30
 
 - Add addressable Calendar, Config, and API workspace routes with direct-link and browser-history support.
