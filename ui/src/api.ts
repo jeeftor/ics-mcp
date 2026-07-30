@@ -19,7 +19,7 @@ export type RuntimeConfig = {
 export type EnvironmentVariable = { name: string; value: string; present: boolean; source: string; sensitive: boolean };
 
 export type Tag = { name: string; calendar_count: number; color?: string; icon?: string; refresh_interval?: string; position?: number };
-export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; timezone?: string; duration_minutes?: number; description?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; cancelled?: boolean; recurring?: boolean; meeting_url?: string };
+export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; timezone?: string; duration_minutes?: number; description?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; cancelled?: boolean; recurring?: boolean; meeting_url?: string; attendance_status?: 'accepted' | 'tentative' | 'declined' | 'needs-action' };
 export type Tool = { name: string; description: string; category: string; read_only: boolean; destructive: boolean; default_arguments: Record<string, unknown> };
 export type ToolCallResponse = { tool: string; result: unknown };
 export type UpdateCheck = { enabled: boolean; current_version: string; latest_version?: string; outdated: boolean; release_url?: string; checked_at?: string; error?: string };

@@ -82,6 +82,7 @@ func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
 		uid = uuid.NewString()
 	}
 	meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
+	attendanceStatus := unambiguousAttendanceStatus(parsed.Attendees)
 	cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
 	start := parsed.Start.UTC()
 	end := parsed.End.UTC()
@@ -96,19 +97,41 @@ func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
 		end = end.Add(time.Millisecond)
 	}
 	return EventInstance{
-		ID:             uuid.NewString(),
-		UID:            uid,
-		Name:           name,
-		Description:    parsed.Description,
-		MeetingURL:     meetingURL,
-		MeetingURLType: meetingURLType,
-		Cancelled:      cancelled,
-		AllDay:         allDay,
-		Recurring:      parsed.IsRecurring || parsed.RecurrenceID != "",
-		RecurrenceID:   parsed.RecurrenceID,
-		Start:          start,
-		End:            end,
+		ID:               uuid.NewString(),
+		UID:              uid,
+		Name:             name,
+		Description:      parsed.Description,
+		MeetingURL:       meetingURL,
+		MeetingURLType:   meetingURLType,
+		AttendanceStatus: attendanceStatus,
+		Cancelled:        cancelled,
+		AllDay:           allDay,
+		Recurring:        parsed.IsRecurring || parsed.RecurrenceID != "",
+		RecurrenceID:     parsed.RecurrenceID,
+		Start:            start,
+		End:              end,
 	}, true
+}
+
+// unambiguousAttendanceStatus returns a response only when an ICS event has one
+// attendee. Multi-attendee events do not identify the calendar owner, so their
+// individual response states must not be guessed or exposed.
+func unambiguousAttendanceStatus(attendees []gocal.Attendee) string {
+	if len(attendees) != 1 {
+		return ""
+	}
+	switch strings.ToUpper(strings.TrimSpace(attendees[0].Status)) {
+	case "ACCEPTED":
+		return "accepted"
+	case "TENTATIVE":
+		return "tentative"
+	case "DECLINED":
+		return "declined"
+	case "NEEDS-ACTION", "NEEDS_ACTION":
+		return "needs-action"
+	default:
+		return ""
+	}
 }
 
 func validateICSTimezones(raw string) error {
