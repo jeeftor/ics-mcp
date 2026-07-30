@@ -1229,23 +1229,23 @@ func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 
 func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	meeting := Meeting{
-		Day:              "Tue",
-		Date:             "2026-06-30",
-		EndDate:          "2026-06-30",
-		Start:            "09:00",
-		End:              "10:30",
-		Timezone:         "America/Denver",
-		DurationMinutes:  90,
-		Name:             "Planning",
-		CalendarID:       "calendar-1",
-		CalendarName:     "Work",
-		Ongoing:          true,
-		Recurring:        true,
-		MeetingURL:       "https://meet.example.test/planning",
-		MeetingURLType:   "meet",
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		EndDate:         "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+		Ongoing:         true,
+		Recurring:       true,
+		MeetingURL:      "https://meet.example.test/planning",
+		MeetingURLType:  "meet",
 		AttendanceStatus: "accepted",
-		Description:      "private notes",
-		RecurrenceID:     "20260630T150000Z",
+		Description:     "private notes",
+		RecurrenceID:    "20260630T150000Z",
 	}
 
 	data, err := json.Marshal(meeting)
@@ -1476,20 +1476,20 @@ func TestMeetingAndGroupJSONDecodeErrorsAndFallbacks(t *testing.T) {
 
 func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 	meeting := Meeting{
-		Day:              "Tue",
-		Date:             "2026-06-30",
-		Start:            "09:00",
-		End:              "10:30",
-		Timezone:         "America/Denver",
-		DurationMinutes:  90,
-		Name:             "Planning",
-		Description:      "private notes",
-		CalendarID:       "calendar-1",
-		CalendarName:     "Work",
-		Recurring:        true,
+		Day:             "Tue",
+		Date:            "2026-06-30",
+		Start:           "09:00",
+		End:             "10:30",
+		Timezone:        "America/Denver",
+		DurationMinutes: 90,
+		Name:            "Planning",
+		Description:     "private notes",
+		CalendarID:      "calendar-1",
+		CalendarName:    "Work",
+		Recurring:       true,
 		AttendanceStatus: "tentative",
-		RecurrenceID:     "20260630T150000Z",
-		Detail:           "full",
+		RecurrenceID:    "20260630T150000Z",
+		Detail:          "full",
 	}
 
 	data, err := json.Marshal(meeting)
