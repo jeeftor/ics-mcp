@@ -20,9 +20,13 @@ describe('planner placement', () => {
     expect(timedEventTitleLines(30, false)).toBe(1);
     expect(timedEventTitleLines(44, false)).toBe(2);
     expect(timedEventTitleLines(82, false)).toBe(3);
+    expect(timedEventTitleLines(106, false)).toBe(4);
+    expect(timedEventTitleLines(132, false)).toBe(5);
     expect(timedEventTitleLines(60, true)).toBe(1);
     expect(timedEventTitleLines(68, true)).toBe(2);
     expect(timedEventTitleLines(108, true)).toBe(3);
+    expect(timedEventTitleLines(138, true)).toBe(4);
+    expect(timedEventTitleLines(168, true)).toBe(5);
   });
 
   it('keeps all-day overflow compact', () => {

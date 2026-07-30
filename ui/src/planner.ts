@@ -20,7 +20,11 @@ export type TimedPlacement = {
  * labels do not collide with adjacent events, while long meetings can use the
  * otherwise empty vertical space.
  */
-export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 | 3 {
+export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 | 3 | 4 | 5 {
+  // Long cards should use their reserved vertical space before hiding the
+  // subject. The cap still leaves room for the compact contextual detail.
+  if (height >= (showTime ? 168 : 132)) return 5;
+  if (height >= (showTime ? 138 : 106)) return 4;
   if (height >= (showTime ? 108 : 82)) return 3;
   return height >= (showTime ? 68 : 44) ? 2 : 1;
 }
