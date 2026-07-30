@@ -460,6 +460,36 @@ func TestLemonadeModelLifecycleLoadsAndWaitsForTheSelectedModel(t *testing.T) {
 	}
 }
 
+func TestLemonadeLifecycleUnavailableDoesNotPretendTheServerIsUnreachable(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/health":
+			http.NotFound(w, r)
+		case "/v1/chat/completions":
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"OK"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	input := LLMModelTestInput{LLMConnectionInput: LLMConnectionInput{Backend: LLMBackendLemonade, Endpoint: provider.URL}, Model: "lemonade-model"}
+	got, err := svc.LemonadeModelStatus(context.Background(), input)
+	if err != nil || got.State != LemonadeModelStateLifecycleUnavailable {
+		t.Fatalf("LemonadeModelStatus = %#v, %v", got, err)
+	}
+	if strings.Contains(strings.ToLower(got.Message), "could not be reached") {
+		t.Fatalf("lifecycle-unavailable message implied a connectivity failure: %q", got.Message)
+	}
+	if err := svc.TestLLMModel(context.Background(), input); err != nil {
+		t.Fatalf("TestLLMModel should still work when lifecycle API is absent: %v", err)
+	}
+	if err := svc.TestLLMEndpoint(context.Background(), input.LLMConnectionInput); err != nil {
+		t.Fatalf("TestLLMEndpoint should report an HTTP response as reachable even without model discovery: %v", err)
+	}
+}
+
 func TestRunInsightCachesStructuredAnswer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {

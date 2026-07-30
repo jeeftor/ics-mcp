@@ -65,8 +65,13 @@ const (
 	LemonadeModelStateAbsent      LemonadeModelState = "model_absent"
 	LemonadeModelStateLoading     LemonadeModelState = "loading"
 	LemonadeModelStateReady       LemonadeModelState = "ready"
-	LemonadeModelStateLoadFailed  LemonadeModelState = "load_failed"
-	LemonadeModelStateTimedOut    LemonadeModelState = "timed_out"
+	// LemonadeModelStateLifecycleUnavailable means the chat endpoint is
+	// configured independently, but this server's optional health/load API did
+	// not provide a usable lifecycle response. It must not be reported as a
+	// connectivity failure or prevent direct model calls.
+	LemonadeModelStateLifecycleUnavailable LemonadeModelState = "lifecycle_unavailable"
+	LemonadeModelStateLoadFailed           LemonadeModelState = "load_failed"
+	LemonadeModelStateTimedOut             LemonadeModelState = "timed_out"
 )
 
 // LemonadeModelLifecycle is the redacted outcome of a selected-model check or load.
@@ -322,12 +327,33 @@ func (s *Service) TestLLMProfile(ctx context.Context) error {
 	return s.testLLMModel(ctx, p, p.Model)
 }
 
-// TestLLMEndpoint verifies an unsaved endpoint and optional bearer key. When
-// the active profile is environment-managed, that effective profile remains
-// authoritative and user-provided staging values are ignored.
+// TestLLMEndpoint verifies that an unsaved endpoint answered an HTTP request.
+// A model listing is useful but optional: compatible chat servers can expose a
+// completion route without exposing /models, so only a transport failure makes
+// this test fail. When the active profile is environment-managed, that
+// effective profile remains authoritative and user-provided staging values are
+// ignored.
 func (s *Service) TestLLMEndpoint(ctx context.Context, in LLMConnectionInput) error {
-	_, err := s.DiscoverLLMModels(ctx, in)
-	return err
+	p, err := s.stagedLLMProfile(ctx, in)
+	if err != nil {
+		return err
+	}
+	if p.Endpoint == "" {
+		return fmt.Errorf("LLM endpoint is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, llmModelsURL(p.Backend, p.Endpoint), nil)
+	if err != nil {
+		return fmt.Errorf("create LLM endpoint test request: %w", err)
+	}
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
+	if err != nil {
+		return safeLLMTransportError(err)
+	}
+	resp.Body.Close()
+	return nil
 }
 
 // DiscoverLLMModels reads IDs from an OpenAI-compatible GET /models response.
@@ -439,14 +465,20 @@ func (s *Service) LemonadeModelStatus(ctx context.Context, in LLMModelTestInput)
 		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
 	}
 	phase = "health_check"
-	loaded, reachable := s.lemonadeModelLoaded(ctx, p, strings.TrimSpace(in.Model))
-	if !reachable {
+	health := s.lemonadeModelHealth(ctx, p, strings.TrimSpace(in.Model))
+	if health.failureKind != "" {
+		s.logger.Warn("lemonade lifecycle API unavailable", "action", "lemonade_model_status", "phase", phase, "failure_kind", health.failureKind)
+	}
+	switch health.state {
+	case lemonadeHealthUnreachable:
 		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
-	}
-	if !loaded {
+	case lemonadeHealthUnavailable:
+		return LemonadeModelLifecycle{State: LemonadeModelStateLifecycleUnavailable, Message: "The Lemonade model lifecycle API is unavailable or incompatible. You can still test the model and run insights; model loading is unavailable."}, nil
+	case lemonadeHealthAbsent:
 		return LemonadeModelLifecycle{State: LemonadeModelStateAbsent, Message: "The selected Lemonade model is not loaded. Load it before testing."}, nil
+	default:
+		return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
 	}
-	return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
 }
 
 // LoadLemonadeModel requests the selected model be pinned, then waits at most
@@ -470,11 +502,17 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
 	}
 	model := strings.TrimSpace(in.Model)
-	loaded, reachable := s.lemonadeModelLoaded(ctx, p, model)
-	if !reachable {
-		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
+	phase = "health_check"
+	health := s.lemonadeModelHealth(ctx, p, model)
+	if health.failureKind != "" {
+		s.logger.Warn("lemonade lifecycle API unavailable", "action", "lemonade_model_load", "phase", phase, "failure_kind", health.failureKind)
 	}
-	if loaded {
+	switch health.state {
+	case lemonadeHealthUnreachable:
+		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
+	case lemonadeHealthUnavailable:
+		return LemonadeModelLifecycle{State: LemonadeModelStateLifecycleUnavailable, Message: "The Lemonade model lifecycle API is unavailable or incompatible. Test the selected model directly instead."}, nil
+	case lemonadeHealthLoaded:
 		return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
 	}
 	phase = "load_request"
@@ -489,10 +527,13 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 	}
 	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
+		s.logger.Warn("lemonade lifecycle load request failed", "action", "lemonade_model_load", "phase", phase, "failure_kind", lemonadeTransportFailureKind(err))
 		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
 	}
+	statusCode := resp.StatusCode
 	resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.logger.Warn("lemonade lifecycle load request rejected", "action", "lemonade_model_load", "phase", phase, "failure_kind", lemonadeHTTPFailureKind(statusCode))
 		return LemonadeModelLifecycle{State: LemonadeModelStateLoadFailed, Message: "Lemonade did not accept the model load request."}, nil
 	}
 
@@ -503,10 +544,14 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 		interval = 2 * time.Second
 	}
 	for time.Now().Before(deadline) {
-		if loaded, reachable = s.lemonadeModelLoaded(ctx, p, model); loaded {
+		health = s.lemonadeModelHealth(ctx, p, model)
+		if health.state == lemonadeHealthLoaded {
 			return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
-		} else if !reachable {
+		} else if health.state == lemonadeHealthUnreachable {
 			return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade became unreachable while loading the model."}, nil
+		} else if health.state == lemonadeHealthUnavailable {
+			s.logger.Warn("lemonade lifecycle API became unavailable", "action", "lemonade_model_load", "phase", phase, "failure_kind", health.failureKind)
+			return LemonadeModelLifecycle{State: LemonadeModelStateLifecycleUnavailable, Message: "The Lemonade model lifecycle API is unavailable or incompatible. Test the selected model directly instead."}, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -517,21 +562,38 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 	return LemonadeModelLifecycle{State: LemonadeModelStateTimedOut, Message: "Timed out waiting for Lemonade to load the selected model."}, nil
 }
 
-func (s *Service) lemonadeModelLoaded(ctx context.Context, p llmProfileSecret, model string) (bool, bool) {
+type lemonadeHealthState string
+
+const (
+	lemonadeHealthLoaded      lemonadeHealthState = "loaded"
+	lemonadeHealthAbsent      lemonadeHealthState = "absent"
+	lemonadeHealthUnreachable lemonadeHealthState = "unreachable"
+	lemonadeHealthUnavailable lemonadeHealthState = "unavailable"
+)
+
+type lemonadeHealthResult struct {
+	state       lemonadeHealthState
+	failureKind string
+}
+
+// lemonadeModelHealth classifies the optional lifecycle API separately from
+// the chat endpoint. A 404, invalid response, or unauthorized lifecycle API
+// proves the server replied; callers must not mislabel it as unreachable.
+func (s *Service) lemonadeModelHealth(ctx context.Context, p llmProfileSecret, model string) lemonadeHealthResult {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, lemonadeManagementURL(p.Endpoint)+"/v1/health", nil)
 	if err != nil {
-		return false, false
+		return lemonadeHealthResult{state: lemonadeHealthUnavailable, failureKind: "invalid_request"}
 	}
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 	resp, err := s.doLLMRequest(ctx, req, llmProbeTimeout)
 	if err != nil {
-		return false, false
+		return lemonadeHealthResult{state: lemonadeHealthUnreachable, failureKind: lemonadeTransportFailureKind(err)}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, false
+		return lemonadeHealthResult{state: lemonadeHealthUnavailable, failureKind: lemonadeHTTPFailureKind(resp.StatusCode)}
 	}
 	var health struct {
 		AllModelsLoaded []struct {
@@ -539,14 +601,25 @@ func (s *Service) lemonadeModelLoaded(ctx context.Context, p llmProfileSecret, m
 		} `json:"all_models_loaded"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&health); err != nil {
-		return false, false
+		return lemonadeHealthResult{state: lemonadeHealthUnavailable, failureKind: "invalid_json"}
 	}
 	for _, item := range health.AllModelsLoaded {
 		if strings.TrimSpace(item.ModelName) == model {
-			return true, true
+			return lemonadeHealthResult{state: lemonadeHealthLoaded}
 		}
 	}
-	return false, true
+	return lemonadeHealthResult{state: lemonadeHealthAbsent}
+}
+
+func lemonadeHTTPFailureKind(statusCode int) string {
+	return fmt.Sprintf("http_%d", statusCode)
+}
+
+func lemonadeTransportFailureKind(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(strings.ToLower(err.Error()), "client.timeout exceeded") {
+		return "timeout_no_response"
+	}
+	return "no_response"
 }
 
 func (s *Service) stagedLLMProfile(ctx context.Context, in LLMConnectionInput) (llmProfileSecret, error) {
