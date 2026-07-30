@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.2 - 2026-07-30
+
+- Replace the overflowing MDI icon grid with a compact, scrollable autocomplete picker.
+- Validate the calendar refresh and planner path with two isolated ICS feeds without retaining feed data.
+
 ## v2.2.1 - 2026-07-30
 
 - Restore a compact, workday-focused calendar layout with a current-time marker, no lane overflow, and instant local calendar filters.
