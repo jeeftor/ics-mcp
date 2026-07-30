@@ -14,6 +14,15 @@ export type TimedPlacement = {
   lanes: number;
 };
 
+/**
+ * Uses the card's actual vertical budget to decide whether a timed event can
+ * safely show a second title line. Short meetings stay single-line so their
+ * labels do not collide with adjacent events.
+ */
+export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 {
+  return height >= (showTime ? 68 : 44) ? 2 : 1;
+}
+
 /** A clipped all-day event segment for the planner's current date range. */
 export type AllDayPlacement = {
   meeting: Meeting;
