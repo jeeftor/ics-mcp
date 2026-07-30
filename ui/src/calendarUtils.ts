@@ -12,4 +12,14 @@ export function weekRangeLabel(start: Date): string {
   return `${start.toLocaleDateString(undefined, options)} – ${end.toLocaleDateString(undefined, { ...options, year: 'numeric' })}`;
 }
 export function meetingDate(meeting: Meeting): string { return meeting.date || ''; }
-export function meetingTime(meeting: Meeting): string { return meeting.all_day ? 'All day' : `${meeting.start || ''}${meeting.end ? ` – ${meeting.end}` : ''}`; }
+function formatClock(value: string | undefined, format: '12h' | '24h'): string {
+  if (!value || format === '24h') return value || '';
+  const [hours, minutes] = value.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
+  const suffix = hours >= 12 ? 'PM' : 'AM'; const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+
+export function meetingTime(meeting: Meeting, format: '12h' | '24h' = '12h'): string {
+  return meeting.all_day ? 'All day' : `${formatClock(meeting.start, format)}${meeting.end ? ` – ${formatClock(meeting.end, format)}` : ''}`;
+}
