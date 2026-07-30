@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.13 - 2026-07-30
+
+- Compact all-day planner cards while retaining rounded segments and overlay overflow controls.
+- Let timed event titles and contextual status use the card height naturally instead of leaving a large blank lower area.
+
 ## v2.2.12 - 2026-07-30
 
 - Add global and per-inquiry Insight enablement, removable disabled starter templates, and visible cache-only output/history endpoints.
