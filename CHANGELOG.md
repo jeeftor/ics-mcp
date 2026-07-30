@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.11 - 2026-07-30
+
+- Tighten all-day planner rows and overlay overflow controls instead of reserving empty band space.
+
 ## v2.2.10 - 2026-07-30
 
 - Compact Environment visibility with bold variable names and a single clear source column.
