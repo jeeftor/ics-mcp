@@ -627,3 +627,56 @@ func TestPreviewInsightDoesNotPersistOutputOrHistory(t *testing.T) {
 		t.Fatalf("preview cached run history: %#v, %v", history, err)
 	}
 }
+
+// contextAwareBody simulates a real streaming HTTP response body. Unlike the
+// in-memory bodies used by other tests, reads surface the request context
+// error once it is canceled, exactly like a body read from a live socket.
+type contextAwareBody struct {
+	ctx     context.Context
+	content []byte
+	read    int
+}
+
+func (b *contextAwareBody) Read(p []byte) (int, error) {
+	if err := b.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if b.read >= len(b.content) {
+		return 0, io.EOF
+	}
+	n := copy(p, b.content[b.read:])
+	b.read += n
+	return n, nil
+}
+
+func (b *contextAwareBody) Close() error { return nil }
+
+// TestDoLLMRequestKeepsContextAliveWhileBodyIsRead reproduces the dockarr
+// failure where a real streaming LLM response body could not be decoded
+// because doLLMRequest canceled the bounded request context before the caller
+// read the body, producing "decode LLM response: context canceled". The in-
+// memory bodies used elsewhere cannot reproduce this; only a context-aware
+// streaming body can.
+func TestDoLLMRequestKeepsContextAliveWhileBodyIsRead(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: &contextAwareBody{ctx: req.Context(), content: []byte(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`)}}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	// Model discovery reads the body with io.ReadAll, so it is also broken when
+	// the context is canceled before the body is read. The fake body is not a
+	// models listing, but reading it to completion must not error.
+	if _, err := svc.DiscoverLLMModels(ctx, LLMConnectionInput{Endpoint: "http://llm.test/v1"}); err != nil {
+		t.Fatalf("DiscoverLLMModels failed to read streaming body: %v", err)
+	}
+	insight, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"})
+	if err != nil {
+		t.Fatalf("PreviewInsight failed to decode streaming body: %v", err)
+	}
+	if insight.Answer != "OK" {
+		t.Fatalf("PreviewInsight answer = %q, want OK", insight.Answer)
+	}
+}

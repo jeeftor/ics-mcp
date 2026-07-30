@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -1166,12 +1167,38 @@ func safeLLMTransportError(err error) error {
 
 // doLLMRequest gives model calls their own bounded client and request deadline.
 // Calendar refreshes keep using the service's normal HTTP client and timeout.
+//
+// The bounded request context must remain live until the caller finishes
+// reading resp.Body, because the body is bound to that context. Canceling it
+// the moment this helper returns (as a naive defer cancel() would) makes every
+// streaming response body read fail with "context canceled" against a real
+// server, even though in-memory test bodies hide the problem. The context is
+// therefore canceled when the returned body is closed.
 func (s *Service) doLLMRequest(ctx context.Context, req *http.Request, timeout time.Duration) (*http.Response, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	client := *s.httpClient
 	client.Timeout = timeout
-	return client.Do(req.WithContext(requestCtx))
+	resp, err := client.Do(req.WithContext(requestCtx))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+// cancelOnCloseBody cancels the bounded LLM request context when the response
+// body is closed, so the context stays alive while the caller streams the body
+// but is not leaked after the body is drained.
+type cancelOnCloseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (b *cancelOnCloseBody) Close() error {
+	b.once.Do(b.cancel)
+	return b.ReadCloser.Close()
 }
 
 // insightGroundingEvent is the intentionally small, untrusted calendar record

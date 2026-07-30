@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.7 - 2026-07-30
+
+- Fix LLM model discovery and Insight runs failing against real streaming servers with "decode LLM response: context canceled". The bounded LLM request context was canceled as soon as the request helper returned, before the caller finished reading the response body; it is now canceled when the body is closed. In-memory test bodies hid this, but deployed servers (e.g. Docker/dockarr) exposed it for every endpoint that reads a response body.
+
 ## v2.6.6 - 2026-07-30
 
 - Treat Lemonade lifecycle controls as optional: a missing or incompatible lifecycle route no longer masquerades as a connectivity failure or blocks direct model tests and Insight runs.
