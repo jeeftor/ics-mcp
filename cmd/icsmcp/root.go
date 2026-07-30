@@ -199,7 +199,9 @@ func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, ref
 		WriteTimeout:      60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	status, err := svc.Status(ctx)
+	// Startup metadata should still be available when a caller cancels during
+	// initialization; shutdown is handled by the server context below.
+	status, err := svc.Status(context.Background())
 	if err != nil {
 		return err
 	}

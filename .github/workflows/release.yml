@@ -21,6 +21,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.0
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build admin UI
+        run: pnpm install --frozen-lockfile && pnpm --filter icsmcp-admin-ui run build
+
+      - name: Test admin UI
+        run: pnpm --filter icsmcp-admin-ui run test
+
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
@@ -37,6 +55,21 @@ jobs:
         uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build admin UI
+        run: pnpm install --frozen-lockfile && pnpm --filter icsmcp-admin-ui run build
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -69,6 +102,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build admin UI
+        run: pnpm install --frozen-lockfile && pnpm --filter icsmcp-admin-ui run build
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0

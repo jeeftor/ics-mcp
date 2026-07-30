@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.13 - 2026-07-30
+
+- Replace the embedded debug page with a responsive React calendar control center.
+- Add a compact action-first toolbar, dense calendar inventory, dashboard health view, tag filtering, and an API workspace for MCP and REST testing.
+- Build and embed the admin UI in local, CI, binary, and container release workflows.
+- Fix a startup shutdown race that could fail the release test job during context cancellation.
+
 ## v2.0.12 - 2026-07-30
 
 - Add flexible calendar tags for MCP, REST, and admin UI queries.

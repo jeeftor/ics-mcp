@@ -4,6 +4,7 @@ project_name: ics-mcp
 
 before:
   hooks:
+    - pnpm --filter icsmcp-admin-ui run build
     - go mod tidy
 
 builds:

@@ -299,4 +299,6 @@ When the injected build date is an RFC3339 timestamp, status output and startup 
 make test
 ```
 
+The embedded admin UI is built from the React/TypeScript source in `ui/`. `make test` and `make run` install the pinned pnpm dependencies and build it first; use `make ui-build` when you only need to refresh the bundled UI assets.
+
 The default `make` target prints help and does not mutate state.
