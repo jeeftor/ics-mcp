@@ -537,6 +537,7 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 		"/api/calendars/{calendar}/events":       {http.MethodGet},
 		"/api/calendars/{calendar}/today":        {http.MethodGet},
 		"/api/tags":                              {http.MethodGet},
+		"/api/tags/{name}":                       {http.MethodPut, http.MethodPatch},
 		"/{calendar}/{index}":                    {http.MethodGet},
 		"/{calendar}/upcoming/{index}":           {http.MethodGet},
 		"/{calendar}/ongoing/{index}":            {http.MethodGet},
@@ -552,6 +553,25 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 				t.Errorf("OpenAPI %q does not document %s", path, method)
 			}
 		}
+	}
+}
+
+func TestHTTPDocsAndOpenAPIUseRunningBuildVersion(t *testing.T) {
+	svc := newTestService(t)
+	svc.SetBuildInfo(BuildInfo{Version: "v9.9.9", Commit: "abc123", Date: "2026-06-29"})
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var spec map[string]any
+	doJSON(t, http.MethodGet, server.URL+"/openapi.json", nil, &spec)
+	info, ok := spec["info"].(map[string]any)
+	if !ok || info["version"] != "v9.9.9" {
+		t.Fatalf("OpenAPI info = %#v, want running version", spec["info"])
+	}
+
+	body, contentType := doText(t, http.MethodGet, server.URL+"/docs", nil, "")
+	if !strings.Contains(contentType, "text/html") || !strings.Contains(body, "API reference") || !strings.Contains(body, "/api/tags/{name}") {
+		t.Fatalf("docs content-type=%q body=%s", contentType, body)
 	}
 }
 
