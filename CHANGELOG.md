@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.10 - 2026-07-30
+
+- Render insight answers with the JSON output component so JSON answers are syntax-highlighted with pretty/compact toggle and copy button, while plain-text answers still display as-is. Both cached results and preview responses use the same formatter.
+
 ## v2.6.9 - 2026-07-30
 
 - Extract the JSON answer from reasoning-model output embedded in chain-of-thought prose or markdown code fences, so Insight runs complete against Qwen3.x and other reasoning models that emit their thinking trace before the answer.
