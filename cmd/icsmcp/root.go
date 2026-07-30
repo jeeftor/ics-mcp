@@ -71,16 +71,46 @@ func NewRootCommand() *cobra.Command {
 			updateCheck := viper.GetBool("update-check")
 			bearerToken := viper.GetString("auth-token")
 			allowPrivateCalendarHosts := viper.GetBool("allow-private-calendar-hosts")
+			sources := map[string]string{}
+			if cmd.Flags().Changed("refresh-interval") {
+				sources["refresh_interval"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_REFRESH_INTERVAL"); ok {
+				sources["refresh_interval"] = "environment"
+			} else {
+				refreshInterval = 0
+			}
+			if cmd.Flags().Changed("timezone") {
+				sources["timezone"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_TIMEZONE"); ok {
+				sources["timezone"] = "environment"
+			} else {
+				timezone = ""
+			}
+			if cmd.Flags().Changed("external-url") {
+				sources["external_url"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_EXTERNAL_URL"); ok {
+				sources["external_url"] = "environment"
+			} else {
+				externalURL = ""
+			}
+			var updateCheckOverride *bool
+			if cmd.Flags().Changed("update-check") {
+				sources["update_check"] = "flag"
+				updateCheckOverride = &updateCheck
+			} else if _, ok := os.LookupEnv("ICSMCP_UPDATE_CHECK"); ok {
+				sources["update_check"] = "environment"
+				updateCheckOverride = &updateCheck
+			}
 			logLevel, err := parseLogLevel(viper.GetString("log-level"))
 			if err != nil {
 				return err
 			}
 			logger := slog.New(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")))
-			return runServeWithOptions(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
+			return runServeWithRuntimeConfig(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
 				Version: Version,
 				Commit:  Commit,
 				Date:    Date,
-			}, timezone, externalURL, updateCheck, serveOptions{BearerToken: bearerToken, AllowPrivateCalendarHosts: allowPrivateCalendarHosts})
+			}, timezone, externalURL, updateCheckOverride, sources, serveSecurityOptions{BearerToken: bearerToken, AllowPrivateCalendarHosts: allowPrivateCalendarHosts})
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
@@ -130,16 +160,20 @@ func resolveDBPath(configDir string, dbPath string) string {
 	return filepath.Join(configDir, "icsmcp.sqlite3")
 }
 
-type serveOptions struct {
+func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool) error {
+	return runServeWithRuntimeConfig(ctx, httpAddr, dbPath, refreshInterval, calendars, logger, buildInfo, timezone, externalURL, &updateCheck, nil)
+}
+
+type serveSecurityOptions struct {
 	BearerToken               string
 	AllowPrivateCalendarHosts bool
 }
 
-func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool) error {
-	return runServeWithOptions(ctx, httpAddr, dbPath, refreshInterval, calendars, logger, buildInfo, timezone, externalURL, updateCheck, serveOptions{})
-}
-
-func runServeWithOptions(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool, options serveOptions) error {
+func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck *bool, sources map[string]string, security ...serveSecurityOptions) error {
+	securityOptions := serveSecurityOptions{}
+	if len(security) > 0 {
+		securityOptions = security[0]
+	}
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
@@ -148,7 +182,7 @@ func runServeWithOptions(ctx context.Context, httpAddr, dbPath string, refreshIn
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, DisableUpdateCheck: !updateCheck, AllowPrivateCalendarHosts: options.AllowPrivateCalendarHosts})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, UpdateCheck: updateCheck, RuntimeSettingSources: sources, AllowPrivateCalendarHosts: securityOptions.AllowPrivateCalendarHosts})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}
@@ -159,7 +193,7 @@ func runServeWithOptions(ctx context.Context, httpAddr, dbPath string, refreshIn
 
 	server := &http.Server{
 		Addr:              httpAddr,
-		Handler:           app.NewHTTPHandlerWithOptions(svc, app.NewMCPServer(svc), app.HTTPOptions{BearerToken: options.BearerToken}),
+		Handler:           app.NewHTTPHandlerWithOptions(svc, app.NewMCPServer(svc), app.HTTPOptions{BearerToken: securityOptions.BearerToken}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,

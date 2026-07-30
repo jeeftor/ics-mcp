@@ -70,6 +70,22 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		status, err := svc.Status(r.Context())
 		writeJSON(w, status, err)
 	})
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, svc.RuntimeConfig(), nil)
+		case http.MethodPut:
+			var in UpdateRuntimeConfigInput
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			config, err := svc.UpdateRuntimeConfig(r.Context(), in)
+			writeJSON(w, config, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
 	mux.HandleFunc("/api/update-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -194,6 +210,14 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		tags, err := svc.ListTags(r.Context())
+		writeJSON(w, tags, err)
+	})
 	mux.HandleFunc("/api/calendars/general-query-selection", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -291,6 +315,8 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 	}
 	query.CalendarIDs = values["calendar_id"]
 	query.CalendarIDs = append(query.CalendarIDs, values["calendar"]...)
+	query.Tags = values["tag"]
+	query.Tags = append(query.Tags, values["tags"]...)
 	query.Query = values.Get("query")
 	query.Window = values.Get("window")
 	if query.Window == "" {

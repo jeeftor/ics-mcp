@@ -61,6 +61,14 @@ type calendarsOutput struct {
 	Calendars []CalendarStatus `json:"calendars"`
 }
 
+type tagsOutput struct {
+	Tags []CalendarTag `json:"tags"`
+}
+
+type configOutput struct {
+	Config RuntimeConfig `json:"config"`
+}
+
 type statusOutput struct {
 	Status Status `json:"status"`
 }
@@ -86,11 +94,12 @@ type refreshInput struct {
 }
 
 type updateInput struct {
-	ID                      string `json:"id"`
-	Name                    string `json:"name,omitempty"`
-	URL                     string `json:"url,omitempty"`
-	Enabled                 *bool  `json:"enabled,omitempty"`
-	IncludeInGeneralQueries *bool  `json:"include_in_general_queries,omitempty"`
+	ID                      string    `json:"id"`
+	Name                    string    `json:"name,omitempty"`
+	URL                     string    `json:"url,omitempty"`
+	Enabled                 *bool     `json:"enabled,omitempty"`
+	IncludeInGeneralQueries *bool     `json:"include_in_general_queries,omitempty"`
+	Tags                    *[]string `json:"tags,omitempty"`
 }
 
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
@@ -165,6 +174,20 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			calendars, err := svc.ListCalendarStatus(ctx)
 			return nil, calendarsOutput{Calendars: calendars}, err
 		})
+	mcp.AddTool(server, &mcp.Tool{Name: "list_tags", Description: "List calendar tags and how many calendars use each tag."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, tagsOutput, error) {
+			tags, err := svc.ListTags(ctx)
+			return nil, tagsOutput{Tags: tags}, err
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_config", Description: "Return effective runtime configuration and each setting source."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, configOutput, error) {
+			return nil, configOutput{Config: svc.RuntimeConfig()}, nil
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "update_config", Description: "Persist and apply unlocked runtime configuration settings."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in UpdateRuntimeConfigInput) (*mcp.CallToolResult, configOutput, error) {
+			config, err := svc.UpdateRuntimeConfig(ctx, in)
+			return nil, configOutput{Config: config}, err
+		})
 	mcp.AddTool(server, &mcp.Tool{Name: "add_calendar", Description: "Add or upsert an ICS calendar."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in AddCalendarInput) (*mcp.CallToolResult, calendarOutput, error) {
 			cal, err := svc.AddCalendarAndRefresh(ctx, in)
@@ -172,7 +195,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, calendarOutput, error) {
-			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries})
+			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries, Tags: in.Tags})
 			return nil, calendarOutput{Calendar: cal}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_calendar", Description: "Remove a calendar and its cached events."},
