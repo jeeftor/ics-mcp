@@ -951,6 +951,7 @@ func (s *Service) EnvironmentVariables(ctx context.Context) ([]EnvironmentVariab
 		value("ICSMCP_EXTERNAL_URL", config.ExternalURL, config.Sources["external_url"]),
 		value("ICSMCP_UPDATE_CHECK", strconv.FormatBool(config.UpdateCheck), config.Sources["update_check"]),
 		value("ICSMCP_LLM_ENABLED", strconv.FormatBool(profile.Enabled), profile.Source),
+		value("ICSMCP_LLM_BACKEND", profile.Backend, profile.Source),
 		value("ICSMCP_LLM_ENDPOINT", profile.Endpoint, profile.Source),
 		value("ICSMCP_LLM_MODEL", profile.Model, profile.Source),
 		{Name: "ICSMCP_LLM_API_KEY", Value: map[bool]string{true: "configured (redacted)", false: "not set"}[profile.APIKeyConfigured], Present: envPresent("ICSMCP_LLM_API_KEY"), Source: profile.Source, Sensitive: true},

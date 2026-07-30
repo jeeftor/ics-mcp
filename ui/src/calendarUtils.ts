@@ -5,6 +5,13 @@ export function startOfWeek(date: Date): Date {
   result.setDate(result.getDate() - day); result.setHours(0, 0, 0, 0); return result;
 }
 
+/** Returns the current range anchor when the planner view is changed. */
+export function plannerViewAnchor(view: 1 | 3 | 7, today = new Date()): Date {
+  const result = new Date(today);
+  result.setHours(0, 0, 0, 0);
+  return view === 7 ? startOfWeek(result) : result;
+}
+
 export function addDays(date: Date, days: number): Date { const result = new Date(date); result.setDate(result.getDate() + days); return result; }
 export function dateKey(date: Date): string { return date.toISOString().slice(0, 10); }
 export function weekRangeLabel(start: Date): string {

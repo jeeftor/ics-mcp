@@ -115,10 +115,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS llm_profile (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			enabled INTEGER NOT NULL DEFAULT 0,
+			backend TEXT NOT NULL DEFAULT 'openai',
 			endpoint TEXT NOT NULL DEFAULT '',
 			model TEXT NOT NULL DEFAULT '',
 			api_key TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE llm_profile ADD COLUMN backend TEXT NOT NULL DEFAULT 'openai'`,
 		`INSERT OR IGNORE INTO llm_profile (id) VALUES (1)`,
 		`CREATE TABLE IF NOT EXISTS insights (
 			name TEXT PRIMARY KEY,
@@ -131,6 +133,21 @@ func (s *Store) migrate(ctx context.Context) error {
 			generated_at TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE insights ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS insight_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			question TEXT NOT NULL,
+			answer TEXT NOT NULL DEFAULT '',
+			evidence_json TEXT NOT NULL DEFAULT '[]',
+			caveat TEXT NOT NULL DEFAULT '',
+			source_hash TEXT NOT NULL DEFAULT '',
+			source_at TEXT NOT NULL,
+			generated_at TEXT NOT NULL,
+			model TEXT NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_insight_runs_name_generated ON insight_runs(name, generated_at DESC, id DESC)`,
 		`CREATE TABLE IF NOT EXISTS insight_inquiries (
 			name TEXT PRIMARY KEY,
 			question TEXT NOT NULL,
