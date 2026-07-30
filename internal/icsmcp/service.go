@@ -379,6 +379,7 @@ func (s *Service) ReplaceEvents(ctx context.Context, calendarID string, events [
 
 // RefreshCalendar fetches and parses a calendar, preserving cached events on failures.
 func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time) error {
+	started := time.Now()
 	cal, err := s.store.calendarByID(ctx, id)
 	if err != nil {
 		return err
@@ -418,7 +419,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 		success := attempt
 		state.LastSuccess = &success
 		state.LastError = ""
-		s.logger.Info("calendar refresh not modified", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name)
+		s.logger.Info("calendar refresh not modified", "name", cal.Name, "duration", time.Since(started), "next_refresh", next.Format(time.RFC3339))
 		return s.store.updateRefreshState(ctx, id, state)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -458,7 +459,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	state.ETag = resp.Header.Get("ETag")
 	state.LastModified = resp.Header.Get("Last-Modified")
 	state.EventCount = len(events)
-	s.logger.Info("calendar refresh succeeded", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name, "event_count", len(events), "next_refresh", next.Format(time.RFC3339))
+	s.logger.Info("calendar refresh succeeded", "name", cal.Name, "event_count", len(events), "duration", time.Since(started), "next_refresh", next.Format(time.RFC3339))
 	return s.store.updateRefreshState(ctx, id, state)
 }
 

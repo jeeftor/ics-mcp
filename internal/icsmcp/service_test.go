@@ -64,6 +64,36 @@ func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *tes
 	}
 }
 
+func TestRefreshCalendarRoutineLogsUseNameAndSummaryFields(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:one\r\nDTSTAMP:20260730T000000Z\r\nDTSTART:20260730T120000Z\r\nDTEND:20260730T130000Z\r\nSUMMARY:One\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	var logs bytes.Buffer
+	svc.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	cal, err := svc.AddCalendar(context.Background(), AddCalendarInput{Key: "routine", Name: "Routine calendar", URL: provider.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs.Reset()
+	if err := svc.RefreshCalendar(context.Background(), cal.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got := logs.String()
+	for _, want := range []string{"msg=\"calendar refresh succeeded\"", "name=\"Routine calendar\"", "event_count=1", "duration=", "next_refresh="} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("routine refresh log missing %q: %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"calendar_id=" + cal.ID, "key=" + cal.Key} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("routine refresh log exposed redundant %q: %s", unwanted, got)
+		}
+	}
+}
+
 func TestImportStartupCalendarsReturnsEnvUpsertErrors(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -1199,23 +1229,23 @@ func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 
 func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	meeting := Meeting{
-		Day:             "Tue",
-		Date:            "2026-06-30",
-		EndDate:         "2026-06-30",
-		Start:           "09:00",
-		End:             "10:30",
-		Timezone:        "America/Denver",
-		DurationMinutes: 90,
-		Name:            "Planning",
-		CalendarID:      "calendar-1",
-		CalendarName:    "Work",
-		Ongoing:         true,
-		Recurring:       true,
-		MeetingURL:      "https://meet.example.test/planning",
-		MeetingURLType:  "meet",
+		Day:              "Tue",
+		Date:             "2026-06-30",
+		EndDate:          "2026-06-30",
+		Start:            "09:00",
+		End:              "10:30",
+		Timezone:         "America/Denver",
+		DurationMinutes:  90,
+		Name:             "Planning",
+		CalendarID:       "calendar-1",
+		CalendarName:     "Work",
+		Ongoing:          true,
+		Recurring:        true,
+		MeetingURL:       "https://meet.example.test/planning",
+		MeetingURLType:   "meet",
 		AttendanceStatus: "accepted",
-		Description:     "private notes",
-		RecurrenceID:    "20260630T150000Z",
+		Description:      "private notes",
+		RecurrenceID:     "20260630T150000Z",
 	}
 
 	data, err := json.Marshal(meeting)
@@ -1446,20 +1476,20 @@ func TestMeetingAndGroupJSONDecodeErrorsAndFallbacks(t *testing.T) {
 
 func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 	meeting := Meeting{
-		Day:             "Tue",
-		Date:            "2026-06-30",
-		Start:           "09:00",
-		End:             "10:30",
-		Timezone:        "America/Denver",
-		DurationMinutes: 90,
-		Name:            "Planning",
-		Description:     "private notes",
-		CalendarID:      "calendar-1",
-		CalendarName:    "Work",
-		Recurring:       true,
+		Day:              "Tue",
+		Date:             "2026-06-30",
+		Start:            "09:00",
+		End:              "10:30",
+		Timezone:         "America/Denver",
+		DurationMinutes:  90,
+		Name:             "Planning",
+		Description:      "private notes",
+		CalendarID:       "calendar-1",
+		CalendarName:     "Work",
+		Recurring:        true,
 		AttendanceStatus: "tentative",
-		RecurrenceID:    "20260630T150000Z",
-		Detail:          "full",
+		RecurrenceID:     "20260630T150000Z",
+		Detail:           "full",
 	}
 
 	data, err := json.Marshal(meeting)

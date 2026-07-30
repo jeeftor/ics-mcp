@@ -213,6 +213,31 @@ const (
 	LLMBackendLemonade = "lemonade"
 )
 
+// startLLMAction records an explicit LLM operation without exposing request
+// contents or connection credentials. Its completion callback must receive only
+// a coarse phase because provider errors can contain the endpoint URL.
+func (s *Service) startLLMAction(action, backend, model string) func(string, int, error) {
+	started := time.Now()
+	backend = strings.TrimSpace(backend)
+	if backend == "" {
+		backend = "unknown"
+	} else {
+		backend = normalizeLLMBackend(backend)
+	}
+	s.logger.Info("llm action started", "action", action, "phase", "start", "duration", time.Duration(0), "backend", backend, "model", model)
+	return func(phase string, eventCount int, err error) {
+		attrs := []any{"action", action, "phase", phase, "duration", time.Since(started), "backend", backend, "model", model}
+		if eventCount >= 0 {
+			attrs = append(attrs, "event_count", eventCount)
+		}
+		if err != nil {
+			s.logger.Warn("llm action failed", attrs...)
+			return
+		}
+		s.logger.Info("llm action completed", attrs...)
+	}
+}
+
 func (s *Service) llmProfile(ctx context.Context) (llmProfileSecret, error) {
 	var enabled int
 	var endpoint, model, key, backend string
@@ -301,11 +326,16 @@ func (s *Service) TestLLMEndpoint(ctx context.Context, in LLMConnectionInput) er
 
 // DiscoverLLMModels reads IDs from an OpenAI-compatible GET /models response.
 // It never persists or returns the bearer key.
-func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) ([]string, error) {
+func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) (models []string, err error) {
+	finish := s.startLLMAction("model_discovery", in.Backend, "")
+	phase := "profile"
+	defer func() { finish(phase, -1, err) }()
 	p, err := s.stagedLLMProfile(ctx, in)
 	if err != nil {
 		return nil, err
 	}
+	s.logger.Info("llm action configured", "action", "model_discovery", "backend", p.Backend, "model", p.Model)
+	phase = "request"
 	if p.Endpoint == "" {
 		return nil, fmt.Errorf("LLM endpoint is required")
 	}
@@ -324,6 +354,7 @@ func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("LLM model discovery returned %s", resp.Status)
 	}
+	phase = "response"
 	var payload struct {
 		Data []struct {
 			ID string `json:"id"`
@@ -353,7 +384,7 @@ func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) 
 	} else if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("model listing at %s was not JSON; check the Server preset or enter a custom model name", llmModelsURL(p.Backend, p.Endpoint))
 	}
-	models := make([]string, 0, len(payload.Data))
+	models = make([]string, 0, len(payload.Data))
 	seen := make(map[string]struct{}, len(payload.Data))
 	for _, item := range payload.Data {
 		id := strings.TrimSpace(item.ID)
@@ -383,14 +414,25 @@ func (s *Service) TestLLMModel(ctx context.Context, in LLMModelTestInput) error 
 
 // LemonadeModelStatus checks whether the selected Lemonade model is resident.
 // It does not load models and is only valid for the Lemonade backend.
-func (s *Service) LemonadeModelStatus(ctx context.Context, in LLMModelTestInput) (LemonadeModelLifecycle, error) {
+func (s *Service) LemonadeModelStatus(ctx context.Context, in LLMModelTestInput) (result LemonadeModelLifecycle, err error) {
+	finish := s.startLLMAction("lemonade_model_status", in.Backend, strings.TrimSpace(in.Model))
+	phase := "profile"
+	defer func() {
+		logErr := err
+		if logErr == nil && result.State != "" && result.State != LemonadeModelStateReady {
+			logErr = errors.New(string(result.State))
+		}
+		finish(phase, -1, logErr)
+	}()
 	p, err := s.stagedLLMProfile(ctx, in.LLMConnectionInput)
 	if err != nil {
 		return LemonadeModelLifecycle{}, err
 	}
+	s.logger.Info("llm action configured", "action", "lemonade_model_status", "backend", p.Backend, "model", strings.TrimSpace(in.Model))
 	if p.Backend != LLMBackendLemonade || strings.TrimSpace(in.Model) == "" || p.Endpoint == "" {
 		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
 	}
+	phase = "health_check"
 	loaded, reachable := s.lemonadeModelLoaded(ctx, p, strings.TrimSpace(in.Model))
 	if !reachable {
 		return LemonadeModelLifecycle{State: LemonadeModelStateUnreachable, Message: "Lemonade could not be reached. Check that it is running and reachable from ICS MCP."}, nil
@@ -403,11 +445,21 @@ func (s *Service) LemonadeModelStatus(ctx context.Context, in LLMModelTestInput)
 
 // LoadLemonadeModel requests the selected model be pinned, then waits at most
 // two minutes for Lemonade health to report it as loaded.
-func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (LemonadeModelLifecycle, error) {
+func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (result LemonadeModelLifecycle, err error) {
+	finish := s.startLLMAction("lemonade_model_load", in.Backend, strings.TrimSpace(in.Model))
+	phase := "profile"
+	defer func() {
+		logErr := err
+		if logErr == nil && result.State != "" && result.State != LemonadeModelStateReady {
+			logErr = errors.New(string(result.State))
+		}
+		finish(phase, -1, logErr)
+	}()
 	p, err := s.stagedLLMProfile(ctx, in.LLMConnectionInput)
 	if err != nil {
 		return LemonadeModelLifecycle{}, err
 	}
+	s.logger.Info("llm action configured", "action", "lemonade_model_load", "backend", p.Backend, "model", strings.TrimSpace(in.Model))
 	if p.Backend != LLMBackendLemonade || strings.TrimSpace(in.Model) == "" || p.Endpoint == "" {
 		return LemonadeModelLifecycle{}, fmt.Errorf("Lemonade endpoint and model are required")
 	}
@@ -419,6 +471,7 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 	if loaded {
 		return LemonadeModelLifecycle{State: LemonadeModelStateReady, Message: "The selected Lemonade model is loaded and ready to test."}, nil
 	}
+	phase = "load_request"
 	body, _ := json.Marshal(map[string]any{"model_name": model, "pinned": true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, lemonadeManagementURL(p.Endpoint)+"/v1/load", bytes.NewReader(body))
 	if err != nil {
@@ -437,6 +490,7 @@ func (s *Service) LoadLemonadeModel(ctx context.Context, in LLMModelTestInput) (
 		return LemonadeModelLifecycle{State: LemonadeModelStateLoadFailed, Message: "Lemonade did not accept the model load request."}, nil
 	}
 
+	phase = "wait_for_model"
 	deadline := time.Now().Add(120 * time.Second)
 	interval := s.lemonadePollInterval
 	if interval <= 0 {
@@ -507,10 +561,15 @@ func (s *Service) stagedLLMProfile(ctx context.Context, in LLMConnectionInput) (
 	return p, nil
 }
 
-func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model string) error {
+func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model string) (err error) {
+	finish := s.startLLMAction("model_test", p.Backend, model)
+	phase := "validate"
+	defer func() { finish(phase, -1, err) }()
+	s.logger.Info("llm action configured", "action", "model_test", "backend", p.Backend, "model", model)
 	if p.Endpoint == "" || model == "" {
 		return fmt.Errorf("LLM endpoint and model are required")
 	}
+	phase = "request"
 	payload := map[string]any{"model": model, "messages": []map[string]string{{"role": "user", "content": "Reply with OK."}}, "max_tokens": 4}
 	if p.Backend == LLMBackendOllama {
 		payload["stream"] = false
@@ -533,6 +592,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("LLM model test returned %s", resp.Status)
 	}
+	phase = "response"
 	return nil
 }
 
@@ -827,6 +887,14 @@ func (s *Service) PreviewInsight(ctx context.Context, in RunInsightInput) (resul
 }
 
 func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bool) (result Insight, err error) {
+	action := "inquiry_preview"
+	if persist {
+		action = "inquiry_run"
+	}
+	finish := s.startLLMAction(action, "", "")
+	phase := "validate"
+	eventCount := -1
+	defer func() { finish(phase, eventCount, err) }()
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return Insight{}, fmt.Errorf("name is required")
@@ -851,12 +919,14 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if err != nil {
 		return Insight{}, err
 	}
+	s.logger.Info("llm action configured", "action", action, "backend", p.Backend, "model", p.Model)
 	if !p.Enabled {
 		return Insight{}, fmt.Errorf("LLM insights are disabled")
 	}
 	if p.Endpoint == "" || p.Model == "" {
 		return Insight{}, fmt.Errorf("LLM endpoint and model are required")
 	}
+	phase = "calendar_query"
 	// Calendar titles and times are sufficient grounding for this optional feature.
 	// Descriptions and links commonly contain more sensitive, untrusted text, so they
 	// are deliberately excluded from the model payload.
@@ -869,6 +939,8 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if err != nil {
 		return Insight{}, err
 	}
+	eventCount = len(meetings)
+	phase = "request"
 	events, err := json.Marshal(meetings)
 	if err != nil {
 		return Insight{}, err
@@ -895,6 +967,7 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return Insight{}, fmt.Errorf("LLM returned %s", resp.Status)
 	}
+	phase = "response"
 	var wire struct {
 		Choices []struct {
 			Message struct {
@@ -926,8 +999,10 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if strings.TrimSpace(answer.Answer) == "" {
 		return Insight{}, fmt.Errorf("LLM answer is missing answer")
 	}
+	phase = "cache"
 	now := s.now().UTC()
 	if !persist {
+		phase = "completed"
 		return Insight{Name: in.Name, Question: in.Question, Answer: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: now, GeneratedAt: now, Model: p.Model}, nil
 	}
 	encodedEvidence, _ := json.Marshal(answer.Evidence)
@@ -941,6 +1016,7 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if err := s.recordPromptRun(ctx, PromptRun{PromptID: in.Name, Text: in.Question, Result: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: now, RunAt: now, Model: p.Model}); err != nil {
 		return Insight{}, err
 	}
+	phase = "completed"
 	return s.GetInsight(ctx, in.Name)
 }
 
