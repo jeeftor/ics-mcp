@@ -1981,7 +1981,7 @@ func newTestService(t *testing.T) *Service {
 		t.Fatalf("OpenStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC"})
+	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC", AllowPrivateCalendarHosts: true})
 }
 
 func doJSON(t *testing.T, method string, url string, in any, out any) {

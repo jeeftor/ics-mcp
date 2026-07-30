@@ -2,7 +2,9 @@
 
 ICS MCP is a small Go MCP server for homelab calendar feeds. It watches ICS URLs, stores normalized upcoming event instances in SQLite, exposes a Streamable HTTP MCP endpoint, and includes a simple embedded admin UI.
 
-The v1 server is intentionally unauthenticated. Run it only on a trusted local or homelab network, or put it behind your own reverse proxy and access control.
+By default the server is unauthenticated for trusted local use. Set `ICSMCP_AUTH_TOKEN` (or `--auth-token`) to require a bearer token for every API and MCP request; health and readiness probes remain public. For an internet-facing deployment, put it behind an authenticated reverse proxy as well.
+
+Calendar fetches accept only HTTP(S), have a 20-second deadline, and are capped at 8 MiB. Private, loopback, and link-local feed hosts are denied by default to prevent server-side request forgery. Set `ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS=true` only when you intentionally use a private homelab ICS host.
 
 ## Run Locally
 
@@ -36,6 +38,7 @@ go run main.go serve \
   --refresh-interval 5m \
   --timezone America/Denver \
   --external-url https://ics-mcp.vookie.net \
+  --auth-token "$ICSMCP_AUTH_TOKEN" \
   --log-level debug \
   --calendar MITRE=https://example.invalid/calendar.ics
 ```

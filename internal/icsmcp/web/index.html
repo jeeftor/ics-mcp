@@ -7,30 +7,30 @@
   <link rel="icon" href="data:,">
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f4f6f7;
-      --panel: #ffffff;
-      --panel-soft: #eef3f4;
-      --text: #1d252c;
-      --muted: #667781;
-      --line: #d7dee2;
-      --accent: #28666e;
-      --accent-dark: #1d4f56;
-      --danger: #9d2f2f;
-      --code: #101820;
+      color-scheme: dark;
+      --bg: #0b1220;
+      --panel: #111c2e;
+      --panel-soft: #16243a;
+      --text: #e7eef8;
+      --muted: #9bacbf;
+      --line: #2a3b54;
+      --accent: #38bdf8;
+      --accent-dark: #0ea5e9;
+      --danger: #fb7185;
+      --code: #07101d;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
-    header { background: #25323a; color: white; border-bottom: 1px solid #1a252b; }
-    .topbar { max-width: 1180px; margin: 0 auto; padding: 18px 24px 14px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
-    h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    header { background: linear-gradient(115deg, #101b31, #162b47); color: white; border-bottom: 1px solid #334a6d; box-shadow: 0 8px 28px rgba(0,0,0,.22); }
+    .topbar { max-width: 1320px; margin: 0 auto; padding: 12px 24px 0; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
     .subtitle { margin-top: 4px; color: #cad7dd; font-size: 13px; }
     .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; background: rgba(255,255,255,.08); color: #eef6f7; font-size: 12px; }
-    .tabs { max-width: 1180px; margin: 0 auto; padding: 0 24px; display: flex; gap: 6px; }
-    .tab { appearance: none; border: 0; border-radius: 7px 7px 0 0; padding: 11px 16px; background: transparent; color: #d8e4e8; font: inherit; cursor: pointer; }
+    .tabs { max-width: 1320px; margin: 0 auto; padding: 8px 24px 0; display: flex; gap: 4px; }
+    .tab { appearance: none; border: 0; border-radius: 8px 8px 0 0; padding: 10px 15px; background: transparent; color: #c4d3e8; font: inherit; cursor: pointer; }
     .tab.active { background: var(--bg); color: var(--text); font-weight: 650; }
-    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    main { max-width: 1320px; margin: 0 auto; padding: 28px 24px; }
     .panel { display: none; }
     .panel.active { display: block; }
     section { margin-top: 22px; }
@@ -38,15 +38,16 @@
     h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: 0; }
     h3 { margin: 0 0 8px; font-size: 14px; }
     form { display: grid; grid-template-columns: minmax(160px, 240px) minmax(260px, 1fr) auto; gap: 10px; margin-bottom: 22px; }
-    input, select, textarea { padding: 10px 12px; border: 1px solid #b8c0c7; border-radius: 6px; background: white; color: var(--text); font: inherit; }
+    input, select, textarea { padding: 10px 12px; border: 1px solid #425571; border-radius: 8px; background: #0c1728; color: var(--text); font: inherit; }
     textarea { width: 100%; min-height: 190px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    button { padding: 9px 12px; border: 1px solid #60717c; border-radius: 6px; background: #ffffff; color: var(--text); font: inherit; cursor: pointer; }
+    button { padding: 9px 12px; border: 1px solid #526985; border-radius: 8px; background: #142238; color: var(--text); font: inherit; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+    button:hover { background: #1b2e48; border-color: #76a2d0; }
     button.primary { background: var(--accent); color: white; border-color: var(--accent); }
     button.primary:hover { background: var(--accent-dark); }
     button.danger { border-color: #b55454; color: var(--danger); }
-    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid var(--line); }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #e3e8eb; text-align: left; vertical-align: top; }
-    th { background: #eef1f3; font-weight: 650; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #263952; text-align: left; vertical-align: top; }
+    th { background: #17273e; font-weight: 650; }
     td.actions { white-space: nowrap; }
     .meeting-groups { display: grid; gap: 16px; }
     .calendar-meeting-group { background: white; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
@@ -70,7 +71,7 @@
     .muted { color: var(--muted); }
     .error { color: var(--danger); max-width: 360px; overflow-wrap: anywhere; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
-    .block { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 14px; min-width: 0; }
+    .block { background: linear-gradient(145deg, var(--panel), #0f1a2b); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; box-shadow: 0 10px 24px rgba(0,0,0,.12); }
     .block.soft { background: var(--panel-soft); }
     .metric { display: grid; gap: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; }
@@ -654,10 +655,18 @@
     }
 
     async function api(path, options = {}) {
+      const token = window.sessionStorage.getItem('icsmcp.auth-token');
       const response = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(options.headers || {}) },
         ...options
       });
+      if (response.status === 401) {
+        const entered = window.prompt('ICS MCP requires a bearer token. Enter it to continue:');
+        if (entered) {
+          window.sessionStorage.setItem('icsmcp.auth-token', entered.trim());
+          return api(path, options);
+        }
+      }
       if (!response.ok) throw new Error(await response.text());
       return response.status === 204 ? null : response.json();
     }
