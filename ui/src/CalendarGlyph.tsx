@@ -7,22 +7,40 @@ const icons = Object.fromEntries(Object.entries(mdi)
 
 export const calendarIconChoices = Object.keys(icons).sort();
 
+/** A deliberately small, high-contrast set for calendar and tag presentation. */
+export const calendarColorPalette = [
+  '#2f7d5a', '#3777b8', '#8b5bb9', '#c13f77',
+  '#bf6b21', '#147d8d', '#73823c', '#b64d35',
+] as const;
+
 function iconKey(icon: string): string { return icon.trim().toLowerCase().replace(/^mdi:/, ''); }
 
-export function calendarColor(calendar: { color?: string; key: string }): string {
+export function calendarColor(calendar: { color?: string; key: string; tags?: string[] }, tags: Array<{ name: string; color?: string }> = []): string {
   if (calendar.color) return calendar.color;
-  let hash = 0;
-  for (const char of calendar.key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const hue = hash % 360;
-  const saturation = 58 + ((hash >>> 8) % 14);
-  const lightness = 42 + ((hash >>> 16) % 9);
-  return hslToHex(hue, saturation, lightness);
+  const inherited = calendar.tags?.map(name => tags.find(tag => tag.name === name)?.color).find(Boolean);
+  return inherited || paletteColor(calendar.key);
 }
 
-function hslToHex(hue: number, saturation: number, lightness: number): string {
-  const s = saturation / 100; const l = lightness / 100; const c = (1 - Math.abs(2 * l - 1)) * s; const x = c * (1 - Math.abs((hue / 60) % 2 - 1)); const m = l - c / 2;
-  const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, c, x] : hue < 300 ? [x, 0, c] : [c, 0, x];
-  return `#${[r, g, b].map(value => Math.round((value + m) * 255).toString(16).padStart(2, '0')).join('')}`;
+function paletteIndex(value: string): number {
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % calendarColorPalette.length;
+}
+
+/** Return a stable palette color when no explicit presentation color was saved. */
+export function paletteColor(seed: string): string {
+  return calendarColorPalette[paletteIndex(seed)];
+}
+
+/** Pick a distinct palette color where one remains, without overwriting saved colors. */
+export function nextPaletteColor(existing: Iterable<string | undefined>, seed: string): string {
+  const used = new Set([...existing].filter((color): color is string => Boolean(color)).map(color => color.toLowerCase()));
+  const start = paletteIndex(seed);
+  for (let offset = 0; offset < calendarColorPalette.length; offset += 1) {
+    const color = calendarColorPalette[(start + offset) % calendarColorPalette.length];
+    if (!used.has(color.toLowerCase())) return color;
+  }
+  return calendarColorPalette[start];
 }
 
 /** Render an MDI icon, falling back safely to calendar for an unknown name. */
