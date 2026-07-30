@@ -727,3 +727,63 @@ func TestInsightNoAnswerErrorReportsDiagnostics(t *testing.T) {
 		}
 	}
 }
+
+// TestInsightExtractsJSONFromReasoningProse reproduces the real Qwen3.6
+// reasoning-model response captured from a Lemonade deployment: content is
+// empty, reasoning_content contains a chain-of-thought trace with the JSON
+// answer embedded in a markdown code fence. The service must extract the JSON
+// object from the prose rather than failing with "LLM answer must be JSON".
+func TestInsightExtractsJSONFromReasoningProse(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	reasoning := "Here's a thinking process:\n\n1. Analyze...\n2. Evaluate...\n   ```json\n   {\n     \"answer\": \"No events today.\",\n     \"evidence\": [],\n     \"caveat\": \"Calendar data was empty.\"\n   }\n   ```\n\nAll constraints met."
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","reasoning_content":` + jsonQuote(reasoning) + `}}]}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Backend: LLMBackendLemonade, Endpoint: "http://llm.test", Model: "Qwen3.6"}); err != nil {
+		t.Fatal(err)
+	}
+	insight, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know today?"})
+	if err != nil {
+		t.Fatalf("PreviewInsight with embedded JSON reasoning failed: %v", err)
+	}
+	if insight.Answer != "No events today." {
+		t.Fatalf("PreviewInsight answer = %q, want %q", insight.Answer, "No events today.")
+	}
+	if insight.Caveat != "Calendar data was empty." {
+		t.Fatalf("PreviewInsight caveat = %q, want %q", insight.Caveat, "Calendar data was empty.")
+	}
+}
+
+// TestInsightReasoningModelGetsHigherTokenCap ensures reasoning models, which
+// emit a chain-of-thought trace before the final answer, are not capped at the
+// small llmMaxOutputTokens budget that only covers a direct JSON answer.
+func TestInsightReasoningModelGetsHigherTokenCap(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	var capturedPayload map[string]any
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		_ = json.Unmarshal(body, &capturedPayload)
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Backend: LLMBackendLemonade, Endpoint: "http://llm.test", Model: "Qwen3.6"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"}); err != nil {
+		t.Fatal(err)
+	}
+	maxTokens, ok := capturedPayload["max_tokens"]
+	if !ok {
+		t.Fatalf("payload missing max_tokens: %v", capturedPayload)
+	}
+	if maxTokens.(float64) <= float64(llmMaxOutputTokens) {
+		t.Fatalf("reasoning model max_tokens = %v, want > %d", maxTokens, llmMaxOutputTokens)
+	}
+}
+
+// jsonQuote returns a JSON-quoted string literal for embedding in test fixtures.
+func jsonQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
