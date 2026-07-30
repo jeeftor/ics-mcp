@@ -30,7 +30,8 @@ export type LLMProfileInput = { enabled?: boolean; backend?: LLMBackend; endpoin
 export type LLMConnectionInput = { backend: LLMBackend; endpoint: string; api_key?: string };
 export type LLMTestResult = { ok: boolean; message?: string; model?: string; error?: string };
 export type InsightTrigger = 'manual' | 'on_change' | 'scheduled';
-export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; trigger: InsightTrigger; schedule?: string; enabled: boolean; builtin?: boolean };
+export type InsightScheduleMode = 'daily' | 'repeat';
+export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; trigger: InsightTrigger; schedule_mode?: InsightScheduleMode; schedule?: string; repeat_interval?: string; enabled: boolean; builtin?: boolean };
 export type Insight = { name: string; question: string; answer?: string; evidence?: string[]; caveat?: string; source_hash?: string; source_at?: string; generated_at?: string; stale?: boolean; error?: string; calendar_ids?: string[]; tags?: string[]; schedule?: string };
 
 export function parseTags(value: string): string[] {
@@ -93,6 +94,7 @@ export const insightsAPI = {
   testModel: (body: LLMConnectionInput & { model: string }) => api<LLMTestResult>('/api/llm-profile/model-test', { method: 'POST', body: JSON.stringify(body) }),
   list: () => api<Insight[]>('/api/insights'),
   run: (body: { name: string; question?: string; calendar_ids?: string[]; tags?: string[] }) => api<Insight>('/api/insights', { method: 'POST', body: JSON.stringify(body) }),
+  preview: (body: { name?: string; question: string; calendar_ids?: string[]; tags?: string[] }) => api<Insight>('/api/insights/preview', { method: 'POST', body: JSON.stringify(body) }),
   inquiries: () => api<InsightInquiry[]>('/api/insight-inquiries'),
   saveInquiry: (inquiry: InsightInquiry, create = false) => api<InsightInquiry>(create ? '/api/insight-inquiries' : `/api/insight-inquiries/${encodeURIComponent(inquiry.name)}`, { method: create ? 'POST' : 'PUT', body: JSON.stringify(inquiry) }),
   deleteInquiry: (name: string) => api<void>(`/api/insight-inquiries/${encodeURIComponent(name)}`, { method: 'DELETE' }),

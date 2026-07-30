@@ -111,13 +111,21 @@ type RunInsightInput struct {
 
 // InsightTrigger controls when an enabled inquiry may invoke the model.
 // Manual is always explicit, OnChange runs only after its scoped event data
-// changes, and Scheduled runs once per local calendar day at Schedule.
+// changes. Scheduled inquiries use a daily local time or a repeat interval.
 type InsightTrigger string
 
 const (
 	InsightTriggerManual    InsightTrigger = "manual"
 	InsightTriggerOnChange  InsightTrigger = "on_change"
 	InsightTriggerScheduled InsightTrigger = "scheduled"
+)
+
+// InsightScheduleMode controls how a scheduled inquiry becomes due.
+type InsightScheduleMode string
+
+const (
+	InsightScheduleModeDaily  InsightScheduleMode = "daily"
+	InsightScheduleModeRepeat InsightScheduleMode = "repeat"
 )
 
 // InsightInquiry is a named, persisted request definition. Normal reads never
@@ -128,22 +136,30 @@ type InsightInquiry struct {
 	CalendarIDs []string       `json:"calendar_ids,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
 	Trigger     InsightTrigger `json:"trigger"`
-	// Schedule is a daily local wall-clock time in HH:MM form for scheduled
-	// inquiries. It uses the service's configured timezone.
-	Schedule  string    `json:"schedule,omitempty"`
-	Enabled   bool      `json:"enabled"`
-	Builtin   bool      `json:"builtin"`
-	LastRunAt time.Time `json:"last_run_at,omitempty"`
+	// ScheduleMode selects whether Schedule is a daily local time or a repeat
+	// interval. Empty values from older records mean daily.
+	ScheduleMode InsightScheduleMode `json:"schedule_mode,omitempty"`
+	// Schedule is a daily local wall-clock time in HH:MM form when ScheduleMode
+	// is daily. It uses the service's configured timezone.
+	Schedule string `json:"schedule,omitempty"`
+	// RepeatInterval is a Go duration such as 15m or 1h30m when ScheduleMode is
+	// repeat.
+	RepeatInterval string    `json:"repeat_interval,omitempty"`
+	Enabled        bool      `json:"enabled"`
+	Builtin        bool      `json:"builtin"`
+	LastRunAt      time.Time `json:"last_run_at,omitempty"`
 }
 
 // SaveInsightInquiryInput creates or updates a named inquiry.
 type SaveInsightInquiryInput struct {
-	Question    string         `json:"question"`
-	CalendarIDs []string       `json:"calendar_ids,omitempty"`
-	Tags        []string       `json:"tags,omitempty"`
-	Trigger     InsightTrigger `json:"trigger,omitempty"`
-	Schedule    string         `json:"schedule,omitempty"`
-	Enabled     *bool          `json:"enabled,omitempty"`
+	Question       string              `json:"question"`
+	CalendarIDs    []string            `json:"calendar_ids,omitempty"`
+	Tags           []string            `json:"tags,omitempty"`
+	Trigger        InsightTrigger      `json:"trigger,omitempty"`
+	ScheduleMode   InsightScheduleMode `json:"schedule_mode,omitempty"`
+	Schedule       string              `json:"schedule,omitempty"`
+	RepeatInterval string              `json:"repeat_interval,omitempty"`
+	Enabled        *bool               `json:"enabled,omitempty"`
 }
 
 type llmProfileSecret struct {
@@ -374,7 +390,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 
 // ListInsightInquiries returns saved inquiry definitions, never invoking an LLM.
 func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, trigger, schedule, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list insight inquiries: %w", err)
 	}
@@ -384,7 +400,7 @@ func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, e
 		var item InsightInquiry
 		var calendars, tags, lastRun string
 		var enabled, builtin int
-		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.Trigger, &item.Schedule, &enabled, &builtin, &lastRun); err != nil {
+		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.Trigger, &item.ScheduleMode, &item.Schedule, &item.RepeatInterval, &enabled, &builtin, &lastRun); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(calendars), &item.CalendarIDs)
@@ -446,16 +462,32 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 		return InsightInquiry{}, fmt.Errorf("trigger must be manual, on_change, or scheduled")
 	}
 	if in.Trigger == InsightTriggerScheduled {
-		if _, _, err := parseDailyInsightTime(in.Schedule); err != nil {
-			return InsightInquiry{}, err
+		if in.ScheduleMode == "" {
+			in.ScheduleMode = InsightScheduleModeDaily
+		}
+		switch in.ScheduleMode {
+		case InsightScheduleModeDaily:
+			if _, _, err := parseDailyInsightTime(in.Schedule); err != nil {
+				return InsightInquiry{}, err
+			}
+			in.RepeatInterval = ""
+		case InsightScheduleModeRepeat:
+			if _, err := parseRepeatInsightDuration(in.RepeatInterval); err != nil {
+				return InsightInquiry{}, err
+			}
+			in.Schedule = ""
+		default:
+			return InsightInquiry{}, fmt.Errorf("schedule mode must be daily or repeat")
 		}
 	} else {
+		in.ScheduleMode = ""
 		in.Schedule = ""
+		in.RepeatInterval = ""
 	}
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, trigger, schedule, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, trigger=excluded.trigger, schedule=excluded.schedule, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.Trigger, in.Schedule, boolInt(enabled), boolInt(builtin))
+	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, trigger=excluded.trigger, schedule_mode=excluded.schedule_mode, schedule=excluded.schedule, repeat_interval=excluded.repeat_interval, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.Trigger, in.ScheduleMode, in.Schedule, in.RepeatInterval, boolInt(enabled), boolInt(builtin))
 	if err != nil {
 		return InsightInquiry{}, fmt.Errorf("save insight inquiry: %w", err)
 	}
@@ -619,6 +651,22 @@ func (s *Service) GetInsight(ctx context.Context, name string) (Insight, error) 
 
 // RunInsight performs the explicit, bounded OpenAI-compatible request and caches its result.
 func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result Insight, err error) {
+	return s.runInsight(ctx, in, true)
+}
+
+// PreviewInsight performs an explicit, bounded LLM request without saving an
+// inquiry, output, or run history. It is intended for testing an unsaved form.
+func (s *Service) PreviewInsight(ctx context.Context, in RunInsightInput) (result Insight, err error) {
+	if strings.TrimSpace(in.Question) == "" {
+		return Insight{}, fmt.Errorf("question is required for an inquiry preview")
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		in.Name = "preview"
+	}
+	return s.runInsight(ctx, in, false)
+}
+
+func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bool) (result Insight, err error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return Insight{}, fmt.Errorf("name is required")
@@ -634,7 +682,7 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 		in.Question, in.CalendarIDs, in.Tags = inquiry.Question, inquiry.CalendarIDs, inquiry.Tags
 	}
 	defer func() {
-		if err != nil {
+		if persist && err != nil {
 			_ = s.recordInsightFailure(ctx, in, err)
 		}
 	}()
@@ -713,6 +761,9 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 		return Insight{}, fmt.Errorf("LLM answer is missing answer")
 	}
 	now := s.now().UTC()
+	if !persist {
+		return Insight{Name: in.Name, Question: in.Question, Answer: answer.Answer, Evidence: answer.Evidence, Caveat: answer.Caveat, SourceHash: hex.EncodeToString(hash[:]), SourceAt: now, GeneratedAt: now, Model: p.Model}, nil
+	}
 	encodedEvidence, _ := json.Marshal(answer.Evidence)
 	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insights (name, question, answer, evidence_json, caveat, source_hash, source_at, generated_at, model, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '') ON CONFLICT(name) DO UPDATE SET question=excluded.question, answer=excluded.answer, evidence_json=excluded.evidence_json, caveat=excluded.caveat, source_hash=excluded.source_hash, source_at=excluded.source_at, generated_at=excluded.generated_at, model=excluded.model, error=''`, in.Name, in.Question, answer.Answer, string(encodedEvidence), answer.Caveat, hex.EncodeToString(hash[:]), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), p.Model)
 	if err != nil {
@@ -875,6 +926,14 @@ func validInsightTrigger(trigger InsightTrigger) bool {
 	return trigger == InsightTriggerManual || trigger == InsightTriggerOnChange || trigger == InsightTriggerScheduled
 }
 
+func parseRepeatInsightDuration(value string) (time.Duration, error) {
+	duration, err := time.ParseDuration(strings.TrimSpace(value))
+	if err != nil || duration < time.Minute || duration > 7*24*time.Hour || duration%time.Minute != 0 {
+		return 0, fmt.Errorf("repeat interval must be a whole duration from 1m to 168h (for example 15m or 1h30m)")
+	}
+	return duration, nil
+}
+
 func parseDailyInsightTime(value string) (hour, minute int, err error) {
 	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
 	if err != nil {
@@ -884,6 +943,13 @@ func parseDailyInsightTime(value string) (hour, minute int, err error) {
 }
 
 func (s *Service) insightScheduledDue(item InsightInquiry, now time.Time) bool {
+	if item.ScheduleMode == InsightScheduleModeRepeat {
+		interval, err := parseRepeatInsightDuration(item.RepeatInterval)
+		if err != nil {
+			return false
+		}
+		return item.LastRunAt.IsZero() || !item.LastRunAt.Add(interval).After(now)
+	}
 	hour, minute, err := parseDailyInsightTime(item.Schedule)
 	if err != nil {
 		return false

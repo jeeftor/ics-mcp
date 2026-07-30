@@ -234,6 +234,19 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/insights/preview", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in RunInsightInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		insight, err := svc.PreviewInsight(r.Context(), in)
+		writeJSON(w, insight, err)
+	})
 	mux.HandleFunc("/api/insights/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -1834,6 +1847,7 @@ func openAPISpec(build ...BuildInfo) map[string]any {
 			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
 			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete an inquiry template or custom inquiry and its cached output")},
 			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},
+			"/api/insights/preview":                  map[string]any{"post": write("post", "Explicitly test an unsaved insight without caching it")["post"]},
 			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
 			"/api/v1/prompts":                        get("List saved prompts with latest cached outputs without invoking an LLM"),
 			"/api/v1/prompts/{id}":                   get("Read one saved prompt definition"),

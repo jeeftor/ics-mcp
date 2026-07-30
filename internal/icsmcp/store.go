@@ -162,14 +162,17 @@ func (s *Store) migrate(ctx context.Context) error {
 			calendar_ids_json TEXT NOT NULL DEFAULT '[]',
 			tags_json TEXT NOT NULL DEFAULT '[]',
 			trigger TEXT NOT NULL DEFAULT 'manual',
+			schedule_mode TEXT NOT NULL DEFAULT '',
 			schedule TEXT NOT NULL DEFAULT '',
+			repeat_interval TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			builtin INTEGER NOT NULL DEFAULT 0,
 			last_run_at TEXT NOT NULL DEFAULT ''
 		)`,
 		`ALTER TABLE insight_inquiries ADD COLUMN trigger TEXT NOT NULL DEFAULT 'manual'`,
+		`ALTER TABLE insight_inquiries ADD COLUMN schedule_mode TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE insight_inquiries ADD COLUMN repeat_interval TEXT NOT NULL DEFAULT ''`,
 		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('daily_briefing', 'What should I know today?', 0, 1)`,
-		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('weekly_outlook', 'What should I know this week?', 0, 1)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
