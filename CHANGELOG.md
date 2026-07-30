@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.5 - 2026-07-30
+
+- Give bounded Insight inference its own 120-second deadline while retaining short probe timeouts.
+- Send only compact calendar grounding records and cap model output to prevent oversized requests and responses.
+
 ## v2.6.4 - 2026-07-30
 
 - Show concise, truthful Insight request activity while testing or running an inquiry, including Lemonade readiness only where supported.
