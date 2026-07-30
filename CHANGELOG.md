@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.10 - 2026-07-30
+
+- Compact Environment visibility with bold variable names and a single clear source column.
+
 ## v2.2.9 - 2026-07-30
 
 - Let tall planner event cards show more title and contextual detail while retaining compact short-event cards.
