@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.1.1 - 2026-07-30
+
+- Document the MCP endpoint and optional LLM profile and insight routes in the OpenAPI inventory.
+
 ## v2.1.0 - 2026-07-30
 
 - Restore the full admin console: setup information, MCP tool execution, meeting previews, REST exploration, and OpenAPI links.
