@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>ICS MCP calendar workspace</title>
+  <rect width="64" height="64" rx="16" fill="#375B45"/>
+  <path d="M17 23.5C17 20.462 19.462 18 22.5 18h16C41.538 18 44 20.462 44 23.5v18C44 44.538 41.538 47 38.5 47h-16A5.5 5.5 0 0 1 17 41.5v-18Z" fill="#FFFDF8"/>
+  <path d="M17 27h27" stroke="#B5CDBA" stroke-width="3"/>
+  <path d="M25 14v8M36 14v8" stroke="#FFFDF8" stroke-width="4" stroke-linecap="round"/>
+  <path d="m23.5 38 5-5 4 4 6.5-7" stroke="#375B45" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="49" cy="20" r="5" fill="#F5C65D"/>
+  <circle cx="49" cy="20" r="2" fill="#375B45"/>
+  <path d="M44 22.5 46.4 21M44 33l4.2-9" stroke="#F5C65D" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="49" cy="37" r="5" fill="#F5C65D"/>
+  <circle cx="49" cy="37" r="2" fill="#375B45"/>
+</svg>
