@@ -331,6 +331,24 @@ func TestParseICSExtractsOnlineMeetingURL(t *testing.T) {
 	}
 }
 
+func TestParseICSExposesOnlyUnambiguousAttendanceStatus(t *testing.T) {
+	now := time.Date(2026, time.July, 30, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\nUID:accepted\r\nDTSTAMP:20260730T120000Z\r\nSUMMARY:Accepted\r\nDTSTART:20260730T130000Z\r\nDTEND:20260730T133000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:person@example.test\r\nEND:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\nUID:shared\r\nDTSTAMP:20260730T120000Z\r\nSUMMARY:Shared\r\nDTSTART:20260730T140000Z\r\nDTEND:20260730T143000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:one@example.test\r\nATTENDEE;PARTSTAT=TENTATIVE:mailto:two@example.test\r\nEND:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	events, err := ParseICS(ics, now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if got, want := events[0].AttendanceStatus, "accepted"; got != want {
+		t.Fatalf("accepted attendance status = %q, want %q", got, want)
+	}
+	if got := events[1].AttendanceStatus; got != "" {
+		t.Fatalf("ambiguous attendee response leaked as %q", got)
+	}
+}
+
 func TestParseICSDetectsAllDayAndCancelledEvents(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleCancelledAllDayICS(), now, 72*time.Hour)
@@ -1195,6 +1213,7 @@ func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 		Recurring:       true,
 		MeetingURL:      "https://meet.example.test/planning",
 		MeetingURLType:  "meet",
+		AttendanceStatus: "accepted",
 		Description:     "private notes",
 		RecurrenceID:    "20260630T150000Z",
 	}
@@ -1207,7 +1226,7 @@ func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	for _, want := range []string{"when", "title", "calendar", "duration", "duration_minutes", "ongoing", "recurring", "meeting_url", "meeting_url_type"} {
+	for _, want := range []string{"when", "title", "calendar", "duration", "duration_minutes", "ongoing", "recurring", "meeting_url", "meeting_url_type", "attendance_status"} {
 		if _, ok := got[want]; !ok {
 			t.Fatalf("compact meeting JSON missing %q: %s", want, data)
 		}
@@ -1438,6 +1457,7 @@ func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 		CalendarID:      "calendar-1",
 		CalendarName:    "Work",
 		Recurring:       true,
+		AttendanceStatus: "tentative",
 		RecurrenceID:    "20260630T150000Z",
 		Detail:          "full",
 	}
@@ -1449,6 +1469,9 @@ func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 	var got map[string]any
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if got["attendance_status"] != "tentative" {
+		t.Fatalf("full attendance_status = %#v, want tentative: %s", got["attendance_status"], data)
 	}
 	for _, want := range []string{"day", "date", "end_date", "start", "end", "timezone", "duration_minutes", "name", "description", "calendar_id", "calendar_name", "recurring", "recurrence_id"} {
 		if _, ok := got[want]; !ok {

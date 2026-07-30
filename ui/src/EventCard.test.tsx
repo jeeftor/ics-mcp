@@ -9,4 +9,11 @@ describe('all-day event cards', () => {
 
     expect(markup).toContain(`class="event-title" style="display:inline">${title}</span>`);
   });
+
+  it('renders only the normalized RSVP status, without attendee identity', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03', attendance_status: 'tentative' }} selected={false} onSelect={() => undefined} timeFormat="12h"/>);
+
+    expect(markup).toContain('RSVP: Tentative');
+    expect(markup).not.toContain('person@example.test');
+  });
 });

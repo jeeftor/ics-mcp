@@ -141,20 +141,21 @@ type CalendarSelection struct {
 
 // EventInstance is a normalized event occurrence stored in SQLite.
 type EventInstance struct {
-	ID             string    `json:"id"`
-	CalendarID     string    `json:"calendar_id"`
-	CalendarName   string    `json:"calendar_name"`
-	UID            string    `json:"uid"`
-	Name           string    `json:"name"`
-	Description    string    `json:"description"`
-	MeetingURL     string    `json:"meeting_url"`
-	MeetingURLType string    `json:"meeting_url_type"`
-	Cancelled      bool      `json:"cancelled"`
-	AllDay         bool      `json:"all_day"`
-	Recurring      bool      `json:"recurring"`
-	RecurrenceID   string    `json:"recurrence_id"`
-	Start          time.Time `json:"start_time"`
-	End            time.Time `json:"end_time"`
+	ID               string    `json:"id"`
+	CalendarID       string    `json:"calendar_id"`
+	CalendarName     string    `json:"calendar_name"`
+	UID              string    `json:"uid"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	MeetingURL       string    `json:"meeting_url"`
+	MeetingURLType   string    `json:"meeting_url_type"`
+	AttendanceStatus string    `json:"attendance_status"`
+	Cancelled        bool      `json:"cancelled"`
+	AllDay           bool      `json:"all_day"`
+	Recurring        bool      `json:"recurring"`
+	RecurrenceID     string    `json:"recurrence_id"`
+	Start            time.Time `json:"start_time"`
+	End              time.Time `json:"end_time"`
 }
 
 // UpcomingQuery controls upcoming meeting lookup.
@@ -209,32 +210,33 @@ func (q UpcomingQuery) limit(defaultLimit int) int {
 
 // Meeting is the MCP-facing meeting representation.
 type Meeting struct {
-	When            string    `json:"when,omitempty"`
-	Title           string    `json:"title,omitempty"`
-	Calendar        string    `json:"calendar,omitempty"`
-	Duration        string    `json:"duration,omitempty"`
-	Day             string    `json:"day,omitempty"`
-	Date            string    `json:"date,omitempty"`
-	EndDate         string    `json:"end_date,omitempty"`
-	Start           string    `json:"start,omitempty"`
-	End             string    `json:"end,omitempty"`
-	Timezone        string    `json:"timezone,omitempty"`
-	DurationMinutes int       `json:"duration_minutes,omitempty"`
-	Name            string    `json:"name,omitempty"`
-	Description     string    `json:"description,omitempty"`
-	MeetingURL      string    `json:"meeting_url,omitempty"`
-	MeetingURLType  string    `json:"meeting_url_type,omitempty"`
-	CalendarID      string    `json:"calendar_id,omitempty"`
-	CalendarName    string    `json:"calendar_name,omitempty"`
-	Ongoing         bool      `json:"ongoing,omitempty"`
-	AllDay          bool      `json:"all_day,omitempty"`
-	Cancelled       bool      `json:"cancelled,omitempty"`
-	Recurring       bool      `json:"recurring,omitempty"`
-	RecurrenceID    string    `json:"recurrence_id,omitempty"`
-	StartTime       time.Time `json:"-"`
-	EndTime         time.Time `json:"-"`
-	Detail          string    `json:"-"`
-	Fields          []string  `json:"-"`
+	When             string    `json:"when,omitempty"`
+	Title            string    `json:"title,omitempty"`
+	Calendar         string    `json:"calendar,omitempty"`
+	Duration         string    `json:"duration,omitempty"`
+	Day              string    `json:"day,omitempty"`
+	Date             string    `json:"date,omitempty"`
+	EndDate          string    `json:"end_date,omitempty"`
+	Start            string    `json:"start,omitempty"`
+	End              string    `json:"end,omitempty"`
+	Timezone         string    `json:"timezone,omitempty"`
+	DurationMinutes  int       `json:"duration_minutes,omitempty"`
+	Name             string    `json:"name,omitempty"`
+	Description      string    `json:"description,omitempty"`
+	MeetingURL       string    `json:"meeting_url,omitempty"`
+	MeetingURLType   string    `json:"meeting_url_type,omitempty"`
+	AttendanceStatus string    `json:"attendance_status,omitempty"`
+	CalendarID       string    `json:"calendar_id,omitempty"`
+	CalendarName     string    `json:"calendar_name,omitempty"`
+	Ongoing          bool      `json:"ongoing,omitempty"`
+	AllDay           bool      `json:"all_day,omitempty"`
+	Cancelled        bool      `json:"cancelled,omitempty"`
+	Recurring        bool      `json:"recurring,omitempty"`
+	RecurrenceID     string    `json:"recurrence_id,omitempty"`
+	StartTime        time.Time `json:"-"`
+	EndTime          time.Time `json:"-"`
+	Detail           string    `json:"-"`
+	Fields           []string  `json:"-"`
 }
 
 // MarshalJSON renders meetings compactly by default; detail=full keeps the verbose shape.
@@ -248,73 +250,77 @@ func (m Meeting) MarshalJSON() ([]byte, error) {
 	}
 	if strings.EqualFold(m.Detail, "full") {
 		type fullMeeting struct {
-			Day             string `json:"day"`
-			Date            string `json:"date"`
-			EndDate         string `json:"end_date"`
-			Start           string `json:"start"`
-			End             string `json:"end"`
-			Timezone        string `json:"timezone"`
-			DurationMinutes int    `json:"duration_minutes"`
-			Name            string `json:"name"`
-			Description     string `json:"description"`
-			MeetingURL      string `json:"meeting_url,omitempty"`
-			MeetingURLType  string `json:"meeting_url_type,omitempty"`
-			CalendarID      string `json:"calendar_id"`
-			CalendarName    string `json:"calendar_name"`
-			Ongoing         bool   `json:"ongoing"`
-			AllDay          bool   `json:"all_day"`
-			Cancelled       bool   `json:"cancelled"`
-			Recurring       bool   `json:"recurring"`
-			RecurrenceID    string `json:"recurrence_id,omitempty"`
+			Day              string `json:"day"`
+			Date             string `json:"date"`
+			EndDate          string `json:"end_date"`
+			Start            string `json:"start"`
+			End              string `json:"end"`
+			Timezone         string `json:"timezone"`
+			DurationMinutes  int    `json:"duration_minutes"`
+			Name             string `json:"name"`
+			Description      string `json:"description"`
+			MeetingURL       string `json:"meeting_url,omitempty"`
+			MeetingURLType   string `json:"meeting_url_type,omitempty"`
+			AttendanceStatus string `json:"attendance_status,omitempty"`
+			CalendarID       string `json:"calendar_id"`
+			CalendarName     string `json:"calendar_name"`
+			Ongoing          bool   `json:"ongoing"`
+			AllDay           bool   `json:"all_day"`
+			Cancelled        bool   `json:"cancelled"`
+			Recurring        bool   `json:"recurring"`
+			RecurrenceID     string `json:"recurrence_id,omitempty"`
 		}
 		return json.Marshal(fullMeeting{
-			Day:             m.Day,
-			Date:            m.Date,
-			EndDate:         m.EndDate,
-			Start:           m.Start,
-			End:             m.End,
-			Timezone:        m.Timezone,
-			DurationMinutes: m.DurationMinutes,
-			Name:            m.Name,
-			Description:     m.Description,
-			MeetingURL:      m.MeetingURL,
-			MeetingURLType:  m.MeetingURLType,
-			CalendarID:      m.CalendarID,
-			CalendarName:    m.CalendarName,
-			Ongoing:         m.Ongoing,
-			AllDay:          m.AllDay,
-			Cancelled:       m.Cancelled,
-			Recurring:       m.Recurring,
-			RecurrenceID:    m.RecurrenceID,
+			Day:              m.Day,
+			Date:             m.Date,
+			EndDate:          m.EndDate,
+			Start:            m.Start,
+			End:              m.End,
+			Timezone:         m.Timezone,
+			DurationMinutes:  m.DurationMinutes,
+			Name:             m.Name,
+			Description:      m.Description,
+			MeetingURL:       m.MeetingURL,
+			MeetingURLType:   m.MeetingURLType,
+			AttendanceStatus: m.AttendanceStatus,
+			CalendarID:       m.CalendarID,
+			CalendarName:     m.CalendarName,
+			Ongoing:          m.Ongoing,
+			AllDay:           m.AllDay,
+			Cancelled:        m.Cancelled,
+			Recurring:        m.Recurring,
+			RecurrenceID:     m.RecurrenceID,
 		})
 	}
 	type compactMeeting struct {
-		When            string `json:"when"`
-		Title           string `json:"title"`
-		Calendar        string `json:"calendar,omitempty"`
-		Duration        string `json:"duration"`
-		DurationMinutes int    `json:"duration_minutes"`
-		Ongoing         bool   `json:"ongoing"`
-		AllDay          bool   `json:"all_day"`
-		Cancelled       bool   `json:"cancelled"`
-		Recurring       bool   `json:"recurring"`
-		MeetingURL      string `json:"meeting_url,omitempty"`
-		MeetingURLType  string `json:"meeting_url_type,omitempty"`
-		Description     string `json:"description,omitempty"`
+		When             string `json:"when"`
+		Title            string `json:"title"`
+		Calendar         string `json:"calendar,omitempty"`
+		Duration         string `json:"duration"`
+		DurationMinutes  int    `json:"duration_minutes"`
+		Ongoing          bool   `json:"ongoing"`
+		AllDay           bool   `json:"all_day"`
+		Cancelled        bool   `json:"cancelled"`
+		Recurring        bool   `json:"recurring"`
+		MeetingURL       string `json:"meeting_url,omitempty"`
+		MeetingURLType   string `json:"meeting_url_type,omitempty"`
+		AttendanceStatus string `json:"attendance_status,omitempty"`
+		Description      string `json:"description,omitempty"`
 	}
 	return json.Marshal(compactMeeting{
-		When:            compactWhen(m),
-		Title:           m.Name,
-		Calendar:        m.CalendarName,
-		Duration:        durationText(m.DurationMinutes),
-		DurationMinutes: m.DurationMinutes,
-		Ongoing:         m.Ongoing,
-		AllDay:          m.AllDay,
-		Cancelled:       m.Cancelled,
-		Recurring:       m.Recurring,
-		MeetingURL:      m.MeetingURL,
-		MeetingURLType:  m.MeetingURLType,
-		Description:     m.Description,
+		When:             compactWhen(m),
+		Title:            m.Name,
+		Calendar:         m.CalendarName,
+		Duration:         durationText(m.DurationMinutes),
+		DurationMinutes:  m.DurationMinutes,
+		Ongoing:          m.Ongoing,
+		AllDay:           m.AllDay,
+		Cancelled:        m.Cancelled,
+		Recurring:        m.Recurring,
+		MeetingURL:       m.MeetingURL,
+		MeetingURLType:   m.MeetingURLType,
+		AttendanceStatus: m.AttendanceStatus,
+		Description:      m.Description,
 	})
 }
 
@@ -409,6 +415,8 @@ func projectMeeting(m Meeting) (map[string]any, error) {
 			projected[field] = m.MeetingURL
 		case "meeting_url_type":
 			projected[field] = m.MeetingURLType
+		case "attendance_status":
+			projected[field] = m.AttendanceStatus
 		case "description":
 			projected[field] = m.Description
 		case "day":

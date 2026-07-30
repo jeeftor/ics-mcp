@@ -26,6 +26,14 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .event-card.timed-event span { line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .event-card.timed-event { z-index:2; }
 .event-card.timed-event strong { display:flex; align-items:center; gap:3px; min-width:0; height:100%; font-size:11px; }
+.event-attendance { display:inline-grid; flex:none; place-items:center; width:14px; height:14px; border-radius:50%; color:#fff; background:#4d8058; }
+.event-attendance.attendance-tentative { color:#765916; background:#f5d47b; }
+.event-attendance.attendance-declined { background:#b84d48; }
+.event-attendance.attendance-needs-action { color:#515b6e; background:#d9dfeb; }
+.event-status.attendance-accepted { color:#285b36; background:#e3f1e4; }
+.event-status.attendance-tentative { color:#725710; background:#fff2cb; }
+.event-status.attendance-declined { color:#943f3a; background:#fde4e1; }
+.event-status.attendance-needs-action { color:#47536a; background:#e9edf5; }
 .event-card.timed-event .event-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .event-card.timed-event.two-line-title strong { align-items:flex-start; line-height:1.2; }
 .event-card.timed-event.two-line-title .event-title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow:hidden; text-overflow:clip; }
