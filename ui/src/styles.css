@@ -62,5 +62,41 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .environment-table .environment-value { color:#554f46; }.environment-table .environment-value.sensitive { color:#897b6c; font-family:inherit; font-weight:700; }
 .environment-table tbody tr { transition:background-color .14s ease, box-shadow .14s ease; }.environment-table tbody tr:hover,.environment-table tbody tr:focus-within { background:#f4f8f2; box-shadow:inset 3px 0 #7ca380; }.environment-table tbody tr:focus-within { outline:2px solid #7ca380; outline-offset:-2px; }.environment-source { margin:0; text-transform:capitalize; }.environment-source[data-source="default"] { color:#53616d; background:#edf1f4; }.environment-source[data-source="database"] { color:#70417e; background:#f4eaf7; }.environment-source[data-source="environment"] { color:#356b42; background:#e3f0e2; }.environment-present,.environment-absent { font-size:11px; font-weight:750; }.environment-present { color:#356b42; }.environment-absent { color:#827a70; }.environment-actions { text-align:right; }.environment-actions .button { padding:6px 9px; font-size:11px; }.environment-no-action { color:#aaa297; }
 @media (max-width:700px) { .environment-settings { padding:18px; }.environment-intro { display:grid; gap:10px; }.environment-count { justify-self:start; }.environment-table-wrap { overflow:visible; border:0; border-radius:0; }.environment-table { min-width:0; border-collapse:separate; border-spacing:0 10px; }.environment-table thead { display:none; }.environment-table,.environment-table tbody,.environment-table tr,.environment-table th,.environment-table td { display:block; width:100%; }.environment-table tr { overflow:hidden; border:1px solid #e5dfd5; border-radius:10px; background:#fffdfa; }.environment-table th,.environment-table td { display:grid; grid-template-columns:minmax(104px,.7fr) minmax(0,1.3fr); gap:10px; align-items:center; padding:8px 11px; border:0; text-align:left; }.environment-table th { padding-top:11px; }.environment-table td::before { content:attr(data-label); color:#81796e; font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }.environment-table th::before { content:attr(data-label); color:#81796e; font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }.environment-table code { overflow-wrap:anywhere; text-overflow:clip; white-space:normal; }.environment-actions { padding-bottom:11px !important; }.environment-actions .button { justify-self:start; }.environment-no-action { justify-self:start; } }
+
+/* Compact tag administration: each action has one clear home. */
+.tag-manager { grid-template-columns:minmax(300px, .8fr) minmax(420px, 1.2fr); align-items:start; }
+.tag-bank,.tag-drop-list { padding:20px; background:#fffdfa; }
+.tag-bank > header,.tag-drop-list > header { margin-bottom:15px; }
+.tag-bank h2,.tag-drop-list h2 { margin:4px 0 5px; color:#302c26; font-size:18px; }
+.tag-bank p,.tag-drop-list p { max-width:610px; margin:0; color:#7a7368; font-size:12px; line-height:1.45; }
+.tag-bank p strong { color:#4d473f; }
+.tag-bank form { margin:0 0 13px; }
+.tag-editor-list { display:grid; gap:7px; }
+.tag-editor-row { display:grid; grid-template-columns:16px auto minmax(0,1fr) auto auto; align-items:center; gap:9px; min-height:48px; padding:7px 8px; border:1px solid #e6e0d7; border-radius:9px; background:#fff; cursor:grab; }
+.tag-editor-row:focus-within,.tag-editor-row:hover { border-color:#b9d5bd; background:#f8fbf7; }
+.tag-drag-handle { color:#a39b90; font-size:17px; line-height:1; cursor:grab; }
+.tag-editor-name { display:grid; min-width:0; gap:2px; }
+.tag-editor-name strong { overflow:hidden; color:#403a32; font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.tag-editor-name span { color:#80786d; font-size:11px; }
+.tag-edit-button { border:0; padding:5px 6px; color:#376444; background:transparent; font-size:11px; font-weight:800; }
+.tag-edit-button:hover { color:#244a30; text-decoration:underline; }
+.order-buttons { display:flex; gap:2px; }
+.order-buttons button { width:25px; height:25px; border:1px solid #ddd8ce; border-radius:6px; color:#655e54; background:#fffdfa; font-size:14px; line-height:1; }
+.order-buttons button:disabled { opacity:.35; }
+.tag-drop-list { display:grid; gap:8px; }
+.tag-drop-list > header { margin-bottom:2px; }
+.tag-drop-target { grid-template-columns:auto minmax(0,1fr) auto; min-height:0; gap:10px; padding:10px 11px; border-style:solid; background:#fff; }
+.tag-drop-target:hover,.tag-drop-target:focus-within { border-color:#b9d5bd; background:#f8fbf7; }
+.tag-drop-main { display:grid; min-width:0; gap:6px; }
+.tag-drop-main > strong { margin:0 !important; color:#403a32; font-size:13px !important; }
+.tag-list { display:flex; flex-wrap:wrap; gap:5px; }
+.tag-chip.tag-order { display:inline-flex; align-items:center; gap:3px; min-height:25px; padding:3px 4px 3px 7px; color:#41664a; background:#edf5eb; font-size:11px; font-weight:750; }
+.tag-chip.tag-order button { width:18px; height:18px; border:0; border-radius:4px; padding:0; color:#52725a; background:#e2eee1; font-size:11px; line-height:1; }
+.tag-chip.tag-order button:hover { background:#cedfcd; }
+.tag-chip.tag-order button:disabled { opacity:.35; }
+.tag-assign-control select { min-width:104px; border:1px solid #d9d4ca; border-radius:7px; padding:6px 25px 6px 8px; color:#4c584d; background:#fffdfa; font-size:11px; font-weight:750; }
+.tag-assignment-complete { color:#8c857a; font-size:11px; white-space:nowrap; }
+@media (max-width:980px) { .tag-manager { grid-template-columns:1fr; }.tag-drop-list { order:2; } }
+@media (max-width:560px) { .tag-bank,.tag-drop-list { padding:14px; }.tag-editor-row { grid-template-columns:14px auto minmax(0,1fr) auto; }.tag-editor-row .order-buttons { grid-column:3 / -1; justify-self:end; }.tag-drop-target { grid-template-columns:auto minmax(0,1fr); }.tag-assign-control,.tag-assignment-complete { grid-column:2; justify-self:start; } }
 @media (max-width:1100px) { .week-card { overflow:hidden; }.week-header,.week-grid { min-width:0; } }
 @media (max-width:700px) { .planner-scroll { max-height:66vh; }.week-header,.week-grid { min-width:700px; }.all-day-grid { min-width:700px; } }
