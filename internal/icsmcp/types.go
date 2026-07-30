@@ -116,6 +116,16 @@ type RuntimeConfig struct {
 	Sources         map[string]string `json:"sources"`
 }
 
+// EnvironmentVariable is a safe view of one recognized ICS MCP environment setting.
+// Sensitive values are never returned; their value only reports whether one is configured.
+type EnvironmentVariable struct {
+	Name      string `json:"name"`
+	Value     string `json:"value"`
+	Present   bool   `json:"present"`
+	Source    string `json:"source"`
+	Sensitive bool   `json:"sensitive"`
+}
+
 // UpdateRuntimeConfigInput updates persisted runtime settings.
 type UpdateRuntimeConfigInput struct {
 	RefreshInterval *string `json:"refresh_interval,omitempty"`

@@ -1,5 +1,11 @@
 import { Meeting } from './api';
 
+/** Filters a fetched planner range using only the calendars visible in the UI. */
+export function meetingsForVisibleCalendars(meetings: Meeting[], visibleIDs: string[]): Meeting[] {
+  const visible = new Set(visibleIDs);
+  return meetings.filter((meeting) => !meeting.calendar_id || visible.has(meeting.calendar_id));
+}
+
 export type TimedPlacement = {
   meeting: Meeting;
   top: number;
