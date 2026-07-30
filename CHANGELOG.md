@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.9 - 2026-07-30
+
+- Let tall planner event cards show more title and contextual detail while retaining compact short-event cards.
+
 ## v2.2.8 - 2026-07-30
 
 - Add distinct RSVP-status cues to planner event edges while retaining calendar identity colors.
