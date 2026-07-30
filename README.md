@@ -305,6 +305,8 @@ gh secret set TELEGRAM_TO --repo $(gh repo view --json nameWithOwner -q .nameWit
 - `TELEGRAM_TOKEN` — the bot token from [@BotFather](https://t.me/BotFather).
 - `TELEGRAM_TO` — your channel ID, either `@yourchannel` or a private-channel ID such as `-1001234567890`.
 
+Add the bot to the destination channel before publishing. If the workflow reports `Bad Request: chat not found`, verify that `TELEGRAM_TO` is the channel's exact `@name` or numeric ID and that the bot is a member (and an administrator when your channel requires it). A Telegram delivery failure is non-blocking: release artifacts and notes still publish normally.
+
 ## Development
 
 ```bash
