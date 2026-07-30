@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.4 - 2026-07-30
+
+- Show concise, truthful Insight request activity while testing or running an inquiry, including Lemonade readiness only where supported.
+
 ## v2.6.3 - 2026-07-30
 
 - Add redacted LLM lifecycle logs with action, phase, duration, and safe event counts; simplify routine calendar refresh logs for human reading.
