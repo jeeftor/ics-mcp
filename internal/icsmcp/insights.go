@@ -278,7 +278,7 @@ func (s *Service) DiscoverLLMModels(ctx context.Context, in LLMConnectionInput) 
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("discover LLM models: %w", err)
+		return nil, safeLLMTransportError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -379,7 +379,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("test LLM model: %w", err)
+		return safeLLMTransportError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -723,7 +723,7 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return Insight{}, fmt.Errorf("call LLM: %w", err)
+		return Insight{}, safeLLMTransportError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -776,6 +776,15 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, err
 	}
 	return s.GetInsight(ctx, in.Name)
+}
+
+// safeLLMTransportError keeps connection failures actionable without exposing
+// a private endpoint, bearer token, question, or calendar data.
+func safeLLMTransportError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(strings.ToLower(err.Error()), "client.timeout exceeded while awaiting headers") {
+		return errors.New("LLM server did not respond before the request timed out; no response headers were received. Check that the server is running and reachable from ICS MCP, then test the server connection again.")
+	}
+	return errors.New("LLM server could not be reached; no response headers were received. Check that the server address is reachable from ICS MCP, then test the server connection again.")
 }
 
 // llmChatCompletionsURL accepts either an OpenAI-compatible API base such as
