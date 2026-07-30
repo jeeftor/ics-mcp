@@ -533,7 +533,7 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
+		if r.URL.Path != "/" && !isAdminSPARoute(r.URL.Path) {
 			assetPath := strings.TrimPrefix(r.URL.Path, "/")
 			if strings.HasPrefix(assetPath, "assets/") && fs.ValidPath(assetPath) {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -550,6 +550,17 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		http.ServeFileFS(w, r, webFiles, "web/dist/index.html")
 	})
 	return authMiddleware(mux, options.BearerToken)
+}
+
+// isAdminSPARoute reserves addressable console tabs before legacy calendar
+// shortcuts get a chance to interpret their first path segment as a calendar.
+func isAdminSPARoute(path string) bool {
+	switch path {
+	case "/config", "/config/runtime", "/config/environment", "/config/calendars", "/config/tags", "/config/llm", "/api", "/api/mcp-tools", "/api/meeting-preview", "/api/rest-explorer", "/api/openapi":
+		return true
+	default:
+		return false
+	}
 }
 
 func handleCalendarCustomIcon(w http.ResponseWriter, r *http.Request, svc *Service, id string) {

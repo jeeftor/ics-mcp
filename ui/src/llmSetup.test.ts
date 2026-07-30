@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, shouldReplaceLLMEndpoint } from './App';
+import { inquiryHistoryEndpoint, inquiryOutputEndpoint, inquiryPreviewInput, llmConnectionError, llmPreset, llmProfileFormValues, shouldReplaceLLMEndpoint } from './App';
 
 describe('LLM setup flow', () => {
   it('only replaces an empty or prior preset default server URL', () => {
@@ -10,11 +10,25 @@ describe('LLM setup flow', () => {
 
   it('explains why a localhost Ollama default can fail', () => {
     expect(llmConnectionError(new Error('Get "http://localhost:11434/api/tags": dial tcp [::1]:11434: connect: connection refused')))
-      .toContain('machine running ICS MCP');
+      .toContain('LLM configuration or reachability problem');
+  });
+
+  it('labels safe no-header timeouts as configuration or reachability failures', () => {
+    const message = llmConnectionError(new Error(JSON.stringify({ error: 'LLM server did not respond before the request timed out; no response headers were received. Check that the server is running and reachable from ICS MCP, then test the server connection again.' })));
+    expect(message).toContain('LLM configuration or reachability problem');
+    expect(message).not.toContain('192.168.1.91');
+  });
+
+  it('labels malformed LLM output as a model answer failure', () => {
+    expect(llmConnectionError(new Error(JSON.stringify({ error: 'LLM answer must be JSON.' })))).toContain('Model answer problem');
   });
 
   it('uses a safe generic example for OpenAI-compatible servers', () => {
     expect(llmPreset('openai').example).toBe('https://llm.example.test/v1');
+  });
+
+  it('keeps the LLM page renderable when a stored profile omits editable fields', () => {
+    expect(llmProfileFormValues({ enabled: false })).toEqual({ enabled: false, backend: 'openai', endpoint: '', model: '' });
   });
 
   it('exposes encoded cache-only output and history URLs for saved inquiries', () => {

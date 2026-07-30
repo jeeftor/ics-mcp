@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -168,6 +169,20 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	}
 
 	_, _ = ctx, svc
+}
+
+func TestAdminSPARoutesAreReservedFromCalendarShortcuts(t *testing.T) {
+	for _, path := range []string{
+		"/config/runtime", "/config/environment", "/config/calendars", "/config/tags", "/config/llm",
+		"/api/mcp-tools", "/api/meeting-preview", "/api/rest-explorer", "/api/openapi",
+	} {
+		if !isAdminSPARoute(path) {
+			t.Errorf("isAdminSPARoute(%q) = false, want true", path)
+		}
+	}
+	if isAdminSPARoute("/team/1") {
+		t.Fatal("calendar meeting shortcut was reserved as an SPA route")
+	}
 }
 
 func TestCalendarCustomIconAPI(t *testing.T) {
@@ -758,6 +773,35 @@ func TestHTTPInsightPreviewUsesExplicitPostAndDoesNotCache(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("GET preview after POST status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHTTPLLMEndpointTestReturnsSafeTimeoutError(t *testing.T) {
+	const endpoint = "http://192.168.1.91:13305/v1"
+	const apiKey = "private-bearer-key"
+	svc := newTestService(t)
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("Get %q: context deadline exceeded (Client.Timeout exceeded while awaiting headers)", endpoint+"/models?key="+apiKey)
+	})}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/llm-profile/endpoint-test", "application/json", bytes.NewBufferString(`{"endpoint":"`+endpoint+`","api_key":"`+apiKey+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(body.Error, "no response headers were received") {
+		t.Fatalf("endpoint test response = status %d, error %q", resp.StatusCode, body.Error)
+	}
+	if strings.Contains(body.Error, endpoint) || strings.Contains(body.Error, apiKey) || strings.Contains(body.Error, "context deadline exceeded") {
+		t.Fatalf("endpoint test leaked private transport details: %q", body.Error)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -132,6 +133,40 @@ func TestLLMConnectionStagingUsesUnsavedValuesWithoutLeakingTheBearerKey(t *test
 	if strings.Contains(string(encoded), bearer) || profile.Endpoint != "" || profile.Model != "" {
 		t.Fatalf("staged test persisted or leaked secrets: %s", encoded)
 	}
+}
+
+func TestLLMTransportTimeoutsAreSafeAndActionable(t *testing.T) {
+	const endpoint = "http://192.168.1.91:13305/v1"
+	const apiKey = "private-bearer-key"
+	const question = "Private calendar question"
+	svc := newTestService(t)
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("Post %q: context deadline exceeded (Client.Timeout exceeded while awaiting headers)", endpoint+"/chat/completions?key="+apiKey)
+	})}
+
+	assertSafeTimeout := func(err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatal("LLM request error = nil, want timeout")
+		}
+		got := err.Error()
+		if !strings.Contains(got, "did not respond before the request timed out") || !strings.Contains(got, "no response headers were received") {
+			t.Fatalf("timeout error = %q, want actionable no-header message", got)
+		}
+		for _, privateValue := range []string{endpoint, apiKey, question, "context deadline exceeded"} {
+			if strings.Contains(got, privateValue) {
+				t.Fatalf("timeout error leaked %q: %q", privateValue, got)
+			}
+		}
+	}
+
+	assertSafeTimeout(svc.TestLLMEndpoint(context.Background(), LLMConnectionInput{Endpoint: endpoint, APIKey: apiKey}))
+	assertSafeTimeout(svc.TestLLMModel(context.Background(), LLMModelTestInput{LLMConnectionInput: LLMConnectionInput{Endpoint: endpoint, APIKey: apiKey}, Model: "test"}))
+	if _, err := svc.UpdateLLMProfile(context.Background(), UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: endpoint, Model: "test", APIKey: apiKey}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.PreviewInsight(context.Background(), RunInsightInput{Question: question})
+	assertSafeTimeout(err)
 }
 
 func TestOllamaProfileUsesTagsAndChatEndpoints(t *testing.T) {
