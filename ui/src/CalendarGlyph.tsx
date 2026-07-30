@@ -44,6 +44,6 @@ export function nextPaletteColor(existing: Iterable<string | undefined>, seed: s
 }
 
 /** Render an MDI icon, falling back safely to calendar for an unknown name. */
-export function CalendarGlyph({ icon = 'calendar', color, size = 18 }: { icon?: string; color: string; size?: number }) {
-  return <span className="calendar-glyph" style={{ '--calendar-color': color, width: size, height: size } as React.CSSProperties} aria-hidden="true"><svg viewBox="0 0 24 24"><path d={icons[iconKey(icon)] || icons.calendar}/></svg></span>;
+export function CalendarGlyph({ icon = 'calendar', customIconURL, color, size = 18 }: { icon?: string; customIconURL?: string; color: string; size?: number }) {
+  return <span className="calendar-glyph" style={{ '--calendar-color': color, width: size, height: size } as React.CSSProperties} aria-hidden="true">{customIconURL ? <img src={customIconURL} alt=""/> : <svg viewBox="0 0 24 24"><path d={icons[iconKey(icon)] || icons.calendar}/></svg>}</span>;
 }

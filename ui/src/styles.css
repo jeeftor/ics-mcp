@@ -111,3 +111,9 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .tag-chip { gap:3px; border-color:color-mix(in srgb, var(--tag-color, #4f8f72), white 64%); color:color-mix(in srgb, var(--tag-color, #4f8f72), #27332a 45%); background:color-mix(in srgb, var(--tag-color, #4f8f72), white 89%); }
 .tag-chip .tag-order { display:inline-flex; gap:3px; }
 .tag-chip .tag-order button { width:18px; height:18px; border:0; border-radius:4px; padding:0; color:currentColor; background:color-mix(in srgb, var(--tag-color, #4f8f72), white 78%); font-size:11px; line-height:1; }
+.calendar-glyph img { width:76%; height:76%; object-fit:contain; }
+.custom-icon-control { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px; border:1px solid #e5dfd5; border-radius:10px; background:#fcfbf8; }
+.custom-icon-control label { min-width:0; }
+.custom-icon-control label small { color:#7d766c; font-weight:600; line-height:1.35; }
+.custom-icon-control input[type=file] { max-width:100%; font-size:12px; }
+.custom-icon-control > small { grid-column:1/-1; }
