@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.4 - 2026-07-30
+
+- Fix the release workflow syntax so optional Telegram notifications do not prevent a release from starting.
+
 ## v2.2.3 - 2026-07-30
 
 - Add a safe optional Telegram announcement after a tagged release has published its notes and Docker artifacts.
