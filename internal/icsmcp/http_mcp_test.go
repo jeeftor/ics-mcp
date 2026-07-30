@@ -704,6 +704,63 @@ func TestHTTPInsightInquiryCRUD(t *testing.T) {
 	}
 }
 
+func TestHTTPInsightInquiryRepeatScheduleShape(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/insight-inquiries", "application/json", bytes.NewBufferString(`{"name":"frequent","question":"What changed?","trigger":"scheduled","schedule_mode":"repeat","repeat_interval":"15m"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["schedule_mode"]; !ok {
+		t.Fatalf("repeat inquiry omitted schedule_mode: %#v", raw)
+	}
+	if got := string(raw["repeat_interval"]); got != `"15m"` {
+		t.Fatalf("repeat_interval = %s, want 15m", got)
+	}
+}
+
+func TestHTTPInsightPreviewUsesExplicitPostAndDoesNotCache(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"answer\":\"Preview\",\"evidence\":[]}"}}]}`))
+	}))
+	defer provider.Close()
+	svc := newTestService(t)
+	if _, err := svc.UpdateLLMProfile(context.Background(), UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: provider.URL, Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/insights/preview")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET preview status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+	var preview Insight
+	doJSON(t, http.MethodPost, server.URL+"/api/insights/preview", map[string]any{"question": "What should I know?"}, &preview)
+	if preview.Answer != "Preview" {
+		t.Fatalf("preview = %#v", preview)
+	}
+	resp, err = http.Get(server.URL + "/api/insights/preview")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET preview after POST status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestHTTPCalendarMeetingShortcutsSelectOneMeeting(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

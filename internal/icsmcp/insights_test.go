@@ -27,6 +27,9 @@ func TestInsightInquiriesPersistScopeAndStarterTemplatesAreOptional(t *testing.T
 	if err != nil || !starter.Builtin || starter.Enabled {
 		t.Fatalf("daily briefing starter = %#v, %v", starter, err)
 	}
+	if _, err := svc.GetInsightInquiry(ctx, "weekly_outlook"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("weekly outlook should not be a starter inquiry: %v", err)
+	}
 	if err := svc.DeleteInsightInquiry(ctx, "daily_briefing"); err != nil {
 		t.Fatalf("DeleteInsightInquiry(starter) = %v", err)
 	}
@@ -281,5 +284,52 @@ func TestScheduledInsightRequiresDailyClockTime(t *testing.T) {
 	_, err := svc.SaveInsightInquiry(context.Background(), "bad", SaveInsightInquiryInput{Question: "Q", Trigger: InsightTriggerScheduled, Schedule: "24h"})
 	if err == nil || !strings.Contains(err.Error(), "HH:MM") {
 		t.Fatalf("SaveInsightInquiry invalid daily time error = %v", err)
+	}
+}
+
+func TestRepeatedInsightUsesValidatedInterval(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	item, err := svc.SaveInsightInquiry(ctx, "frequent", SaveInsightInquiryInput{Question: "What changed?", Trigger: InsightTriggerScheduled, ScheduleMode: InsightScheduleModeRepeat, RepeatInterval: "15m"})
+	if err != nil || item.ScheduleMode != InsightScheduleModeRepeat || item.RepeatInterval != "15m" || item.Schedule != "" {
+		t.Fatalf("SaveInsightInquiry repeat = %#v, %v", item, err)
+	}
+	now := time.Date(2026, time.July, 30, 10, 0, 0, 0, time.UTC)
+	if !svc.insightScheduledDue(item, now) {
+		t.Fatal("new repeated inquiry should be due")
+	}
+	item.LastRunAt = now.Add(-14 * time.Minute)
+	if svc.insightScheduledDue(item, now) {
+		t.Fatal("repeated inquiry became due early")
+	}
+	item.LastRunAt = now.Add(-15 * time.Minute)
+	if !svc.insightScheduledDue(item, now) {
+		t.Fatal("repeated inquiry was not due at its interval")
+	}
+	_, err = svc.SaveInsightInquiry(ctx, "bad-repeat", SaveInsightInquiryInput{Question: "Q", Trigger: InsightTriggerScheduled, ScheduleMode: InsightScheduleModeRepeat, RepeatInterval: "10s"})
+	if err == nil || !strings.Contains(err.Error(), "repeat interval") {
+		t.Fatalf("SaveInsightInquiry invalid repeat interval error = %v", err)
+	}
+}
+
+func TestPreviewInsightDoesNotPersistOutputOrHistory(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"answer\":\"Preview\",\"evidence\":[]}"}}]}`))
+	}))
+	defer provider.Close()
+	svc := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: provider.URL, Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"})
+	if err != nil || preview.Answer != "Preview" {
+		t.Fatalf("PreviewInsight = %#v, %v", preview, err)
+	}
+	if _, err := svc.GetInsight(ctx, "preview"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("preview cached an insight: %v", err)
+	}
+	if history, err := svc.ListPromptHistory(ctx, "preview", 10); !errors.Is(err, sql.ErrNoRows) || len(history) != 0 {
+		t.Fatalf("preview cached run history: %#v, %v", history, err)
 	}
 }
