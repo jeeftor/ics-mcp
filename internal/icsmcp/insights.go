@@ -462,17 +462,16 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 	return s.GetInsightInquiry(ctx, name)
 }
 
-// DeleteInsightInquiry removes a custom definition and its cached output. Built-ins remain available.
+// DeleteInsightInquiry removes an inquiry template or custom definition and its cached output.
 func (s *Service) DeleteInsightInquiry(ctx context.Context, name string) error {
-	inquiry, err := s.GetInsightInquiry(ctx, name)
+	result, err := s.store.db.ExecContext(ctx, `DELETE FROM insight_inquiries WHERE name = ?`, name)
 	if err != nil {
-		return err
-	}
-	if inquiry.Builtin {
-		return fmt.Errorf("built-in inquiry cannot be deleted")
-	}
-	if _, err := s.store.db.ExecContext(ctx, `DELETE FROM insight_inquiries WHERE name = ?`, name); err != nil {
 		return fmt.Errorf("delete insight inquiry: %w", err)
+	}
+	if count, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("check deleted insight inquiry: %w", err)
+	} else if count == 0 {
+		return sql.ErrNoRows
 	}
 	_, err = s.store.db.ExecContext(ctx, `DELETE FROM insights WHERE name = ?`, name)
 	if err != nil {

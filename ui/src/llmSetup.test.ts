@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { llmConnectionError, llmPreset, shouldReplaceLLMEndpoint } from './App';
+import { inquiryHistoryEndpoint, inquiryOutputEndpoint, llmConnectionError, llmPreset, shouldReplaceLLMEndpoint } from './App';
 
 describe('LLM setup flow', () => {
   it('only replaces an empty or prior preset default server URL', () => {
@@ -15,5 +15,10 @@ describe('LLM setup flow', () => {
 
   it('uses a safe generic example for OpenAI-compatible servers', () => {
     expect(llmPreset('openai').example).toBe('https://llm.example.test/v1');
+  });
+
+  it('exposes encoded cache-only output and history URLs for saved inquiries', () => {
+    expect(inquiryOutputEndpoint('school tomorrow')).toBe('/api/v1/prompts/school%20tomorrow/output');
+    expect(inquiryHistoryEndpoint('school tomorrow')).toBe('/api/v1/prompts/school%20tomorrow/history');
   });
 });
