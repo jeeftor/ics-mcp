@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.3 - 2026-07-30
+
+- Add a safe optional Telegram announcement after a tagged release has published its notes and Docker artifacts.
+- Restore per-day all-day overflow disclosure, today-anchored planner views, optional event-card times, and a visual refresh-interval picker.
+- Improve the REST/OpenAPI reference and make environment overrides readable on desktop and mobile without exposing secrets.
+- Add staged LLM provider setup with OpenAI-compatible, Ollama-compatible, and Lemonade presets; test endpoints, discover and select models, or enter a custom model before saving.
+
 ## v2.2.2 - 2026-07-30
 
 - Replace the overflowing MDI icon grid with a compact, scrollable autocomplete picker.
