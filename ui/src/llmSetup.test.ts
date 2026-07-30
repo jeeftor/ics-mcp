@@ -15,6 +15,5 @@ describe('LLM setup flow', () => {
 
   it('uses a safe generic example for OpenAI-compatible servers', () => {
     expect(llmPreset('openai').example).toBe('https://llm.example.test/v1');
-    expect(llmPreset('openai').example).not.toMatch(/192\.168\.|camspeak/i);
   });
 });
