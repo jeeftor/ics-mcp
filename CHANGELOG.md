@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.3.0 - 2026-07-30
+
+- Add non-persistent question previews for LLM inquiries, with result/evidence display before saving.
+- Add explicit daily-time and repeat-interval scheduling for inquiries while retaining manual and data-change policies.
+
 ## v2.2.14 - 2026-07-30
 
 - Clarify calendar icon inheritance, tighten calendar administration rows, and use success styling for saved configuration.
