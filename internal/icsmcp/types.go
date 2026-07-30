@@ -9,12 +9,13 @@ import (
 
 // Calendar is a configured ICS feed.
 type Calendar struct {
-	ID                      string `json:"id"`
-	Key                     string `json:"key"`
-	Name                    string `json:"name"`
-	URL                     string `json:"url"`
-	Enabled                 bool   `json:"enabled"`
-	IncludeInGeneralQueries bool   `json:"include_in_general_queries"`
+	ID                      string   `json:"id"`
+	Key                     string   `json:"key"`
+	Name                    string   `json:"name"`
+	URL                     string   `json:"url"`
+	Enabled                 bool     `json:"enabled"`
+	IncludeInGeneralQueries bool     `json:"include_in_general_queries"`
+	Tags                    []string `json:"tags"`
 }
 
 // CalendarStatus includes configuration plus refresh state.
@@ -58,17 +59,42 @@ type UpdateCheck struct {
 
 // AddCalendarInput creates or upserts a calendar.
 type AddCalendarInput struct {
-	Key  string `json:"key,omitempty"`
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	Key  string   `json:"key,omitempty"`
+	Name string   `json:"name"`
+	URL  string   `json:"url"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 // UpdateCalendarInput updates mutable calendar fields.
 type UpdateCalendarInput struct {
-	Name                    string `json:"name,omitempty"`
-	URL                     string `json:"url,omitempty"`
-	Enabled                 *bool  `json:"enabled,omitempty"`
-	IncludeInGeneralQueries *bool  `json:"include_in_general_queries,omitempty"`
+	Name                    string    `json:"name,omitempty"`
+	URL                     string    `json:"url,omitempty"`
+	Enabled                 *bool     `json:"enabled,omitempty"`
+	IncludeInGeneralQueries *bool     `json:"include_in_general_queries,omitempty"`
+	Tags                    *[]string `json:"tags,omitempty"`
+}
+
+// CalendarTag describes a tag available for calendar and meeting queries.
+type CalendarTag struct {
+	Name          string `json:"name"`
+	CalendarCount int    `json:"calendar_count"`
+}
+
+// RuntimeConfig exposes editable service settings and where each effective value came from.
+type RuntimeConfig struct {
+	RefreshInterval string            `json:"refresh_interval"`
+	Timezone        string            `json:"timezone"`
+	ExternalURL     string            `json:"external_url"`
+	UpdateCheck     bool              `json:"update_check"`
+	Sources         map[string]string `json:"sources"`
+}
+
+// UpdateRuntimeConfigInput updates persisted runtime settings.
+type UpdateRuntimeConfigInput struct {
+	RefreshInterval *string `json:"refresh_interval,omitempty"`
+	Timezone        *string `json:"timezone,omitempty"`
+	ExternalURL     *string `json:"external_url,omitempty"`
+	UpdateCheck     *bool   `json:"update_check,omitempty"`
 }
 
 // CalendarSelection stores the calendars used by default generalized event queries.
@@ -99,6 +125,7 @@ type UpcomingQuery struct {
 	Now                 time.Time `json:"-"`
 	Limit               int       `json:"limit,omitempty"`
 	CalendarIDs         []string  `json:"calendar_ids,omitempty"`
+	Tags                []string  `json:"tags,omitempty"`
 	LookaheadDays       int       `json:"lookahead_days,omitempty"`
 	Query               string    `json:"query,omitempty"`
 	Window              string    `json:"window,omitempty"`

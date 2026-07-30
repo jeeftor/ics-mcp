@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,8 @@ type ServiceOptions struct {
 	Timezone                  string
 	ExternalURL               string
 	DisableUpdateCheck        bool
+	UpdateCheck               *bool
+	RuntimeSettingSources     map[string]string
 	UpdateCheckURL            string
 	UpdateCheckInterval       time.Duration
 }
@@ -58,15 +61,15 @@ type Service struct {
 	updateMu                  sync.Mutex
 	updateCached              UpdateCheck
 	updateExpires             time.Time
+	configMu                  sync.RWMutex
+	configSources             map[string]string
+	configChanged             chan struct{}
 	clockMu                   sync.RWMutex
 	clock                     func() time.Time
 }
 
 // NewService constructs a calendar service.
 func NewService(store *Store, opts ServiceOptions) *Service {
-	if opts.RefreshInterval == 0 {
-		opts.RefreshInterval = 5 * time.Minute
-	}
 	if opts.Lookahead == 0 {
 		opts.Lookahead = 30 * 24 * time.Hour
 	}
@@ -85,6 +88,46 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 	if opts.UpdateCheckInterval == 0 {
 		opts.UpdateCheckInterval = time.Hour
 	}
+	sources := map[string]string{}
+	if opts.RefreshInterval == 0 {
+		if value, ok, err := store.runtimeSetting(context.Background(), "refresh_interval"); err == nil && ok {
+			if parsed, parseErr := time.ParseDuration(value); parseErr == nil && parsed > 0 {
+				opts.RefreshInterval = parsed
+				sources["refresh_interval"] = "database"
+			}
+		}
+	}
+	if opts.RefreshInterval == 0 {
+		opts.RefreshInterval = 5 * time.Minute
+	}
+	if opts.Timezone == "" {
+		if value, ok, err := store.runtimeSetting(context.Background(), "timezone"); err == nil && ok {
+			opts.Timezone = value
+			sources["timezone"] = "database"
+		}
+	}
+	if opts.ExternalURL == "" {
+		if value, ok, err := store.runtimeSetting(context.Background(), "external_url"); err == nil && ok {
+			opts.ExternalURL = value
+			sources["external_url"] = "database"
+		}
+	}
+	updateCheck := !opts.DisableUpdateCheck
+	if opts.UpdateCheck != nil {
+		updateCheck = *opts.UpdateCheck
+	} else if value, ok, err := store.runtimeSetting(context.Background(), "update_check"); err == nil && ok {
+		if parsed, parseErr := strconv.ParseBool(value); parseErr == nil {
+			updateCheck = parsed
+			sources["update_check"] = "database"
+		}
+	}
+	for _, key := range []string{"refresh_interval", "timezone", "external_url", "update_check"} {
+		if source := opts.RuntimeSettingSources[key]; source != "" {
+			sources[key] = source
+		} else if sources[key] == "" {
+			sources[key] = "default"
+		}
+	}
 	location, timezone := resolveLocation(opts.Timezone, opts.Logger)
 	return &Service{
 		store:                     store,
@@ -99,8 +142,10 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		timezone:                  timezone,
 		externalURL:               normalizeExternalURL(opts.ExternalURL),
 		updateCheckURL:            strings.TrimSpace(opts.UpdateCheckURL),
-		updateCheck:               !opts.DisableUpdateCheck,
+		updateCheck:               updateCheck,
 		updateInterval:            opts.UpdateCheckInterval,
+		configSources:             sources,
+		configChanged:             make(chan struct{}, 1),
 		clock:                     time.Now,
 	}
 }
@@ -219,6 +264,11 @@ func (s *Service) ListCalendarStatus(ctx context.Context) ([]CalendarStatus, err
 	return s.store.listCalendarStatus(ctx)
 }
 
+// ListTags returns available tags and their calendar counts.
+func (s *Service) ListTags(ctx context.Context) ([]CalendarTag, error) {
+	return s.store.listTags(ctx)
+}
+
 // UpdateCalendar updates a calendar by ID.
 func (s *Service) UpdateCalendar(ctx context.Context, id string, in UpdateCalendarInput) (Calendar, error) {
 	return s.store.updateCalendar(ctx, id, in)
@@ -285,7 +335,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	next := attempt.Add(s.refreshInterval)
 	state.NextRefresh = &next
 
-	req, err := s.calendarRequest(ctx, cal.URL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cal.URL, nil)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -320,7 +370,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "status", resp.StatusCode)
 		return err
 	}
-	body, err := s.readCalendarBody(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -412,6 +462,11 @@ func (s *Service) RunRefresher(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.RefreshDueCalendars(ctx)
+		case <-s.configChanged:
+			s.configMu.RLock()
+			interval := s.refreshInterval
+			s.configMu.RUnlock()
+			ticker.Reset(interval)
 		}
 	}
 }
@@ -425,7 +480,11 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 		return nil, err
 	}
 	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true, query.IncludeDisabled)
+	query, generalOnly, err := s.resolveQueryCalendars(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -502,6 +561,7 @@ func (s *Service) CalendarMeeting(ctx context.Context, in calendarMeetingInput) 
 	}
 	query := in.UpcomingQuery
 	query.CalendarIDs = []string{calendarID}
+	query.Tags = nil
 	if query.Limit < in.Index {
 		query.Limit = in.Index
 	}
@@ -551,7 +611,11 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 		return nil, err
 	}
 	query, until := s.applyQueryWindow(query, now, lookaheadDays, location)
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, true, query.IncludeDisabled)
+	query, generalOnly, err := s.resolveQueryCalendars(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -592,6 +656,19 @@ func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
 		lookaheadDays = 30
 	}
 	return now, lookaheadDays
+}
+
+func (s *Service) resolveQueryCalendars(ctx context.Context, query UpcomingQuery) (UpcomingQuery, bool, error) {
+	explicit := len(query.CalendarIDs) > 0 || len(query.Tags) > 0
+	if len(query.Tags) == 0 {
+		return query, !explicit, nil
+	}
+	byTag, err := s.store.calendarIDsByTags(ctx, query.Tags)
+	if err != nil {
+		return UpcomingQuery{}, false, err
+	}
+	query.CalendarIDs = uniqueCalendarIDs(append(query.CalendarIDs, byTag...))
+	return query, false, nil
 }
 
 func (s *Service) queryLocation(query UpcomingQuery) (*time.Location, string, error) {
@@ -811,6 +888,97 @@ func meetingDescription(description string, query UpcomingQuery) string {
 	return string(runes[:maxChars]) + "..."
 }
 
+// RuntimeConfig returns the effective editable service configuration.
+func (s *Service) RuntimeConfig() RuntimeConfig {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	sources := make(map[string]string, len(s.configSources))
+	for key, value := range s.configSources {
+		sources[key] = value
+	}
+	return RuntimeConfig{RefreshInterval: s.refreshInterval.String(), Timezone: s.timezone, ExternalURL: s.externalURL, UpdateCheck: s.updateCheck, Sources: sources}
+}
+
+// UpdateRuntimeConfig persists and immediately applies unlocked runtime settings.
+func (s *Service) UpdateRuntimeConfig(ctx context.Context, in UpdateRuntimeConfigInput) (RuntimeConfig, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	updates := []struct {
+		key   string
+		value string
+		apply func() error
+	}{}
+	if in.RefreshInterval != nil {
+		value := strings.TrimSpace(*in.RefreshInterval)
+		updates = append(updates, struct {
+			key, value string
+			apply      func() error
+		}{"refresh_interval", value, func() error {
+			parsed, err := time.ParseDuration(value)
+			if err != nil || parsed <= 0 {
+				return fmt.Errorf("refresh interval must be a positive duration")
+			}
+			s.refreshInterval = parsed
+			return nil
+		}})
+	}
+	if in.Timezone != nil {
+		value := strings.TrimSpace(*in.Timezone)
+		updates = append(updates, struct {
+			key, value string
+			apply      func() error
+		}{"timezone", value, func() error {
+			location, timezone := resolveLocation(value, s.logger)
+			if value != "" && timezone == "UTC" && !strings.EqualFold(value, "UTC") {
+				return fmt.Errorf("timezone %q is not recognized", value)
+			}
+			s.location, s.timezone = location, timezone
+			return nil
+		}})
+	}
+	if in.ExternalURL != nil {
+		value := normalizeExternalURL(*in.ExternalURL)
+		updates = append(updates, struct {
+			key, value string
+			apply      func() error
+		}{"external_url", value, func() error { s.externalURL = value; return nil }})
+	}
+	if in.UpdateCheck != nil {
+		value := strconv.FormatBool(*in.UpdateCheck)
+		updates = append(updates, struct {
+			key, value string
+			apply      func() error
+		}{"update_check", value, func() error { s.updateCheck = *in.UpdateCheck; s.updateExpires = time.Time{}; return nil }})
+	}
+	for _, update := range updates {
+		if source := s.configSources[update.key]; source == "environment" || source == "flag" {
+			return RuntimeConfig{}, fmt.Errorf("%s is overridden by %s", update.key, source)
+		}
+	}
+	for _, update := range updates {
+		if err := update.apply(); err != nil {
+			return RuntimeConfig{}, err
+		}
+		if err := s.store.setRuntimeSetting(ctx, update.key, update.value); err != nil {
+			return RuntimeConfig{}, err
+		}
+		s.configSources[update.key] = "database"
+	}
+	select {
+	case s.configChanged <- struct{}{}:
+	default:
+	}
+	return s.runtimeConfigLocked(), nil
+}
+
+func (s *Service) runtimeConfigLocked() RuntimeConfig {
+	sources := make(map[string]string, len(s.configSources))
+	for key, value := range s.configSources {
+		sources[key] = value
+	}
+	return RuntimeConfig{RefreshInterval: s.refreshInterval.String(), Timezone: s.timezone, ExternalURL: s.externalURL, UpdateCheck: s.updateCheck, Sources: sources}
+}
+
 // Status returns service state.
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	calendars, err := s.ListCalendarStatus(ctx)
@@ -921,7 +1089,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if strings.TrimSpace(in.URL) == "" {
 		return ValidateCalendarResult{OK: false, Error: "calendar URL is required"}, fmt.Errorf("calendar URL is required")
 	}
-	req, err := s.calendarRequest(ctx, strings.TrimSpace(in.URL))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(in.URL), nil)
 	if err != nil {
 		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
 	}
@@ -936,7 +1104,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 		result.Error = err.Error()
 		return result, err
 	}
-	body, err := s.readCalendarBody(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		result.Error = err.Error()
 		return result, err
@@ -1035,7 +1203,7 @@ func calendarFromInput(in AddCalendarInput) (Calendar, error) {
 	if name == "" {
 		name = strings.ReplaceAll(key, "_", " ")
 	}
-	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true, IncludeInGeneralQueries: true}, nil
+	return Calendar{ID: stableID(key), Key: key, Name: name, URL: strings.TrimSpace(in.URL), Enabled: true, IncludeInGeneralQueries: true, Tags: in.Tags}, nil
 }
 
 func normalizeKey(value string) string {

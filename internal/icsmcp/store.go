@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,6 +50,20 @@ func (s *Store) migrate(ctx context.Context) error {
 			updated_at TEXT NOT NULL
 		)`,
 		`ALTER TABLE calendars ADD COLUMN include_in_general_queries INTEGER NOT NULL DEFAULT 1`,
+		`CREATE TABLE IF NOT EXISTS tags (
+			name TEXT PRIMARY KEY,
+			normalized_name TEXT NOT NULL UNIQUE
+		)`,
+		`CREATE TABLE IF NOT EXISTS calendar_tags (
+			calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+			tag_name TEXT NOT NULL REFERENCES tags(name) ON DELETE CASCADE,
+			PRIMARY KEY (calendar_id, tag_name)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_calendar_tags_tag_name ON calendar_tags(tag_name)`,
+		`CREATE TABLE IF NOT EXISTS runtime_settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS refresh_state (
 			calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
 			last_attempt TEXT,
@@ -109,7 +124,10 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 		if err != nil {
 			return Calendar{}, fmt.Errorf("insert refresh state: %w", err)
 		}
-		return cal, nil
+		if err := s.replaceCalendarTags(ctx, cal.ID, cal.Tags); err != nil {
+			return Calendar{}, err
+		}
+		return s.calendarByID(ctx, cal.ID)
 	}
 
 	name := cal.Name
@@ -125,18 +143,28 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 	if err != nil {
 		return Calendar{}, fmt.Errorf("update calendar: %w", err)
 	}
-	existing.Name = name
-	existing.URL = cal.URL
-	existing.Enabled = enabled
-	return existing, nil
+	if cal.Tags != nil && !preserveName {
+		if err := s.replaceCalendarTags(ctx, existing.ID, cal.Tags); err != nil {
+			return Calendar{}, err
+		}
+	}
+	return s.calendarByID(ctx, existing.ID)
 }
 
 func (s *Store) calendarByKey(ctx context.Context, key string) (Calendar, error) {
-	return scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE key = ?`, key))
+	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE key = ?`, key))
+	if err != nil {
+		return Calendar{}, err
+	}
+	return s.withCalendarTags(ctx, cal)
 }
 
 func (s *Store) calendarByID(ctx context.Context, id string) (Calendar, error) {
-	return scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE id = ?`, id))
+	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE id = ?`, id))
+	if err != nil {
+		return Calendar{}, err
+	}
+	return s.withCalendarTags(ctx, cal)
 }
 
 func (s *Store) listCalendars(ctx context.Context) ([]Calendar, error) {
@@ -150,6 +178,10 @@ func (s *Store) listCalendars(ctx context.Context) ([]Calendar, error) {
 		cal, err := scanCalendar(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan calendar: %w", err)
+		}
+		cal, err = s.withCalendarTags(ctx, cal)
+		if err != nil {
+			return nil, err
 		}
 		calendars = append(calendars, cal)
 	}
@@ -178,7 +210,12 @@ func (s *Store) updateCalendar(ctx context.Context, id string, in UpdateCalendar
 	if err != nil {
 		return Calendar{}, fmt.Errorf("update calendar: %w", err)
 	}
-	return cal, nil
+	if in.Tags != nil {
+		if err := s.replaceCalendarTags(ctx, id, *in.Tags); err != nil {
+			return Calendar{}, err
+		}
+	}
+	return s.calendarByID(ctx, id)
 }
 
 func (s *Store) setGeneralQueryCalendarIDs(ctx context.Context, calendarIDs []string) error {
@@ -241,6 +278,10 @@ func (s *Store) deleteCalendar(ctx context.Context, id string) error {
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM calendars WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("delete calendar: %w", err)
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM tags WHERE NOT EXISTS (SELECT 1 FROM calendar_tags WHERE calendar_tags.tag_name = tags.name)`)
+	if err != nil {
+		return fmt.Errorf("delete unused tags: %w", err)
 	}
 	return nil
 }
@@ -377,9 +418,146 @@ func (s *Store) listCalendarStatus(ctx context.Context) ([]CalendarStatus, error
 		status.ETag = etag.String
 		status.LastModified = lastModified.String
 		status.EventCount = int(eventCount.Int64)
+		status.Calendar, err = s.withCalendarTags(ctx, status.Calendar)
+		if err != nil {
+			return nil, err
+		}
 		statuses = append(statuses, status)
 	}
 	return statuses, rows.Err()
+}
+
+func (s *Store) withCalendarTags(ctx context.Context, cal Calendar) (Calendar, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT t.name FROM tags t JOIN calendar_tags ct ON ct.tag_name = t.name WHERE ct.calendar_id = ? ORDER BY t.normalized_name`, cal.ID)
+	if err != nil {
+		return Calendar{}, fmt.Errorf("list calendar tags: %w", err)
+	}
+	defer rows.Close()
+	cal.Tags = []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return Calendar{}, fmt.Errorf("scan calendar tag: %w", err)
+		}
+		cal.Tags = append(cal.Tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return Calendar{}, fmt.Errorf("iterate calendar tags: %w", err)
+	}
+	return cal, nil
+}
+
+func (s *Store) replaceCalendarTags(ctx context.Context, calendarID string, values []string) error {
+	tags := normalizeTags(values)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace calendar tags: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM calendar_tags WHERE calendar_id = ?`, calendarID); err != nil {
+		return fmt.Errorf("clear calendar tags: %w", err)
+	}
+	for _, tag := range tags {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tags (name, normalized_name) VALUES (?, ?) ON CONFLICT(normalized_name) DO NOTHING`, tag, strings.ToLower(tag)); err != nil {
+			return fmt.Errorf("insert tag: %w", err)
+		}
+		var storedName string
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM tags WHERE normalized_name = ?`, strings.ToLower(tag)).Scan(&storedName); err != nil {
+			return fmt.Errorf("load tag: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO calendar_tags (calendar_id, tag_name) VALUES (?, ?)`, calendarID, storedName); err != nil {
+			return fmt.Errorf("attach calendar tag: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE NOT EXISTS (SELECT 1 FROM calendar_tags WHERE calendar_tags.tag_name = tags.name)`); err != nil {
+		return fmt.Errorf("delete unused tags: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit calendar tags: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) listTags(ctx context.Context) ([]CalendarTag, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT t.name, COUNT(ct.calendar_id) FROM tags t LEFT JOIN calendar_tags ct ON ct.tag_name = t.name GROUP BY t.name, t.normalized_name ORDER BY t.normalized_name`)
+	if err != nil {
+		return nil, fmt.Errorf("list tags: %w", err)
+	}
+	defer rows.Close()
+	tags := []CalendarTag{}
+	for rows.Next() {
+		var tag CalendarTag
+		if err := rows.Scan(&tag.Name, &tag.CalendarCount); err != nil {
+			return nil, fmt.Errorf("scan tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
+func (s *Store) runtimeSetting(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM runtime_settings WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("load runtime setting: %w", err)
+	}
+	return value, true, nil
+}
+
+func (s *Store) setRuntimeSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO runtime_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	if err != nil {
+		return fmt.Errorf("save runtime setting: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) calendarIDsByTags(ctx context.Context, values []string) ([]string, error) {
+	tags := normalizeTags(values)
+	if len(tags) == 0 {
+		return []string{}, nil
+	}
+	args := make([]any, 0, len(tags))
+	for _, tag := range tags {
+		args = append(args, strings.ToLower(tag))
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT ct.calendar_id FROM calendar_tags ct JOIN tags t ON t.name = ct.tag_name WHERE t.normalized_name IN (`+placeholders(len(tags))+`) ORDER BY ct.calendar_id`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("find calendars by tags: %w", err)
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan tag calendar id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func normalizeTags(values []string) []string {
+	byName := map[string]string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, exists := byName[key]; !exists {
+			byName[key] = value
+		}
+	}
+	tags := make([]string, 0, len(byName))
+	for _, value := range byName {
+		tags = append(tags, value)
+	}
+	slices.SortFunc(tags, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return tags
 }
 
 type refreshState struct {

@@ -43,12 +43,12 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 	bodyText := string(body)
-	for _, want := range []string{"ICS MCP", "Info", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Compact default", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "Update", "update-label", "config-update", "renderUpdateCheck", "loadUpdateCheck", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
+	for _, want := range []string{"ICS MCP", "Dashboard", "Config", "REST", "Calendars", "Meetings", "MCP Tools", "MCP Server", "REST API", "Set Me Up", "HTTP Client Config", "Telegram Outputs", "telegram-quick-links", "telegram-today-agenda", "renderTelegramLinks", "api/free-busy", "Runtime Config", "Build", "Endpoint", "Internal", "External", "endpoint-rows", "Copy", "copyEndpoint", "rest-endpoint-picker", "rest-calendar", "rest-format", "tg-text", "tg-html", "tg-markdownv2", "rest-layout", "rest-fields", "rest-field-options", "rest-time-style", "rest-show-timezone", "rest-rendered-preview", "rest-raw-block", "copy-rest-telegram", "copyRESTTelegram", "renderRESTRenderedPreview", "renderMarkdownFragment", "applyRESTHelp", "csv", "summary", "status", "links", "custom", "Window preset", "Legacy day", "Legacy range", "show timezone", "rest-generated-internal", "rest-generated-external", "run-rest", "open-rest", "renderRESTPreview", "Preview Tool Args", "meeting-tool-picker", "meetingToolConfigs", "buildMeetingToolRequest", "meeting-fields", "meeting-field-picker", "meeting-field-options", "meeting-fields-summary", "Compact default", "Fields", "fields-control", "Advanced JSON", "meeting-tool-args", "run-meeting-preview", "upcoming_meetings_by_calendar/call", "today_meetings/call", "current_meetings/call", "Example URLs", "Next Meetings By Calendar", "meeting-groups", "calendar-meeting-group", "calendar-meeting-header", "meeting-table", "status-column", "time-column", "meta-column", "meeting-badge", "Join", "Ends", "Update", "update-label", "config-update", "renderUpdateCheck", "loadUpdateCheck", "General Queries", "include_in_general_queries", "Save Selection", "general-query-selection", "selectedGeneralCalendarIDs", "tool-name", "tool-description", "json-key", "json-node", "renderJSONNode", "formatMeetingDate", "formatMeetingTime", "formatDuration"} {
 		if !strings.Contains(bodyText, want) {
 			t.Fatalf("admin UI missing %q", want)
 		}
 	}
-	assertOrder(t, bodyText, `data-tab="info"`, `data-tab="calendars"`, `data-tab="meetings"`, `data-tab="tools"`, `data-tab="rest"`)
+	assertOrder(t, bodyText, `data-tab="info"`, `data-tab="calendars"`, `data-tab="config"`, `data-tab="meetings"`, `data-tab="tools"`, `data-tab="rest"`)
 
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sampleOneTimeICS()))
@@ -1982,6 +1982,49 @@ func newTestService(t *testing.T) *Service {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC", AllowPrivateCalendarHosts: true})
+}
+
+func TestTagsHTTPAndMCPContracts(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics", Tags: []string{"Work", "Shared"}})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	calendarJSON, err := json.Marshal(cal)
+	if err != nil {
+		t.Fatalf("Marshal(calendar) error = %v", err)
+	}
+	var calendarFields map[string]json.RawMessage
+	if err := json.Unmarshal(calendarJSON, &calendarFields); err != nil {
+		t.Fatalf("Unmarshal(calendar) error = %v", err)
+	}
+	if _, ok := calendarFields["tags"]; !ok {
+		t.Fatalf("calendar JSON omitted tags: %s", calendarJSON)
+	}
+
+	httpServer := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer httpServer.Close()
+	var tags []CalendarTag
+	doJSON(t, http.MethodGet, httpServer.URL+"/api/tags", nil, &tags)
+	if len(tags) != 2 || tags[0].Name != "Shared" || tags[1].Name != "Work" {
+		t.Fatalf("GET /api/tags = %#v", tags)
+	}
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatalf("Connect(/mcp) error = %v", err)
+	}
+	defer session.Close()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_tags", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("CallTool(list_tags) error = %v", err)
+	}
+	var output tagsOutput
+	decodeStructured(t, result.StructuredContent, &output)
+	if len(output.Tags) != 2 || output.Tags[0].Name != "Shared" || output.Tags[1].Name != "Work" {
+		t.Fatalf("list_tags structured output = %#v", output)
+	}
 }
 
 func doJSON(t *testing.T, method string, url string, in any, out any) {
