@@ -1049,25 +1049,64 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, fmt.Errorf("LLM returned %s", resp.Status)
 	}
 	phase = "response"
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return Insight{}, fmt.Errorf("read LLM response: %w", err)
+	}
 	var wire struct {
 		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
+			Index        int    `json:"index"`
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
+			Text string `json:"text"`
 		} `json:"choices"`
 		Message struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
+	if err := json.Unmarshal(rawBody, &wire); err != nil {
 		return Insight{}, fmt.Errorf("decode LLM response: %w", err)
 	}
 	content := wire.Message.Content
+	contentFrom := "message.content"
 	if len(wire.Choices) > 0 {
 		content = wire.Choices[0].Message.Content
+		contentFrom = "choices[0].message.content"
+	}
+	// Reasoning models (DeepSeek-R1, Qwen-QwQ, o1-style, some Lemonade models)
+	// populate message.reasoning_content and leave message.content empty/null.
+	// Fall back to reasoning_content so the Insight still completes.
+	if strings.TrimSpace(content) == "" {
+		if len(wire.Choices) > 0 && strings.TrimSpace(wire.Choices[0].Message.ReasoningContent) != "" {
+			content = wire.Choices[0].Message.ReasoningContent
+			contentFrom = "choices[0].message.reasoning_content"
+		} else if strings.TrimSpace(wire.Message.ReasoningContent) != "" {
+			content = wire.Message.ReasoningContent
+			contentFrom = "message.reasoning_content"
+		} else if len(wire.Choices) > 0 && strings.TrimSpace(wire.Choices[0].Text) != "" {
+			content = wire.Choices[0].Text
+			contentFrom = "choices[0].text"
+		}
 	}
 	if strings.TrimSpace(content) == "" {
-		return Insight{}, fmt.Errorf("LLM returned no answer")
+		finishReason := ""
+		if len(wire.Choices) > 0 {
+			finishReason = wire.Choices[0].FinishReason
+		}
+		s.logger.Warn("llm response had no answer content",
+			"action", action,
+			"backend", p.Backend,
+			"model", p.Model,
+			"status_code", resp.StatusCode,
+			"choices", len(wire.Choices),
+			"finish_reason", finishReason,
+			"content_field", contentFrom,
+			"response_bytes", len(rawBody))
+		return Insight{}, fmt.Errorf("LLM returned no answer (status %d, choices %d, finish_reason %q)", resp.StatusCode, len(wire.Choices), finishReason)
 	}
 	answer := struct {
 		Answer   string   `json:"answer"`

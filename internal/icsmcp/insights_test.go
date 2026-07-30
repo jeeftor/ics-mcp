@@ -680,3 +680,50 @@ func TestDoLLMRequestKeepsContextAliveWhileBodyIsRead(t *testing.T) {
 		t.Fatalf("PreviewInsight answer = %q, want OK", insight.Answer)
 	}
 }
+
+// TestInsightFallsBackToReasoningContent reproduces the "LLM returned no
+// answer" failure seen against reasoning models (DeepSeek-R1, Qwen-QwQ,
+// o1-style, some Lemonade models) that populate message.reasoning_content
+// while leaving message.content empty or null. The service must fall back to
+// reasoning_content so the Insight still completes.
+func TestInsightFallsBackToReasoningContent(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"","reasoning_content":"{\"answer\":\"From reasoning\",\"evidence\":[\"e1\"],\"caveat\":\"\"}"}}]}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "reasoning-model"}); err != nil {
+		t.Fatal(err)
+	}
+	insight, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"})
+	if err != nil {
+		t.Fatalf("PreviewInsight with reasoning_content failed: %v", err)
+	}
+	if insight.Answer != "From reasoning" {
+		t.Fatalf("PreviewInsight reasoning fallback answer = %q, want From reasoning", insight.Answer)
+	}
+}
+
+// TestInsightNoAnswerErrorReportsDiagnostics ensures the "no answer" failure
+// surfaces enough structural detail to diagnose the provider response without
+// leaking secrets or calendar data.
+func TestInsightNoAnswerErrorReportsDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{},"finish_reason":"length"}]}`))}, nil
+	})}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?"})
+	if err == nil {
+		t.Fatal("PreviewInsight error = nil, want no-answer diagnostic")
+	}
+	msg := err.Error()
+	for _, want := range []string{"200", "choices"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("no-answer error missing %q: %q", want, msg)
+		}
+	}
+}

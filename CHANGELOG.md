@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.8 - 2026-07-30
+
+- Fall back to message.reasoning_content (and choices[].text) when message.content is empty, so Insight runs complete against reasoning models (DeepSeek-R1, Qwen-QwQ, o1-style, some Lemonade models) that leave content empty/null.
+- Add structural diagnostics to the "LLM returned no answer" failure and a server log warning with status code, choices count, finish_reason, content field, and response size, so provider responses can be diagnosed without leaking secrets or calendar data.
+
 ## v2.6.7 - 2026-07-30
 
 - Fix LLM model discovery and Insight runs failing against real streaming servers with "decode LLM response: context canceled". The bounded LLM request context was canceled as soon as the request helper returned, before the caller finished reading the response body; it is now canceled when the body is closed. In-memory test bodies hid this, but deployed servers (e.g. Docker/dockarr) exposed it for every endpoint that reads a response body.
