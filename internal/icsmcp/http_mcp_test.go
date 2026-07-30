@@ -1984,6 +1984,49 @@ func newTestService(t *testing.T) *Service {
 	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC"})
 }
 
+func TestTagsHTTPAndMCPContracts(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics", Tags: []string{"Work", "Shared"}})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	calendarJSON, err := json.Marshal(cal)
+	if err != nil {
+		t.Fatalf("Marshal(calendar) error = %v", err)
+	}
+	var calendarFields map[string]json.RawMessage
+	if err := json.Unmarshal(calendarJSON, &calendarFields); err != nil {
+		t.Fatalf("Unmarshal(calendar) error = %v", err)
+	}
+	if _, ok := calendarFields["tags"]; !ok {
+		t.Fatalf("calendar JSON omitted tags: %s", calendarJSON)
+	}
+
+	httpServer := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer httpServer.Close()
+	var tags []CalendarTag
+	doJSON(t, http.MethodGet, httpServer.URL+"/api/tags", nil, &tags)
+	if len(tags) != 2 || tags[0].Name != "Shared" || tags[1].Name != "Work" {
+		t.Fatalf("GET /api/tags = %#v", tags)
+	}
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatalf("Connect(/mcp) error = %v", err)
+	}
+	defer session.Close()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_tags", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("CallTool(list_tags) error = %v", err)
+	}
+	var output tagsOutput
+	decodeStructured(t, result.StructuredContent, &output)
+	if len(output.Tags) != 2 || output.Tags[0].Name != "Shared" || output.Tags[1].Name != "Work" {
+		t.Fatalf("list_tags structured output = %#v", output)
+	}
+}
+
 func doJSON(t *testing.T, method string, url string, in any, out any) {
 	t.Helper()
 	var body *bytes.Reader

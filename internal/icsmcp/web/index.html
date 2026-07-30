@@ -171,6 +171,13 @@
       td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
       .calendar-meeting-header { display: block; }
     }
+    @media (min-width: 1440px) {
+      header { display: flex; align-items: end; justify-content: center; gap: 18px; padding: 0 24px; }
+      .topbar, .tabs { width: auto; margin: 0; padding-left: 0; padding-right: 0; }
+      .topbar { padding-top: 10px; padding-bottom: 10px; grid-template-columns: auto auto; }
+      .tabs { padding-bottom: 0; }
+      .tab { padding-top: 12px; padding-bottom: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -188,8 +195,9 @@
       </div>
     </div>
     <nav class="tabs" aria-label="Debug pages">
-      <button class="tab active" type="button" data-tab="info">Info</button>
+      <button class="tab active" type="button" data-tab="info">Dashboard</button>
       <button class="tab" type="button" data-tab="calendars">Calendars</button>
+      <button class="tab" type="button" data-tab="config">Config</button>
       <button class="tab" type="button" data-tab="meetings">Meetings</button>
       <button class="tab" type="button" data-tab="tools">MCP Tools</button>
       <button class="tab" type="button" data-tab="rest">REST</button>
@@ -199,7 +207,7 @@
   <main>
     <div id="panel-info" class="panel active">
       <section>
-        <h2>Debug Info</h2>
+        <h2>Calendar Dashboard</h2>
         <div class="grid">
           <div class="block metric">
             <span class="muted">Configured calendars</span>
@@ -422,6 +430,7 @@
         <form id="add-form">
           <input id="name" name="name" placeholder="Calendar name" required>
           <input id="url" name="url" placeholder="ICS URL" required>
+          <input id="tags" name="tags" placeholder="Tags, comma separated">
           <button class="primary" type="submit">Add Calendar</button>
         </form>
         <div class="selection-bar">
@@ -437,6 +446,7 @@
             <tr>
               <th>Name</th>
               <th>ID</th>
+              <th>Tags</th>
               <th>Enabled</th>
               <th>General Queries</th>
               <th>Refresh</th>
@@ -447,6 +457,14 @@
           </thead>
           <tbody id="calendars"></tbody>
         </table>
+      </section>
+    </div>
+
+    <div id="panel-config" class="panel">
+      <section>
+        <h2>Runtime Configuration</h2>
+        <p class="muted">Environment and explicitly supplied CLI values are shown for visibility but cannot be changed here.</p>
+        <div id="config-editor" class="grid"></div>
       </section>
     </div>
 
@@ -678,6 +696,7 @@
       renderRESTControls(calendars, status);
       renderTelegramLinks(status);
       renderCalendars(calendars);
+      renderConfig(await api('/api/config'));
       syncMeetingFieldsInput();
       syncMeetingArgsFromControls();
       await loadUpdateCheck();
@@ -736,7 +755,7 @@
 
     function renderCalendars(calendars) {
       if (calendars.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="muted">No calendars configured.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="muted">No calendars configured.</td></tr>';
         updateSelectedCalendarCount();
         return;
       }
@@ -745,6 +764,7 @@
         row.innerHTML = `
           <td data-label="Name"><input value="${escapeHTML(calendar.name)}" data-field="name"></td>
           <td data-label="ID" class="mono">${escapeHTML(calendar.id)}</td>
+          <td data-label="Tags"><input value="${escapeHTML((calendar.tags || []).join(', '))}" data-field="tags" placeholder="Work, Personal"></td>
           <td data-label="Enabled">${calendar.enabled ? 'Yes' : 'No'}</td>
           <td data-label="General Queries"><input type="checkbox" data-field="include_in_general_queries" data-calendar-id="${escapeHTML(calendar.id)}" ${calendar.include_in_general_queries ? 'checked' : ''}></td>
           <td data-label="Refresh"><span class="muted">Last:</span> ${fmt(calendar.last_success)}<br><span class="muted">Next:</span> ${fmt(calendar.next_refresh)}</td>
@@ -760,6 +780,7 @@
             method: 'PATCH',
             body: JSON.stringify({
               name: row.querySelector('[data-field="name"]').value,
+              tags: row.querySelector('[data-field="tags"]').value.split(',').map((tag) => tag.trim()).filter(Boolean),
               include_in_general_queries: row.querySelector('[data-field="include_in_general_queries"]').checked
             })
           });
@@ -777,6 +798,34 @@
         return row;
       }));
       updateSelectedCalendarCount();
+    }
+
+    function renderConfig(config) {
+      const editor = document.querySelector('#config-editor');
+      if (!editor) return;
+      const settings = [
+        ['refresh_interval', 'Refresh interval', config.refresh_interval, 'For example: 5m'],
+        ['timezone', 'Display timezone', config.timezone, 'For example: America/Denver'],
+        ['external_url', 'External URL', config.external_url, 'Optional public base URL'],
+        ['update_check', 'Check for updates', config.update_check, 'Allow GitHub release checks']
+      ];
+      editor.replaceChildren(...settings.map(([key, label, value, hint]) => {
+        const source = (config.sources || {})[key] || 'default';
+        const locked = source === 'environment' || source === 'flag';
+        const block = document.createElement('div');
+        block.className = 'block';
+        const input = key === 'update_check'
+          ? `<input type="checkbox" data-config="${key}" ${value ? 'checked' : ''} ${locked ? 'disabled' : ''}>`
+          : `<input data-config="${key}" value="${escapeHTML(String(value || ''))}" ${locked ? 'disabled' : ''}>`;
+        block.innerHTML = `<h3>${escapeHTML(label)}</h3><p class="muted">${escapeHTML(hint)} · Source: ${escapeHTML(source)}${locked ? ' (overridden)' : ''}</p>${input}<p><button class="primary" data-save-config="${key}" ${locked ? 'disabled' : ''}>Save</button></p>`;
+        block.querySelector('[data-save-config]').addEventListener('click', async () => {
+          const field = block.querySelector('[data-config]');
+          const body = key === 'update_check' ? { [key]: field.checked } : { [key]: field.value };
+          await api('/api/config', { method: 'PUT', body: JSON.stringify(body) });
+          await load();
+        });
+        return block;
+      }));
     }
 
     function selectedGeneralCalendarIDs() {
@@ -1493,7 +1542,7 @@
       event.preventDefault();
       await api('/api/calendars', {
         method: 'POST',
-        body: JSON.stringify({ name: form.name.value, url: form.url.value })
+        body: JSON.stringify({ name: form.name.value, url: form.url.value, tags: form.tags.value.split(',').map((tag) => tag.trim()).filter(Boolean) })
       });
       form.reset();
       await load();

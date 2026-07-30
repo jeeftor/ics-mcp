@@ -2981,6 +2981,89 @@ func TestUpcomingMeetingsFiltersByCalendarIDs(t *testing.T) {
 	}
 }
 
+func TestCalendarTagsFilterQueriesAndAreSerialized(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	work, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics", Tags: []string{"Work", "Shared"}})
+	if err != nil {
+		t.Fatalf("AddCalendar(work) error = %v", err)
+	}
+	personal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "personal", Name: "Personal", URL: "https://example.test/personal.ics", Tags: []string{"Personal", "shared"}})
+	if err != nil {
+		t.Fatalf("AddCalendar(personal) error = %v", err)
+	}
+	if !slices.Equal(work.Tags, []string{"Shared", "Work"}) {
+		t.Fatalf("work tags = %#v", work.Tags)
+	}
+	if err := svc.ReplaceEvents(ctx, work.ID, []EventInstance{{Name: "Work Planning", Start: now.Add(time.Hour), End: now.Add(2 * time.Hour)}}); err != nil {
+		t.Fatalf("ReplaceEvents(work) error = %v", err)
+	}
+	if err := svc.ReplaceEvents(ctx, personal.ID, []EventInstance{{Name: "Personal Errand", Start: now.Add(time.Hour), End: now.Add(2 * time.Hour)}}); err != nil {
+		t.Fatalf("ReplaceEvents(personal) error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Tags: []string{"WORK"}, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(tags) error = %v", err)
+	}
+	if got := eventNamesFromMeetings(meetings); !slices.Equal(got, []string{"Work Planning"}) {
+		t.Fatalf("tag filtered meetings = %#v", got)
+	}
+	meetings, err = svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, CalendarIDs: []string{work.ID}, Tags: []string{"personal"}, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings(union) error = %v", err)
+	}
+	if got := eventNamesFromMeetings(meetings); !slices.Equal(got, []string{"Work Planning", "Personal Errand"}) {
+		t.Fatalf("union filtered meetings = %#v", got)
+	}
+
+	data, err := json.Marshal(work)
+	if err != nil {
+		t.Fatalf("Marshal(calendar) error = %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal(calendar JSON) error = %v", err)
+	}
+	if _, ok := raw["tags"]; !ok {
+		t.Fatalf("calendar JSON missing tags: %s", data)
+	}
+}
+
+func TestRuntimeConfigPersistsAndReportsSources(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{})
+	interval := "2m"
+	timezone := "America/Denver"
+	enabled := false
+	config, err := svc.UpdateRuntimeConfig(ctx, UpdateRuntimeConfigInput{RefreshInterval: &interval, Timezone: &timezone, UpdateCheck: &enabled})
+	if err != nil {
+		t.Fatalf("UpdateRuntimeConfig() error = %v", err)
+	}
+	if config.RefreshInterval != "2m0s" || config.Timezone != "America/Denver" || config.UpdateCheck || config.Sources["timezone"] != "database" {
+		t.Fatalf("updated config = %#v", config)
+	}
+	restarted := NewService(store, ServiceOptions{})
+	got := restarted.RuntimeConfig()
+	if got.RefreshInterval != "2m0s" || got.Timezone != "America/Denver" || got.UpdateCheck || got.Sources["refresh_interval"] != "database" {
+		t.Fatalf("persisted config = %#v", got)
+	}
+}
+
+func eventNamesFromMeetings(meetings []Meeting) []string {
+	names := make([]string, 0, len(meetings))
+	for _, meeting := range meetings {
+		names = append(names, meeting.Name)
+	}
+	return names
+}
+
 func ptr[T any](value T) *T {
 	return &value
 }
