@@ -103,11 +103,26 @@ type PromptRun struct {
 
 // RunInsightInput explicitly requests an LLM call. Normal reads never do this.
 type RunInsightInput struct {
-	Name        string   `json:"name"`
-	Question    string   `json:"question"`
-	CalendarIDs []string `json:"calendar_ids,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	Name        string           `json:"name"`
+	Question    string           `json:"question"`
+	CalendarIDs []string         `json:"calendar_ids,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	DateScope   InsightDateScope `json:"date_scope,omitempty"`
+	StartDate   string           `json:"start_date,omitempty"`
+	EndDate     string           `json:"end_date,omitempty"`
 }
+
+// InsightDateScope bounds the calendar data supplied to an inquiry.
+type InsightDateScope string
+
+const (
+	InsightDateScopeAll       InsightDateScope = "all"
+	InsightDateScopeToday     InsightDateScope = "today"
+	InsightDateScopeTomorrow  InsightDateScope = "tomorrow"
+	InsightDateScopeThisWeek  InsightDateScope = "this_week"
+	InsightDateScopeNext7Days InsightDateScope = "next_7_days"
+	InsightDateScopeCustom    InsightDateScope = "custom"
+)
 
 // InsightTrigger controls when an enabled inquiry may invoke the model.
 // Manual is always explicit, OnChange runs only after its scoped event data
@@ -131,11 +146,14 @@ const (
 // InsightInquiry is a named, persisted request definition. Normal reads never
 // invoke a model regardless of its trigger.
 type InsightInquiry struct {
-	Name        string         `json:"name"`
-	Question    string         `json:"question"`
-	CalendarIDs []string       `json:"calendar_ids,omitempty"`
-	Tags        []string       `json:"tags,omitempty"`
-	Trigger     InsightTrigger `json:"trigger"`
+	Name        string           `json:"name"`
+	Question    string           `json:"question"`
+	CalendarIDs []string         `json:"calendar_ids,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	DateScope   InsightDateScope `json:"date_scope"`
+	StartDate   string           `json:"start_date,omitempty"`
+	EndDate     string           `json:"end_date,omitempty"`
+	Trigger     InsightTrigger   `json:"trigger"`
 	// ScheduleMode selects whether Schedule is a daily local time or a repeat
 	// interval. Empty values from older records mean daily.
 	ScheduleMode InsightScheduleMode `json:"schedule_mode,omitempty"`
@@ -155,6 +173,9 @@ type SaveInsightInquiryInput struct {
 	Question       string              `json:"question"`
 	CalendarIDs    []string            `json:"calendar_ids,omitempty"`
 	Tags           []string            `json:"tags,omitempty"`
+	DateScope      InsightDateScope    `json:"date_scope,omitempty"`
+	StartDate      string              `json:"start_date,omitempty"`
+	EndDate        string              `json:"end_date,omitempty"`
 	Trigger        InsightTrigger      `json:"trigger,omitempty"`
 	ScheduleMode   InsightScheduleMode `json:"schedule_mode,omitempty"`
 	Schedule       string              `json:"schedule,omitempty"`
@@ -390,7 +411,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 
 // ListInsightInquiries returns saved inquiry definitions, never invoking an LLM.
 func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list insight inquiries: %w", err)
 	}
@@ -400,7 +421,7 @@ func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, e
 		var item InsightInquiry
 		var calendars, tags, lastRun string
 		var enabled, builtin int
-		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.Trigger, &item.ScheduleMode, &item.Schedule, &item.RepeatInterval, &enabled, &builtin, &lastRun); err != nil {
+		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.DateScope, &item.StartDate, &item.EndDate, &item.Trigger, &item.ScheduleMode, &item.Schedule, &item.RepeatInterval, &enabled, &builtin, &lastRun); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(calendars), &item.CalendarIDs)
@@ -458,6 +479,18 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 	if in.Trigger == "" {
 		in.Trigger = InsightTriggerManual
 	}
+	if in.DateScope == "" && err == nil {
+		in.DateScope, in.StartDate, in.EndDate = existing.DateScope, existing.StartDate, existing.EndDate
+	}
+	if in.DateScope == "" {
+		in.DateScope = InsightDateScopeToday
+	}
+	if err := validateInsightDateScope(in.DateScope, in.StartDate, in.EndDate); err != nil {
+		return InsightInquiry{}, err
+	}
+	if in.DateScope != InsightDateScopeCustom {
+		in.StartDate, in.EndDate = "", ""
+	}
 	if !validInsightTrigger(in.Trigger) {
 		return InsightInquiry{}, fmt.Errorf("trigger must be manual, on_change, or scheduled")
 	}
@@ -487,7 +520,7 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, trigger=excluded.trigger, schedule_mode=excluded.schedule_mode, schedule=excluded.schedule, repeat_interval=excluded.repeat_interval, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.Trigger, in.ScheduleMode, in.Schedule, in.RepeatInterval, boolInt(enabled), boolInt(builtin))
+	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, date_scope=excluded.date_scope, start_date=excluded.start_date, end_date=excluded.end_date, trigger=excluded.trigger, schedule_mode=excluded.schedule_mode, schedule=excluded.schedule, repeat_interval=excluded.repeat_interval, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.DateScope, in.StartDate, in.EndDate, in.Trigger, in.ScheduleMode, in.Schedule, in.RepeatInterval, boolInt(enabled), boolInt(builtin))
 	if err != nil {
 		return InsightInquiry{}, fmt.Errorf("save insight inquiry: %w", err)
 	}
@@ -680,6 +713,7 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 			return Insight{}, fmt.Errorf("insight inquiry is disabled")
 		}
 		in.Question, in.CalendarIDs, in.Tags = inquiry.Question, inquiry.CalendarIDs, inquiry.Tags
+		in.DateScope, in.StartDate, in.EndDate = inquiry.DateScope, inquiry.StartDate, inquiry.EndDate
 	}
 	defer func() {
 		if persist && err != nil {
@@ -699,7 +733,12 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	// Calendar titles and times are sufficient grounding for this optional feature.
 	// Descriptions and links commonly contain more sensitive, untrusted text, so they
 	// are deliberately excluded from the model payload.
-	meetings, err := s.UpcomingMeetings(ctx, UpcomingQuery{CalendarIDs: in.CalendarIDs, Tags: in.Tags, Limit: 100, Detail: "full", IncludeDescription: false, IncludeDisabled: false})
+	after, before, err := s.insightDateRange(in.DateScope, in.StartDate, in.EndDate)
+	if err != nil {
+		return Insight{}, err
+	}
+	includeLinks := false
+	meetings, err := s.UpcomingMeetings(ctx, UpcomingQuery{CalendarIDs: in.CalendarIDs, Tags: in.Tags, Limit: 100, Detail: "full", After: after, Before: before, OverlapWindow: true, IncludeDescription: false, IncludeLinks: &includeLinks, IncludeDisabled: false})
 	if err != nil {
 		return Insight{}, err
 	}
@@ -776,6 +815,61 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		return Insight{}, err
 	}
 	return s.GetInsight(ctx, in.Name)
+}
+
+func validateInsightDateScope(scope InsightDateScope, startDate, endDate string) error {
+	switch scope {
+	case InsightDateScopeAll, InsightDateScopeToday, InsightDateScopeTomorrow, InsightDateScopeThisWeek, InsightDateScopeNext7Days:
+		return nil
+	case InsightDateScopeCustom:
+		start, err := time.Parse(time.DateOnly, startDate)
+		if err != nil {
+			return fmt.Errorf("custom date scope requires a valid start_date")
+		}
+		end, err := time.Parse(time.DateOnly, endDate)
+		if err != nil || end.Before(start) {
+			return fmt.Errorf("custom date scope requires an end_date on or after start_date")
+		}
+		if end.Sub(start) > 31*24*time.Hour {
+			return fmt.Errorf("custom date scope cannot exceed 32 calendar days")
+		}
+		return nil
+	default:
+		return fmt.Errorf("date scope must be all, today, tomorrow, this_week, next_7_days, or custom")
+	}
+}
+
+// insightDateRange returns an inclusive calendar-date range in the service timezone.
+// It executes before constructing the model request, keeping model grounding bounded.
+func (s *Service) insightDateRange(scope InsightDateScope, startDate, endDate string) (time.Time, time.Time, error) {
+	if scope == "" {
+		scope = InsightDateScopeToday
+	}
+	if err := validateInsightDateScope(scope, startDate, endDate); err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if scope == InsightDateScopeAll {
+		return time.Time{}, time.Time{}, nil
+	}
+	now := s.now().In(s.location)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, s.location)
+	switch scope {
+	case InsightDateScopeToday:
+		return start.UTC(), start.AddDate(0, 0, 1).UTC(), nil
+	case InsightDateScopeTomorrow:
+		start = start.AddDate(0, 0, 1)
+		return start.UTC(), start.AddDate(0, 0, 1).UTC(), nil
+	case InsightDateScopeThisWeek:
+		start = start.AddDate(0, 0, -int((start.Weekday()+6)%7))
+		return start.UTC(), start.AddDate(0, 0, 7).UTC(), nil
+	case InsightDateScopeNext7Days:
+		return start.UTC(), start.AddDate(0, 0, 7).UTC(), nil
+	case InsightDateScopeCustom:
+		customStart, _ := time.ParseInLocation(time.DateOnly, startDate, s.location)
+		customEnd, _ := time.ParseInLocation(time.DateOnly, endDate, s.location)
+		return customStart.UTC(), customEnd.AddDate(0, 0, 1).UTC(), nil
+	}
+	return time.Time{}, time.Time{}, fmt.Errorf("unsupported date scope")
 }
 
 // safeLLMTransportError keeps connection failures actionable without exposing
