@@ -293,6 +293,18 @@ Update `CHANGELOG.md` before tagging a release.
 Release builds inject version, commit, and build date into `icsmcp version`, `/api/status`, the MCP implementation metadata, and the debug UI.
 When the injected build date is an RFC3339 timestamp, status output and startup logs render it in the configured display timezone.
 
+### Telegram release notifications
+
+After a tagged release has published its GitHub release notes and multi-architecture Docker image, GitHub Actions can announce it to Telegram. This is optional: add these repository secrets to enable it:
+
+```bash
+gh secret set TELEGRAM_TOKEN --repo $(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh secret set TELEGRAM_TO --repo $(gh repo view --json nameWithOwner -q .nameWithOwner)
+```
+
+- `TELEGRAM_TOKEN` — the bot token from [@BotFather](https://t.me/BotFather).
+- `TELEGRAM_TO` — your channel ID, either `@yourchannel` or a private-channel ID such as `-1001234567890`.
+
 ## Development
 
 ```bash

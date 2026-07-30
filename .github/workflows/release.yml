@@ -242,3 +242,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${GITHUB_REF_NAME}" --notes-file dist/release-notes.md
+
+  notify-telegram:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release-notes
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+    steps:
+      - name: Send Telegram release notification
+        if: env.TELEGRAM_TO != '' && env.TELEGRAM_TOKEN != ''
+        uses: appleboy/telegram-action@v1.0.1
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          disable_web_page_preview: true
+          message: |
+            🚀 <b>ICS MCP ${{ github.ref_name }}</b>
+
+            <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}">Release notes</a> · <a href="https://github.com/jeeftor/ics-mcp/pkgs/container/ics-mcp">Docker image</a>
+
+      - name: Explain skipped Telegram notification
+        if: env.TELEGRAM_TO == '' || env.TELEGRAM_TOKEN == ''
+        run: echo "Telegram notification skipped: set TELEGRAM_TO and TELEGRAM_TOKEN repository secrets to enable it."
