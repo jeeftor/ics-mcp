@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.3 - 2026-07-30
+
+- Add redacted LLM lifecycle logs with action, phase, duration, and safe event counts; simplify routine calendar refresh logs for human reading.
+
 ## v2.6.2 - 2026-07-30
 
 - Make inquiry data selection explicit with a current-event-window summary and distinct Calendar selection and Tag selection labels.
