@@ -170,6 +170,92 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	_, _ = ctx, svc
 }
 
+func TestCalendarCustomIconAPI(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Name: "Icons", URL: "https://example.test/icons.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+	path := server.URL + "/api/calendars/" + cal.ID + "/custom-icon"
+
+	put := func(contentType string, data []byte) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPut, path, bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	unsafe := put("image/svg+xml", []byte(`<svg><script>alert(1)</script></svg>`))
+	if unsafe.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unsafe SVG status = %d", unsafe.StatusCode)
+	}
+	_ = unsafe.Body.Close()
+	wrongType := put("image/png", []byte("png"))
+	if wrongType.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("wrong MIME status = %d", wrongType.StatusCode)
+	}
+	_ = wrongType.Body.Close()
+	tooLarge := put("image/gif", append([]byte("GIF89a"), bytes.Repeat([]byte("x"), int(MaxCalendarCustomIconBytes))...))
+	if tooLarge.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized GIF status = %d", tooLarge.StatusCode)
+	}
+	_ = tooLarge.Body.Close()
+
+	validSVG := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1H0z"/></svg>`)
+	stored := put("image/svg+xml; charset=utf-8", validSVG)
+	if stored.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(stored.Body)
+		t.Fatalf("valid SVG status = %d body=%s", stored.StatusCode, body)
+	}
+	_ = stored.Body.Close()
+
+	var statuses []CalendarStatus
+	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &statuses)
+	if len(statuses) != 1 || statuses[0].CustomIconURL != "/api/calendars/"+cal.ID+"/custom-icon" {
+		t.Fatalf("calendar custom icon reference = %#v", statuses)
+	}
+	got, err := http.Get(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(got.Body)
+	_ = got.Body.Close()
+	if got.StatusCode != http.StatusOK || got.Header.Get("Content-Type") != "image/svg+xml" || got.Header.Get("X-Content-Type-Options") != "nosniff" || !bytes.Equal(body, validSVG) {
+		t.Fatalf("custom icon response status=%d type=%q nosniff=%q body=%q", got.StatusCode, got.Header.Get("Content-Type"), got.Header.Get("X-Content-Type-Options"), body)
+	}
+
+	deleted, err := http.NewRequest(http.MethodDelete, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedResp, err := http.DefaultClient.Do(deleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deletedResp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE custom icon status = %d", deletedResp.StatusCode)
+	}
+	_ = deletedResp.Body.Close()
+	missing, err := http.Get(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleted custom icon GET status = %d", missing.StatusCode)
+	}
+	_ = missing.Body.Close()
+}
+
 func TestEnvironmentEndpointRedactsSecrets(t *testing.T) {
 	t.Setenv("ICSMCP_TIMEZONE", "America/Denver")
 	t.Setenv("ICSMCP_AUTH_TOKEN", "do-not-return-this-token")

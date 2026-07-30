@@ -56,6 +56,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE calendars ADD COLUMN color TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE calendars ADD COLUMN icon TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE calendars ADD COLUMN refresh_interval TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS calendar_custom_icons (
+			calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+			content_type TEXT NOT NULL,
+			data BLOB NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS tags (
 			name TEXT PRIMARY KEY,
 			normalized_name TEXT NOT NULL UNIQUE,
@@ -171,6 +177,48 @@ func (s *Store) migrate(ctx context.Context) error {
 				continue
 			}
 			return fmt.Errorf("migrate sqlite: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) setCalendarCustomIcon(ctx context.Context, calendarID, contentType string, data []byte) error {
+	if _, err := s.calendarByID(ctx, calendarID); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO calendar_custom_icons (calendar_id, content_type, data, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(calendar_id) DO UPDATE SET content_type = excluded.content_type, data = excluded.data, updated_at = excluded.updated_at`,
+		calendarID, contentType, data, time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("save calendar custom icon: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) calendarCustomIcon(ctx context.Context, calendarID string) (string, []byte, error) {
+	var contentType string
+	var data []byte
+	err := s.db.QueryRowContext(ctx, `SELECT content_type, data FROM calendar_custom_icons WHERE calendar_id = ?`, calendarID).Scan(&contentType, &data)
+	if err != nil {
+		return "", nil, err
+	}
+	return contentType, data, nil
+}
+
+func (s *Store) hasCalendarCustomIcon(ctx context.Context, calendarID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM calendar_custom_icons WHERE calendar_id = ?)`, calendarID).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) clearCalendarCustomIcon(ctx context.Context, calendarID string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM calendar_custom_icons WHERE calendar_id = ?`, calendarID)
+	if err != nil {
+		return fmt.Errorf("delete calendar custom icon: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		if _, err := s.calendarByID(ctx, calendarID); err != nil {
+			return err
 		}
 	}
 	return nil
