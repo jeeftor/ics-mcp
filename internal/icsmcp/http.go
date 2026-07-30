@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 var errUnauthorized = errors.New("authentication required")
 
-//go:embed web/*
+//go:embed web/dist/*
 var webFiles embed.FS
 
 // NewHTTPHandler builds the combined admin/API/MCP HTTP handler.
@@ -285,13 +286,20 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
+			assetPath := strings.TrimPrefix(r.URL.Path, "/")
+			if strings.HasPrefix(assetPath, "assets/") && fs.ValidPath(assetPath) {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				http.ServeFileFS(w, r, webFiles, "web/dist/"+assetPath)
+				return
+			}
 			if handleCalendarMeetingShortcut(w, r, svc) {
 				return
 			}
 			http.NotFound(w, r)
 			return
 		}
-		http.ServeFileFS(w, r, webFiles, "web/index.html")
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFileFS(w, r, webFiles, "web/dist/index.html")
 	})
 	return authMiddleware(mux, options.BearerToken)
 }
