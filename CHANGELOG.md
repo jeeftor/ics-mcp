@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.11 - 2026-07-30
+
+- Detect and syntax-highlight HTML/XML responses in the insight output component. Tags, attribute names, attribute values, and comments are color-coded alongside the existing JSON highlighting; plain text still renders as-is.
+
 ## v2.6.10 - 2026-07-30
 
 - Render insight answers with the JSON output component so JSON answers are syntax-highlighted with pretty/compact toggle and copy button, while plain-text answers still display as-is. Both cached results and preview responses use the same formatter.
