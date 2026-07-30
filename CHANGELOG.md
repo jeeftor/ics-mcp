@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.6 - 2026-07-30
+
+- Treat Lemonade lifecycle controls as optional: a missing or incompatible lifecycle route no longer masquerades as a connectivity failure or blocks direct model tests and Insight runs.
+- Add redacted lifecycle failure categories to logs so server-route incompatibility can be diagnosed without exposing server URLs or calendar data.
+
 ## v2.6.5 - 2026-07-30
 
 - Give bounded Insight inference its own 120-second deadline while retaining short probe timeouts.
