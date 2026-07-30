@@ -467,6 +467,9 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 		"/api/config":                            {http.MethodGet, http.MethodPut},
 		"/api/update-check":                      {http.MethodGet},
 		"/api/llm-profile":                       {http.MethodGet, http.MethodPut},
+		"/api/llm-profile/test":                  {http.MethodPost},
+		"/api/insight-inquiries":                 {http.MethodGet, http.MethodPost},
+		"/api/insight-inquiries/{name}":          {http.MethodGet, http.MethodPut, http.MethodDelete},
 		"/api/insights":                          {http.MethodGet, http.MethodPost},
 		"/api/insights/{name}":                   {http.MethodGet},
 		"/api/rest/{tool_name}":                  {http.MethodGet, http.MethodPost},
@@ -507,6 +510,42 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 				t.Errorf("OpenAPI %q does not document %s", path, method)
 			}
 		}
+	}
+}
+
+func TestHTTPInsightInquiryCRUD(t *testing.T) {
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+	body := bytes.NewBufferString(`{"name":"school_today","question":"Do the kids have school today?","calendar_ids":["school"],"tags":["School"],"schedule":"24h"}`)
+	resp, err := http.Post(server.URL+"/api/insight-inquiries", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create inquiry status = %d", resp.StatusCode)
+	}
+	resp, err = http.Get(server.URL + "/api/insight-inquiries/school_today")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var inquiry InsightInquiry
+	if err := json.NewDecoder(resp.Body).Decode(&inquiry); err != nil || inquiry.Question == "" || inquiry.Schedule != "24h" {
+		t.Fatalf("read inquiry = %#v, %v", inquiry, err)
+	}
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/insight-inquiries/school_today", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete inquiry status = %d", resp.StatusCode)
 	}
 }
 

@@ -1,8 +1,10 @@
 export type Calendar = {
   id: string; key: string; name: string; url: string; color?: string; icon?: string; refresh_interval?: string; tags: string[]; enabled: boolean;
   include_in_general_queries: boolean; event_count: number; last_success?: string;
-  next_refresh?: string; last_error?: string;
+  last_attempt?: string; next_refresh?: string; last_error?: string;
 };
+
+export type FeedValidation = { ok: boolean; status_code?: number; event_count: number; meetings?: Meeting[]; error?: string };
 
 export type Status = {
   timezone: string; external_url?: string; calendars: Calendar[];
@@ -15,10 +17,16 @@ export type RuntimeConfig = {
 };
 
 export type Tag = { name: string; calendar_count: number; color?: string; icon?: string; refresh_interval?: string; position?: number };
-export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; meeting_url?: string };
+export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; timezone?: string; duration_minutes?: number; description?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; cancelled?: boolean; recurring?: boolean; meeting_url?: string };
 export type Tool = { name: string; description: string; category: string; read_only: boolean; destructive: boolean; default_arguments: Record<string, unknown> };
 export type ToolCallResponse = { tool: string; result: unknown };
 export type UpdateCheck = { enabled: boolean; current_version: string; latest_version?: string; outdated: boolean; release_url?: string; checked_at?: string; error?: string };
+/** A profile is always redacted: the browser never receives the bearer key. */
+export type LLMProfile = { enabled: boolean; endpoint: string; model: string; api_key_configured: boolean; source: string };
+export type LLMProfileInput = { enabled?: boolean; endpoint?: string; model?: string; api_key?: string };
+export type LLMTestResult = { ok: boolean; message?: string; model?: string; error?: string };
+export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; schedule?: string; enabled: boolean; builtin?: boolean };
+export type Insight = { name: string; question: string; answer?: string; evidence?: string[]; caveat?: string; source_hash?: string; source_at?: string; generated_at?: string; stale?: boolean; error?: string; calendar_ids?: string[]; tags?: string[]; schedule?: string };
 
 export function parseTags(value: string): string[] {
   return [...new Set(value.split(',').map((tag) => tag.trim()).filter(Boolean))];
@@ -59,10 +67,23 @@ export async function apiText(path: string, init: RequestInit = {}): Promise<{ t
 export const calendarAPI = {
   list: () => api<Calendar[]>('/api/calendars'),
   tags: () => api<Tag[]>('/api/tags'),
-  add: (body: { name: string; url: string; tags: string[]; color?: string; icon?: string }) => api<Calendar>('/api/calendars', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: Partial<Pick<Calendar, 'name' | 'tags' | 'color' | 'icon' | 'refresh_interval' | 'enabled' | 'include_in_general_queries'>> & { tag_order?: string[] }) => api<Calendar>(`/api/calendars/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  updateTag: (name: string, body: Partial<Pick<Tag, 'color' | 'icon' | 'refresh_interval' | 'position'>>) => api<Tag>(`/api/tags/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  add: (body: { name: string; url: string; tags: string[]; color?: string; icon?: string; refresh_interval?: string }) => api<Calendar>('/api/calendars', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<Pick<Calendar, 'name' | 'url' | 'tags' | 'color' | 'icon' | 'refresh_interval' | 'enabled' | 'include_in_general_queries'>> & { tag_order?: string[]; clear_icon?: boolean; clear_refresh_interval?: boolean }) => api<Calendar>(`/api/calendars/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateTag: (name: string, body: Partial<Pick<Tag, 'color' | 'icon' | 'refresh_interval' | 'position'>> & { clear_icon?: boolean; clear_refresh_interval?: boolean }) => api<Tag>(`/api/tags/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(body) }),
   remove: (id: string) => api<void>(`/api/calendars/${id}`, { method: 'DELETE' }),
   refresh: (id: string) => api<void>(`/api/calendars/${id}/refresh`, { method: 'POST' }),
-  refreshAll: () => api<unknown>('/api/rest/refresh_all_calendars', { method: 'POST', body: '{}' })
+  refreshAll: () => api<unknown>('/api/rest/refresh_all_calendars', { method: 'POST', body: '{}' }),
+  validate: (url: string) => api<FeedValidation>('/api/calendars/validate', { method: 'POST', body: JSON.stringify({ url }) }),
+  saveGeneralQuerySelection: (calendarIDs: string[]) => api<{ calendar_ids: string[] }>('/api/calendars/general-query-selection', { method: 'PUT', body: JSON.stringify({ calendar_ids: calendarIDs }) })
+};
+
+export const insightsAPI = {
+  profile: () => api<LLMProfile>('/api/llm-profile'),
+  saveProfile: (body: LLMProfileInput) => api<LLMProfile>('/api/llm-profile', { method: 'PUT', body: JSON.stringify(body) }),
+  testProfile: () => api<LLMTestResult>('/api/llm-profile/test', { method: 'POST', body: '{}' }),
+  list: () => api<Insight[]>('/api/insights'),
+  run: (body: { name: string; question?: string; calendar_ids?: string[]; tags?: string[] }) => api<Insight>('/api/insights', { method: 'POST', body: JSON.stringify(body) }),
+  inquiries: () => api<InsightInquiry[]>('/api/insight-inquiries'),
+  saveInquiry: (inquiry: InsightInquiry, create = false) => api<InsightInquiry>(create ? '/api/insight-inquiries' : `/api/insight-inquiries/${encodeURIComponent(inquiry.name)}`, { method: create ? 'POST' : 'PUT', body: JSON.stringify(inquiry) }),
+  deleteInquiry: (name: string) => api<void>(`/api/insight-inquiries/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };

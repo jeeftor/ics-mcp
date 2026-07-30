@@ -47,7 +47,6 @@ func ToolInfos() []ToolInfo {
 		{Name: "update_config", Description: "Persist and apply unlocked runtime configuration settings.", Category: "admin", InputExample: `{"refresh_interval":"5m","timezone":"America/Denver","external_url":"https://ics.example.test","update_check":true}`, DefaultArguments: map[string]any{}},
 		{Name: "list_insights", Description: "List cached LLM insights. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "get_insight", Description: "Read one cached LLM insight. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{"name":"daily_briefing"}`, DefaultArguments: map[string]any{}},
-		{Name: "run_insight", Description: "Explicitly generate and cache a grounded LLM insight. Requires the optional LLM profile to be enabled.", Category: "admin", InputExample: `{"name":"daily_briefing","question":"What should I know today?"}`, DefaultArguments: map[string]any{"name": "daily_briefing", "question": "What should I know today?"}},
 		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "validate_calendar", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
 		{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed","include_in_general_queries":true}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed", "include_in_general_queries": true}},
@@ -167,13 +166,6 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 			return ToolCallResponse{Tool: name, Result: Insight{}}, nil
 		}
 		insight, err := svc.GetInsight(ctx, in.Name)
-		return ToolCallResponse{Tool: name, Result: insight}, err
-	case "run_insight":
-		var in RunInsightInput
-		if err := decodeToolArgs(raw, &in); err != nil {
-			return ToolCallResponse{}, err
-		}
-		insight, err := svc.RunInsight(ctx, in)
 		return ToolCallResponse{Tool: name, Result: insight}, err
 	case "add_calendar":
 		var in AddCalendarInput

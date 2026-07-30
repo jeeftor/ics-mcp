@@ -131,6 +131,18 @@ func (s *Store) migrate(ctx context.Context) error {
 			generated_at TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS insight_inquiries (
+			name TEXT PRIMARY KEY,
+			question TEXT NOT NULL,
+			calendar_ids_json TEXT NOT NULL DEFAULT '[]',
+			tags_json TEXT NOT NULL DEFAULT '[]',
+			schedule TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			builtin INTEGER NOT NULL DEFAULT 0,
+			last_run_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`INSERT OR IGNORE INTO insight_inquiries (name, question, builtin) VALUES ('daily_briefing', 'What should I know today?', 1)`,
+		`INSERT OR IGNORE INTO insight_inquiries (name, question, builtin) VALUES ('weekly_outlook', 'What should I know this week?', 1)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -250,8 +262,14 @@ func (s *Store) updateCalendar(ctx context.Context, id string, in UpdateCalendar
 	if in.Icon != "" {
 		cal.Icon = in.Icon
 	}
+	if in.ClearIcon {
+		cal.Icon = ""
+	}
 	if in.RefreshInterval != "" {
 		cal.RefreshInterval = in.RefreshInterval
+	}
+	if in.ClearRefreshInterval {
+		cal.RefreshInterval = ""
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE calendars SET name = ?, url = ?, color = ?, icon = ?, refresh_interval = ?, enabled = ?, include_in_general_queries = ?, updated_at = ? WHERE id = ?`,
 		cal.Name, cal.URL, cal.Color, cal.Icon, cal.RefreshInterval, boolInt(cal.Enabled), boolInt(cal.IncludeInGeneralQueries), time.Now().UTC().Format(time.RFC3339Nano), id)
@@ -634,11 +652,17 @@ func (s *Store) updateTag(ctx context.Context, name string, in UpdateCalendarTag
 	if in.Icon != "" {
 		tag.Icon = strings.TrimSpace(in.Icon)
 	}
+	if in.ClearIcon {
+		tag.Icon = ""
+	}
 	if in.RefreshInterval != "" {
 		if _, err := time.ParseDuration(in.RefreshInterval); err != nil {
 			return CalendarTag{}, fmt.Errorf("parse tag refresh interval: %w", err)
 		}
 		tag.RefreshInterval = in.RefreshInterval
+	}
+	if in.ClearRefreshInterval {
+		tag.RefreshInterval = ""
 	}
 	if in.Position != nil {
 		if *in.Position < 0 {
