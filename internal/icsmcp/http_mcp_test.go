@@ -62,17 +62,19 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		Key:  "team",
 		Name: "Team",
 		URL:  feed.URL,
+		Color: "#5b7cfa",
+		Icon:  "briefcase",
 	}, &add)
 
 	var list []CalendarStatus
 	doJSON(t, http.MethodGet, server.URL+"/api/calendars", nil, &list)
-	if len(list) != 1 || list[0].Name != "Team" {
+	if len(list) != 1 || list[0].Name != "Team" || list[0].Color != "#5b7cfa" || list[0].Icon != "briefcase" {
 		t.Fatalf("calendar list = %#v", list)
 	}
 
 	var renamed Calendar
-	doJSON(t, http.MethodPatch, server.URL+"/api/calendars/"+add.ID, UpdateCalendarInput{Name: "Renamed"}, &renamed)
-	if renamed.Name != "Renamed" {
+	doJSON(t, http.MethodPatch, server.URL+"/api/calendars/"+add.ID, UpdateCalendarInput{Name: "Renamed", Color: "#f08a5d", Icon: "school"}, &renamed)
+	if renamed.Name != "Renamed" || renamed.Color != "#f08a5d" || renamed.Icon != "school" {
 		t.Fatalf("renamed calendar = %#v", renamed)
 	}
 

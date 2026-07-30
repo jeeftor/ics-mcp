@@ -100,6 +100,8 @@ type updateInput struct {
 	Enabled                 *bool     `json:"enabled,omitempty"`
 	IncludeInGeneralQueries *bool     `json:"include_in_general_queries,omitempty"`
 	Tags                    *[]string `json:"tags,omitempty"`
+	Color                   string    `json:"color,omitempty"`
+	Icon                    string    `json:"icon,omitempty"`
 }
 
 // NewMCPServer registers calendar tools on the official Go MCP SDK server.
@@ -195,7 +197,7 @@ func NewMCPServer(svc *Service) *mcp.Server {
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, calendarOutput, error) {
-			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries, Tags: in.Tags})
+			cal, err := svc.UpdateCalendar(ctx, in.ID, UpdateCalendarInput{Name: in.Name, URL: in.URL, Enabled: in.Enabled, IncludeInGeneralQueries: in.IncludeInGeneralQueries, Tags: in.Tags, Color: in.Color, Icon: in.Icon})
 			return nil, calendarOutput{Calendar: cal}, err
 		})
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_calendar", Description: "Remove a calendar and its cached events."},

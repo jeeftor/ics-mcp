@@ -44,12 +44,16 @@ func (s *Store) migrate(ctx context.Context) error {
 			key TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
 			url TEXT NOT NULL,
+			color TEXT NOT NULL DEFAULT '',
+			icon TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			include_in_general_queries INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
 		`ALTER TABLE calendars ADD COLUMN include_in_general_queries INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE calendars ADD COLUMN color TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE calendars ADD COLUMN icon TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS tags (
 			name TEXT PRIMARY KEY,
 			normalized_name TEXT NOT NULL UNIQUE
@@ -115,8 +119,8 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 		return Calendar{}, err
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		_, err = s.db.ExecContext(ctx, `INSERT INTO calendars (id, key, name, url, enabled, include_in_general_queries, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			cal.ID, cal.Key, cal.Name, cal.URL, boolInt(cal.Enabled), boolInt(cal.IncludeInGeneralQueries), now, now)
+		_, err = s.db.ExecContext(ctx, `INSERT INTO calendars (id, key, name, url, color, icon, enabled, include_in_general_queries, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			cal.ID, cal.Key, cal.Name, cal.URL, cal.Color, cal.Icon, boolInt(cal.Enabled), boolInt(cal.IncludeInGeneralQueries), now, now)
 		if err != nil {
 			return Calendar{}, fmt.Errorf("insert calendar: %w", err)
 		}
@@ -138,8 +142,12 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 	if !enabled {
 		enabled = existing.Enabled
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE calendars SET name = ?, url = ?, enabled = ?, include_in_general_queries = ?, updated_at = ? WHERE id = ?`,
-		name, cal.URL, boolInt(enabled), boolInt(existing.IncludeInGeneralQueries), now, existing.ID)
+	color, icon := cal.Color, cal.Icon
+	if preserveName {
+		color, icon = existing.Color, existing.Icon
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE calendars SET name = ?, url = ?, color = ?, icon = ?, enabled = ?, include_in_general_queries = ?, updated_at = ? WHERE id = ?`,
+		name, cal.URL, color, icon, boolInt(enabled), boolInt(existing.IncludeInGeneralQueries), now, existing.ID)
 	if err != nil {
 		return Calendar{}, fmt.Errorf("update calendar: %w", err)
 	}
@@ -152,7 +160,7 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 }
 
 func (s *Store) calendarByKey(ctx context.Context, key string) (Calendar, error) {
-	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE key = ?`, key))
+	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, color, icon, enabled, include_in_general_queries FROM calendars WHERE key = ?`, key))
 	if err != nil {
 		return Calendar{}, err
 	}
@@ -160,7 +168,7 @@ func (s *Store) calendarByKey(ctx context.Context, key string) (Calendar, error)
 }
 
 func (s *Store) calendarByID(ctx context.Context, id string) (Calendar, error) {
-	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars WHERE id = ?`, id))
+	cal, err := scanCalendar(s.db.QueryRowContext(ctx, `SELECT id, key, name, url, color, icon, enabled, include_in_general_queries FROM calendars WHERE id = ?`, id))
 	if err != nil {
 		return Calendar{}, err
 	}
@@ -168,7 +176,7 @@ func (s *Store) calendarByID(ctx context.Context, id string) (Calendar, error) {
 }
 
 func (s *Store) listCalendars(ctx context.Context) ([]Calendar, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, key, name, url, enabled, include_in_general_queries FROM calendars ORDER BY name, key`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, key, name, url, color, icon, enabled, include_in_general_queries FROM calendars ORDER BY name, key`)
 	if err != nil {
 		return nil, fmt.Errorf("list calendars: %w", err)
 	}
@@ -205,8 +213,14 @@ func (s *Store) updateCalendar(ctx context.Context, id string, in UpdateCalendar
 	if in.IncludeInGeneralQueries != nil {
 		cal.IncludeInGeneralQueries = *in.IncludeInGeneralQueries
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE calendars SET name = ?, url = ?, enabled = ?, include_in_general_queries = ?, updated_at = ? WHERE id = ?`,
-		cal.Name, cal.URL, boolInt(cal.Enabled), boolInt(cal.IncludeInGeneralQueries), time.Now().UTC().Format(time.RFC3339Nano), id)
+	if in.Color != "" {
+		cal.Color = in.Color
+	}
+	if in.Icon != "" {
+		cal.Icon = in.Icon
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE calendars SET name = ?, url = ?, color = ?, icon = ?, enabled = ?, include_in_general_queries = ?, updated_at = ? WHERE id = ?`,
+		cal.Name, cal.URL, cal.Color, cal.Icon, boolInt(cal.Enabled), boolInt(cal.IncludeInGeneralQueries), time.Now().UTC().Format(time.RFC3339Nano), id)
 	if err != nil {
 		return Calendar{}, fmt.Errorf("update calendar: %w", err)
 	}
@@ -391,7 +405,7 @@ func (s *Store) refreshState(ctx context.Context, calendarID string) (refreshSta
 }
 
 func (s *Store) listCalendarStatus(ctx context.Context) ([]CalendarStatus, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id, c.key, c.name, c.url, c.enabled, c.include_in_general_queries,
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id, c.key, c.name, c.url, c.color, c.icon, c.enabled, c.include_in_general_queries,
 		rs.last_attempt, rs.last_success, rs.last_error, rs.next_refresh, rs.etag, rs.last_modified, rs.event_count
 		FROM calendars c LEFT JOIN refresh_state rs ON rs.calendar_id = c.id
 		ORDER BY c.name, c.key`)
@@ -406,7 +420,7 @@ func (s *Store) listCalendarStatus(ctx context.Context) ([]CalendarStatus, error
 		var lastAttempt, lastSuccess, nextRefresh sql.NullString
 		var lastError, etag, lastModified sql.NullString
 		var eventCount sql.NullInt64
-		if err := rows.Scan(&status.ID, &status.Key, &status.Name, &status.URL, &enabled, &includeInGeneralQueries, &lastAttempt, &lastSuccess, &lastError, &nextRefresh, &etag, &lastModified, &eventCount); err != nil {
+		if err := rows.Scan(&status.ID, &status.Key, &status.Name, &status.URL, &status.Color, &status.Icon, &enabled, &includeInGeneralQueries, &lastAttempt, &lastSuccess, &lastError, &nextRefresh, &etag, &lastModified, &eventCount); err != nil {
 			return nil, fmt.Errorf("scan calendar status: %w", err)
 		}
 		status.Enabled = enabled != 0
@@ -577,7 +591,7 @@ type rowScanner interface {
 func scanCalendar(row rowScanner) (Calendar, error) {
 	var cal Calendar
 	var enabled, includeInGeneralQueries int
-	if err := row.Scan(&cal.ID, &cal.Key, &cal.Name, &cal.URL, &enabled, &includeInGeneralQueries); err != nil {
+	if err := row.Scan(&cal.ID, &cal.Key, &cal.Name, &cal.URL, &cal.Color, &cal.Icon, &enabled, &includeInGeneralQueries); err != nil {
 		return Calendar{}, err
 	}
 	cal.Enabled = enabled != 0
