@@ -16,10 +16,12 @@ export type TimedPlacement = {
 
 /**
  * Uses the card's actual vertical budget to decide whether a timed event can
- * safely show a second title line. Short meetings stay single-line so their
- * labels do not collide with adjacent events.
+ * safely show additional title lines. Short meetings stay single-line so their
+ * labels do not collide with adjacent events, while long meetings can use the
+ * otherwise empty vertical space.
  */
-export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 {
+export function timedEventTitleLines(height: number, showTime: boolean): 1 | 2 | 3 {
+  if (height >= (showTime ? 108 : 82)) return 3;
   return height >= (showTime ? 68 : 44) ? 2 : 1;
 }
 
