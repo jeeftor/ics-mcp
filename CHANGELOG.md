@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.1 - 2026-07-30
+
+- Add the ICS MCP SVG application mark, favicon, and header identity.
+- Clarify inquiry calendar-data-window choices so the amount of data sent to a model is explicit.
+
 ## v2.6.0 - 2026-07-30
 
 - Add Lemonade model readiness management: check loaded state, explicitly load the selected model, poll safely for readiness, then allow model testing and Insight execution.
