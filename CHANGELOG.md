@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.15 - 2026-07-30
+
+- Add data freshness age to the toolbar and a configurable 12-hour/24-hour calendar display preference.
+- Separate all-day events from the timed calendar grid and add a labeled time ruler with selectable Eastern, Mountain, and Pacific display zones.
+- Add Config → Tags drag-and-drop assignment, tag-group calendar visibility filters, a broader set of Material Design Icons, and more distinct automatic calendar colors.
+
 ## v2.0.14 - 2026-07-30
 
 - Replace the sparse meetings list with a week-based calendar workspace, event details, calendar legend, and date navigation.
