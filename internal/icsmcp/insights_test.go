@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestInsightInquiriesPersistScopeAndProtectBuiltins(t *testing.T) {
@@ -15,9 +17,9 @@ func TestInsightInquiriesPersistScopeAndProtectBuiltins(t *testing.T) {
 	ctx := context.Background()
 	enabled := false
 	got, err := svc.SaveInsightInquiry(ctx, "school_today", SaveInsightInquiryInput{
-		Question: "Do the kids have school today?", CalendarIDs: []string{"school"}, Tags: []string{"School"}, Schedule: "24h", Enabled: &enabled,
+		Question: "Do the kids have school today?", CalendarIDs: []string{"school"}, Tags: []string{"School"}, Trigger: InsightTriggerScheduled, Schedule: "06:00", Enabled: &enabled,
 	})
-	if err != nil || got.Enabled || got.Schedule != "24h" || len(got.CalendarIDs) != 1 || len(got.Tags) != 1 {
+	if err != nil || got.Enabled || got.Trigger != InsightTriggerScheduled || got.Schedule != "06:00" || len(got.CalendarIDs) != 1 || len(got.Tags) != 1 {
 		t.Fatalf("SaveInsightInquiry = %#v, %v", got, err)
 	}
 	if err := svc.DeleteInsightInquiry(ctx, "daily_briefing"); err == nil || !strings.Contains(err.Error(), "built-in") {
@@ -81,5 +83,71 @@ func TestRunInsightCachesStructuredAnswer(t *testing.T) {
 	cached, err := svc.GetInsight(ctx, "school")
 	if err != nil || cached.SourceHash == "" {
 		t.Fatalf("GetInsight = %#v, %v", cached, err)
+	}
+}
+
+func TestInsightTriggersUseLocalDailyTimeAndOnlyRerunOnChangedData(t *testing.T) {
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	ctx := context.Background()
+	_, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: provider.URL, Model: "test", APIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []struct {
+		name     string
+		trigger  InsightTrigger
+		schedule string
+	}{
+		{name: "manual", trigger: InsightTriggerManual},
+		{name: "daily", trigger: InsightTriggerScheduled, schedule: "06:00"},
+		{name: "changes", trigger: InsightTriggerOnChange},
+	} {
+		if _, err := svc.SaveInsightInquiry(ctx, input.name, SaveInsightInquiryInput{Question: "What changed?", Trigger: input.trigger, Schedule: input.schedule}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	now := time.Date(2026, time.July, 30, 5, 59, 0, 0, time.UTC)
+	svc.SetClock(func() time.Time { return now })
+	svc.RunDueInsights(ctx)
+	if got := calls.Load(); got != 1 { // on_change has no prior cached source.
+		t.Fatalf("calls before daily time = %d, want 1", got)
+	}
+	now = now.Add(time.Minute)
+	svc.RunDueInsights(ctx)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("calls at daily time = %d, want 2", got)
+	}
+	svc.RunDueInsights(ctx)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("unchanged data reran automatic insight: calls = %d", got)
+	}
+	now = now.Add(24 * time.Hour)
+	svc.RunDueInsights(ctx)
+	if got := calls.Load(); got != 3 {
+		t.Fatalf("daily insight did not run on next local day: calls = %d", got)
+	}
+	if _, err := svc.store.db.ExecContext(ctx, `UPDATE insights SET source_hash = 'old' WHERE name = 'changes'`); err != nil {
+		t.Fatal(err)
+	}
+	svc.RunDueInsights(ctx)
+	if got := calls.Load(); got != 4 {
+		t.Fatalf("changed scoped source did not rerun: calls = %d", got)
+	}
+}
+
+func TestScheduledInsightRequiresDailyClockTime(t *testing.T) {
+	svc := newTestService(t)
+	_, err := svc.SaveInsightInquiry(context.Background(), "bad", SaveInsightInquiryInput{Question: "Q", Trigger: InsightTriggerScheduled, Schedule: "24h"})
+	if err == nil || !strings.Contains(err.Error(), "HH:MM") {
+		t.Fatalf("SaveInsightInquiry invalid daily time error = %v", err)
 	}
 }

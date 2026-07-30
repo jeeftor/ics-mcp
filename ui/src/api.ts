@@ -15,6 +15,8 @@ export type RuntimeConfig = {
   refresh_interval: string; timezone: string; external_url: string;
   update_check: boolean; sources: Record<string, string>;
 };
+/** Environment values are safe to render; sensitive entries are always redacted by the server. */
+export type EnvironmentVariable = { name: string; value: string; present: boolean; source: string; sensitive: boolean };
 
 export type Tag = { name: string; calendar_count: number; color?: string; icon?: string; refresh_interval?: string; position?: number };
 export type Meeting = { name: string; title?: string; when?: string; date?: string; end_date?: string; start?: string; end?: string; timezone?: string; duration_minutes?: number; description?: string; calendar_id?: string; calendar_name?: string; calendar?: string; ongoing?: boolean; all_day?: boolean; cancelled?: boolean; recurring?: boolean; meeting_url?: string };
@@ -25,7 +27,8 @@ export type UpdateCheck = { enabled: boolean; current_version: string; latest_ve
 export type LLMProfile = { enabled: boolean; endpoint: string; model: string; api_key_configured: boolean; source: string };
 export type LLMProfileInput = { enabled?: boolean; endpoint?: string; model?: string; api_key?: string };
 export type LLMTestResult = { ok: boolean; message?: string; model?: string; error?: string };
-export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; schedule?: string; enabled: boolean; builtin?: boolean };
+export type InsightTrigger = 'manual' | 'on_change' | 'scheduled';
+export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; trigger: InsightTrigger; schedule?: string; enabled: boolean; builtin?: boolean };
 export type Insight = { name: string; question: string; answer?: string; evidence?: string[]; caveat?: string; source_hash?: string; source_at?: string; generated_at?: string; stale?: boolean; error?: string; calendar_ids?: string[]; tags?: string[]; schedule?: string };
 
 export function parseTags(value: string): string[] {

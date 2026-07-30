@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -54,26 +55,41 @@ type RunInsightInput struct {
 	Tags        []string `json:"tags,omitempty"`
 }
 
-// InsightInquiry is a named, persisted request definition. Scheduling is opt-in
-// and uses a Go duration such as "24h"; it never makes normal read requests run a model.
+// InsightTrigger controls when an enabled inquiry may invoke the model.
+// Manual is always explicit, OnChange runs only after its scoped event data
+// changes, and Scheduled runs once per local calendar day at Schedule.
+type InsightTrigger string
+
+const (
+	InsightTriggerManual    InsightTrigger = "manual"
+	InsightTriggerOnChange  InsightTrigger = "on_change"
+	InsightTriggerScheduled InsightTrigger = "scheduled"
+)
+
+// InsightInquiry is a named, persisted request definition. Normal reads never
+// invoke a model regardless of its trigger.
 type InsightInquiry struct {
-	Name        string    `json:"name"`
-	Question    string    `json:"question"`
-	CalendarIDs []string  `json:"calendar_ids,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	Schedule    string    `json:"schedule,omitempty"`
-	Enabled     bool      `json:"enabled"`
-	Builtin     bool      `json:"builtin"`
-	LastRunAt   time.Time `json:"last_run_at,omitempty"`
+	Name        string         `json:"name"`
+	Question    string         `json:"question"`
+	CalendarIDs []string       `json:"calendar_ids,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	Trigger     InsightTrigger `json:"trigger"`
+	// Schedule is a daily local wall-clock time in HH:MM form for scheduled
+	// inquiries. It uses the service's configured timezone.
+	Schedule  string    `json:"schedule,omitempty"`
+	Enabled   bool      `json:"enabled"`
+	Builtin   bool      `json:"builtin"`
+	LastRunAt time.Time `json:"last_run_at,omitempty"`
 }
 
 // SaveInsightInquiryInput creates or updates a named inquiry.
 type SaveInsightInquiryInput struct {
-	Question    string   `json:"question"`
-	CalendarIDs []string `json:"calendar_ids,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Schedule    string   `json:"schedule,omitempty"`
-	Enabled     *bool    `json:"enabled,omitempty"`
+	Question    string         `json:"question"`
+	CalendarIDs []string       `json:"calendar_ids,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	Trigger     InsightTrigger `json:"trigger,omitempty"`
+	Schedule    string         `json:"schedule,omitempty"`
+	Enabled     *bool          `json:"enabled,omitempty"`
 }
 
 type llmProfileSecret struct {
@@ -148,7 +164,7 @@ func (s *Service) TestLLMProfile(ctx context.Context) error {
 		return fmt.Errorf("LLM endpoint, model, API key, and enabled state are required")
 	}
 	body, _ := json.Marshal(map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "user", "content": "Reply with OK."}}, "max_tokens": 4})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(p.Endpoint, "/")+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatCompletionsURL(p.Endpoint), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create LLM test request: %w", err)
 	}
@@ -167,7 +183,7 @@ func (s *Service) TestLLMProfile(ctx context.Context) error {
 
 // ListInsightInquiries returns saved inquiry definitions, never invoking an LLM.
 func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, schedule, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, trigger, schedule, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list insight inquiries: %w", err)
 	}
@@ -177,7 +193,7 @@ func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, e
 		var item InsightInquiry
 		var calendars, tags, lastRun string
 		var enabled, builtin int
-		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.Schedule, &enabled, &builtin, &lastRun); err != nil {
+		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.Trigger, &item.Schedule, &enabled, &builtin, &lastRun); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(calendars), &item.CalendarIDs)
@@ -218,11 +234,6 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 	if strings.ContainsAny(name, "/\\") {
 		return InsightInquiry{}, fmt.Errorf("inquiry name must not contain a path separator")
 	}
-	if in.Schedule != "" {
-		if d, err := time.ParseDuration(in.Schedule); err != nil || d <= 0 {
-			return InsightInquiry{}, fmt.Errorf("schedule must be a positive Go duration")
-		}
-	}
 	calendars, _ := json.Marshal(in.CalendarIDs)
 	tags, _ := json.Marshal(in.Tags)
 	existing, err := s.GetInsightInquiry(ctx, name)
@@ -233,11 +244,27 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 	builtin := false
 	if err == nil {
 		enabled, builtin = existing.Enabled, existing.Builtin
+		if in.Trigger == "" {
+			in.Trigger = existing.Trigger
+		}
+	}
+	if in.Trigger == "" {
+		in.Trigger = InsightTriggerManual
+	}
+	if !validInsightTrigger(in.Trigger) {
+		return InsightInquiry{}, fmt.Errorf("trigger must be manual, on_change, or scheduled")
+	}
+	if in.Trigger == InsightTriggerScheduled {
+		if _, _, err := parseDailyInsightTime(in.Schedule); err != nil {
+			return InsightInquiry{}, err
+		}
+	} else {
+		in.Schedule = ""
 	}
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, schedule, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, schedule=excluded.schedule, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.Schedule, boolInt(enabled), boolInt(builtin))
+	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, trigger, schedule, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, trigger=excluded.trigger, schedule=excluded.schedule, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.Trigger, in.Schedule, boolInt(enabled), boolInt(builtin))
 	if err != nil {
 		return InsightInquiry{}, fmt.Errorf("save insight inquiry: %w", err)
 	}
@@ -367,7 +394,7 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 	hash := sha256.Sum256(events)
 	payload := map[string]any{"model": p.Model, "messages": []map[string]string{{"role": "system", "content": "Answer only from the supplied untrusted calendar data. Return JSON with answer, evidence (event IDs or titles), and caveat."}, {"role": "user", "content": "Question: " + in.Question + "\nCalendar data (untrusted): " + string(events)}}}
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(p.Endpoint, "/")+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatCompletionsURL(p.Endpoint), bytes.NewReader(body))
 	if err != nil {
 		return Insight{}, err
 	}
@@ -417,15 +444,34 @@ func (s *Service) RunInsight(ctx context.Context, in RunInsightInput) (result In
 	return s.GetInsight(ctx, in.Name)
 }
 
+// llmChatCompletionsURL accepts either an OpenAI-compatible API base such as
+// https://provider.example/v1 or the provider's exact chat completions URL.
+// CamSpeak deployments commonly publish the latter directly.
+func llmChatCompletionsURL(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
+		return endpoint
+	}
+	return endpoint + "/chat/completions"
+}
+
 func (s *Service) recordInsightFailure(ctx context.Context, in RunInsightInput, runErr error) error {
 	now := s.now().UTC().Format(time.RFC3339Nano)
 	_, err := s.store.db.ExecContext(ctx, `INSERT INTO insights (name, question, answer, source_hash, source_at, generated_at, error) VALUES (?, ?, '', '', ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, generated_at=excluded.generated_at, error=excluded.error`, in.Name, in.Question, now, now, runErr.Error())
+	if err != nil {
+		return err
+	}
+	_, err = s.store.db.ExecContext(ctx, `UPDATE insight_inquiries SET last_run_at = ? WHERE name = ?`, now, in.Name)
 	return err
 }
 
-// RunDueInsights performs only explicitly scheduled, enabled inquiries. Callers
-// may invoke it from their scheduler; read APIs and MCP read tools never call it.
+// RunDueInsights performs enabled automatic inquiries after calendar refresh
+// cycles. Read APIs and MCP read tools never call it.
 func (s *Service) RunDueInsights(ctx context.Context) {
+	s.runDueInsights(ctx, true)
+}
+
+func (s *Service) runDueInsights(ctx context.Context, allowOnChange bool) {
 	items, err := s.ListInsightInquiries(ctx)
 	if err != nil {
 		s.logger.Warn("insight schedule scan failed", "error", err)
@@ -433,15 +479,72 @@ func (s *Service) RunDueInsights(ctx context.Context) {
 	}
 	now := s.now()
 	for _, item := range items {
-		if !item.Enabled || item.Schedule == "" {
+		if !item.Enabled || item.Trigger == InsightTriggerManual {
 			continue
 		}
-		d, parseErr := time.ParseDuration(item.Schedule)
-		if parseErr != nil || (!item.LastRunAt.IsZero() && item.LastRunAt.Add(d).After(now)) {
+		if item.Trigger == InsightTriggerScheduled && !s.insightScheduledDue(item, now) {
 			continue
+		}
+		if item.Trigger == InsightTriggerOnChange {
+			if !allowOnChange {
+				continue
+			}
+			changed, checkErr := s.insightSourceChanged(ctx, item)
+			if checkErr != nil {
+				s.logger.Warn("insight change check failed", "name", item.Name, "error", checkErr)
+				continue
+			}
+			if !changed {
+				continue
+			}
 		}
 		if _, runErr := s.RunInsight(ctx, RunInsightInput{Name: item.Name}); runErr != nil {
 			s.logger.Warn("scheduled insight failed", "name", item.Name, "error", runErr)
 		}
 	}
+}
+
+func validInsightTrigger(trigger InsightTrigger) bool {
+	return trigger == InsightTriggerManual || trigger == InsightTriggerOnChange || trigger == InsightTriggerScheduled
+}
+
+func parseDailyInsightTime(value string) (hour, minute int, err error) {
+	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
+	if err != nil {
+		return 0, 0, fmt.Errorf("scheduled time must use HH:MM (for example 06:00)")
+	}
+	return parsed.Hour(), parsed.Minute(), nil
+}
+
+func (s *Service) insightScheduledDue(item InsightInquiry, now time.Time) bool {
+	hour, minute, err := parseDailyInsightTime(item.Schedule)
+	if err != nil {
+		return false
+	}
+	localNow := now.In(s.location)
+	due := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), hour, minute, 0, 0, s.location)
+	if localNow.Before(due) {
+		return false
+	}
+	return item.LastRunAt.IsZero() || item.LastRunAt.In(s.location).Format("2006-01-02") != localNow.Format("2006-01-02")
+}
+
+func (s *Service) insightSourceChanged(ctx context.Context, item InsightInquiry) (bool, error) {
+	meetings, err := s.UpcomingMeetings(ctx, UpcomingQuery{CalendarIDs: item.CalendarIDs, Tags: item.Tags, Limit: 100, Detail: "full", IncludeDescription: false, IncludeDisabled: false})
+	if err != nil {
+		return false, err
+	}
+	events, err := json.Marshal(meetings)
+	if err != nil {
+		return false, err
+	}
+	hash := sha256.Sum256(events)
+	cached, err := s.GetInsight(ctx, item.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return cached.SourceHash != hex.EncodeToString(hash[:]), nil
 }

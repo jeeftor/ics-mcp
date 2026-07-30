@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.1 - 2026-07-30
+
+- Restore a compact, workday-focused calendar layout with a current-time marker, no lane overflow, and instant local calendar filters.
+- Add secure Environment inspection and a syntax-colored JSON viewer with compact, pretty, and copy controls.
+- Support full OpenAI-compatible chat-completions URLs and verify the complete insight lifecycle with a local provider fixture.
+- Make insight execution explicit: manual, on scoped-calendar change, or daily at a configured local time.
+
 ## v2.2.0 - 2026-07-30
 
 - Complete calendar administration with feed testing, URL and enablement editing, refresh status, and atomic default-query selection.

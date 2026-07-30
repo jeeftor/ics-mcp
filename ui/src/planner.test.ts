@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDayRows, meetingMinutes, placeAllDayMeetings, placeTimedMeetings } from './planner';
+import { allDayRows, meetingMinutes, meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings } from './planner';
 import { Meeting } from './api';
 
 const event = (start: string, end: string): Meeting => ({ name: start, date: '2026-07-30', start, end });
@@ -40,5 +40,12 @@ describe('planner placement', () => {
       { name: 'Same day', date: '2026-07-31', end_date: '2026-07-31', all_day: true },
     ];
     expect(placeAllDayMeetings(meetings, '2026-07-30', 3).map(item => [item.start, item.span])).toEqual([[0, 1], [1, 1]]);
+  });
+
+  it('filters an already fetched range locally when a calendar is hidden', () => {
+    const meetings: Meeting[] = [{ name: 'Visible', calendar_id: 'one' }, { name: 'Hidden', calendar_id: 'two' }];
+
+    expect(meetingsForVisibleCalendars(meetings, ['one']).map((meeting) => meeting.name)).toEqual(['Visible']);
+    expect(meetings).toHaveLength(2);
   });
 });

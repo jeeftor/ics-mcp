@@ -428,8 +428,8 @@ func tagRefreshIntervals(tags []CalendarTag) []string {
 
 // RefreshDueCalendars refreshes enabled calendars whose next refresh has arrived.
 func (s *Service) RefreshDueCalendars(ctx context.Context) {
-	defer s.RunDueInsights(ctx)
 	now := s.now()
+	refreshed := false
 	statuses, err := s.ListCalendarStatus(ctx)
 	if err != nil {
 		s.logger.Warn("calendar refresh scan failed", "error", err)
@@ -441,11 +441,16 @@ func (s *Service) RefreshDueCalendars(ctx context.Context) {
 			continue
 		}
 		if status.NextRefresh == nil || !status.NextRefresh.After(now) {
-			_ = s.RefreshCalendar(ctx, status.ID, now)
+			if err := s.RefreshCalendar(ctx, status.ID, now); err == nil {
+				refreshed = true
+			}
 		} else {
 			s.logger.Debug("calendar refresh skipped until next interval", "calendar_id", status.ID, "key", status.Key, "name", status.Name, "next_refresh", status.NextRefresh.Format(time.RFC3339))
 		}
 	}
+	// Scheduled inquiries are time-driven; change-driven ones only run after a
+	// successful refresh cycle, so a transient feed failure cannot trigger them.
+	s.runDueInsights(ctx, refreshed)
 }
 
 // RefreshAllCalendars refreshes every enabled calendar and returns a per-calendar summary.
@@ -456,6 +461,7 @@ func (s *Service) RefreshAllCalendars(ctx context.Context) ([]RefreshCalendarRes
 	}
 	results := make([]RefreshCalendarResult, 0, len(statuses))
 	now := s.now()
+	refreshed := false
 	for _, status := range statuses {
 		if !status.Enabled {
 			results = append(results, RefreshCalendarResult{CalendarID: status.ID, CalendarName: status.Name, OK: true, Skipped: true})
@@ -466,9 +472,11 @@ func (s *Service) RefreshAllCalendars(ctx context.Context) ([]RefreshCalendarRes
 			result.Error = err.Error()
 		} else {
 			result.OK = true
+			refreshed = true
 		}
 		results = append(results, result)
 	}
+	s.runDueInsights(ctx, refreshed)
 	return results, nil
 }
 
@@ -921,6 +929,48 @@ func (s *Service) RuntimeConfig() RuntimeConfig {
 	}
 	return RuntimeConfig{RefreshInterval: s.refreshInterval.String(), Timezone: s.timezone, ExternalURL: s.externalURL, UpdateCheck: s.updateCheck, Sources: sources}
 }
+
+// EnvironmentVariables returns recognized process settings without disclosing credentials or feed URLs.
+func (s *Service) EnvironmentVariables(ctx context.Context) ([]EnvironmentVariable, error) {
+	config := s.RuntimeConfig()
+	profile, err := s.LLMProfile(ctx)
+	if err != nil {
+		return nil, err
+	}
+	value := func(name, effective, source string) EnvironmentVariable {
+		_, present := os.LookupEnv(name)
+		return EnvironmentVariable{Name: name, Value: effective, Present: present, Source: source}
+	}
+	secret := func(name, source string) EnvironmentVariable {
+		_, present := os.LookupEnv(name)
+		return EnvironmentVariable{Name: name, Value: map[bool]string{true: "configured (redacted)", false: "not set"}[present], Present: present, Source: source, Sensitive: true}
+	}
+	variables := []EnvironmentVariable{
+		value("ICSMCP_REFRESH_INTERVAL", config.RefreshInterval, config.Sources["refresh_interval"]),
+		value("ICSMCP_TIMEZONE", config.Timezone, config.Sources["timezone"]),
+		value("ICSMCP_EXTERNAL_URL", config.ExternalURL, config.Sources["external_url"]),
+		value("ICSMCP_UPDATE_CHECK", strconv.FormatBool(config.UpdateCheck), config.Sources["update_check"]),
+		value("ICSMCP_LLM_ENABLED", strconv.FormatBool(profile.Enabled), profile.Source),
+		value("ICSMCP_LLM_ENDPOINT", profile.Endpoint, profile.Source),
+		value("ICSMCP_LLM_MODEL", profile.Model, profile.Source),
+		{Name: "ICSMCP_LLM_API_KEY", Value: map[bool]string{true: "configured (redacted)", false: "not set"}[profile.APIKeyConfigured], Present: envPresent("ICSMCP_LLM_API_KEY"), Source: profile.Source, Sensitive: true},
+		secret("ICSMCP_AUTH_TOKEN", map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_AUTH_TOKEN")]),
+		value("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS", envValue("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS")]),
+		value("ICSMCP_LOG_LEVEL", envValue("ICSMCP_LOG_LEVEL"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_LOG_LEVEL")]),
+		value("ICSMCP_LOG_COLOR", envValue("ICSMCP_LOG_COLOR"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_LOG_COLOR")]),
+	}
+	for name := range EnvMap() {
+		if strings.HasPrefix(name, "ICSMCP_CALENDAR_") {
+			variables = append(variables, secret(name, "environment"))
+		}
+	}
+	slices.SortFunc(variables, func(a, b EnvironmentVariable) int { return strings.Compare(a.Name, b.Name) })
+	return variables, nil
+}
+
+func envPresent(name string) bool { _, present := os.LookupEnv(name); return present }
+
+func envValue(name string) string { return os.Getenv(name) }
 
 // UpdateRuntimeConfig persists and immediately applies unlocked runtime settings.
 func (s *Service) UpdateRuntimeConfig(ctx context.Context, in UpdateRuntimeConfigInput) (RuntimeConfig, error) {

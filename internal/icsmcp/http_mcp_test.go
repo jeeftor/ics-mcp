@@ -170,6 +170,47 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 	_, _ = ctx, svc
 }
 
+func TestEnvironmentEndpointRedactsSecrets(t *testing.T) {
+	t.Setenv("ICSMCP_TIMEZONE", "America/Denver")
+	t.Setenv("ICSMCP_AUTH_TOKEN", "do-not-return-this-token")
+	t.Setenv("ICSMCP_LLM_API_KEY", "do-not-return-this-key")
+	t.Setenv("ICSMCP_CALENDAR_PRIVATE", "https://example.test/feed?token=do-not-return-this-feed")
+	svc := newTestService(t)
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/environment")
+	if err != nil {
+		t.Fatalf("GET environment: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET environment status = %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read environment response: %v", err)
+	}
+	for _, secret := range []string{"do-not-return-this-token", "do-not-return-this-key", "do-not-return-this-feed"} {
+		if strings.Contains(string(body), secret) {
+			t.Fatalf("environment response disclosed secret %q: %s", secret, body)
+		}
+	}
+	var variables []EnvironmentVariable
+	if err := json.Unmarshal(body, &variables); err != nil {
+		t.Fatalf("decode environment response: %v", err)
+	}
+	var token EnvironmentVariable
+	for _, variable := range variables {
+		if variable.Name == "ICSMCP_AUTH_TOKEN" {
+			token = variable
+		}
+	}
+	if !token.Present || !token.Sensitive || token.Value != "configured (redacted)" {
+		t.Fatalf("auth token environment view = %#v", token)
+	}
+}
+
 func TestHTTPCalendarGeneralQuerySelection(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
@@ -465,6 +506,7 @@ func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
 		"/docs":                                  {http.MethodGet},
 		"/api/status":                            {http.MethodGet},
 		"/api/config":                            {http.MethodGet, http.MethodPut},
+		"/api/environment":                       {http.MethodGet},
 		"/api/update-check":                      {http.MethodGet},
 		"/api/llm-profile":                       {http.MethodGet, http.MethodPut},
 		"/api/llm-profile/test":                  {http.MethodPost},
@@ -517,7 +559,7 @@ func TestHTTPInsightInquiryCRUD(t *testing.T) {
 	svc := newTestService(t)
 	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
 	defer server.Close()
-	body := bytes.NewBufferString(`{"name":"school_today","question":"Do the kids have school today?","calendar_ids":["school"],"tags":["School"],"schedule":"24h"}`)
+	body := bytes.NewBufferString(`{"name":"school_today","question":"Do the kids have school today?","calendar_ids":["school"],"tags":["School"],"trigger":"scheduled","schedule":"06:00"}`)
 	resp, err := http.Post(server.URL+"/api/insight-inquiries", "application/json", body)
 	if err != nil {
 		t.Fatal(err)
@@ -532,7 +574,7 @@ func TestHTTPInsightInquiryCRUD(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var inquiry InsightInquiry
-	if err := json.NewDecoder(resp.Body).Decode(&inquiry); err != nil || inquiry.Question == "" || inquiry.Schedule != "24h" {
+	if err := json.NewDecoder(resp.Body).Decode(&inquiry); err != nil || inquiry.Question == "" || inquiry.Trigger != InsightTriggerScheduled || inquiry.Schedule != "06:00" {
 		t.Fatalf("read inquiry = %#v, %v", inquiry, err)
 	}
 	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/insight-inquiries/school_today", nil)

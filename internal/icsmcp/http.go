@@ -88,6 +88,14 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			methodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/api/environment", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		variables, err := svc.EnvironmentVariables(r.Context())
+		writeJSON(w, variables, err)
+	})
 	mux.HandleFunc("/api/update-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -1557,6 +1565,7 @@ func openAPISpec() map[string]any {
 			"/docs":                                  get("REST API documentation page"),
 			"/api/status":                            get("Service status"),
 			"/api/config":                            map[string]any{"get": map[string]any{"summary": "Read runtime configuration"}, "put": map[string]any{"summary": "Update runtime configuration"}},
+			"/api/environment":                       get("List recognized environment settings with secret values redacted"),
 			"/api/update-check":                      get("Check latest GitHub release version"),
 			"/api/llm-profile":                       map[string]any{"get": map[string]any{"summary": "Read redacted optional LLM profile"}, "put": map[string]any{"summary": "Update optional LLM profile"}},
 			"/api/llm-profile/test":                  map[string]any{"post": map[string]any{"summary": "Test the effective optional LLM profile without exposing its API key"}},
