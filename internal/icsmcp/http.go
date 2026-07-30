@@ -3,6 +3,7 @@ package icsmcp
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -14,15 +15,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+var errUnauthorized = errors.New("authentication required")
+
 //go:embed web/*
 var webFiles embed.FS
 
 // NewHTTPHandler builds the combined admin/API/MCP HTTP handler.
 func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
+	return NewHTTPHandlerWithOptions(svc, mcpServer, HTTPOptions{})
+}
+
+// NewHTTPHandlerWithOptions builds the combined admin/API/MCP handler with an optional bearer-token boundary.
+func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTPOptions) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpServer
-	}, &mcp.StreamableHTTPOptions{JSONResponse: true, Stateless: true}))
+	}, &mcp.StreamableHTTPOptions{JSONResponse: true, Stateless: true, PropagateRequestCancellation: true}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -261,7 +269,7 @@ func NewHTTPHandler(svc *Service, mcpServer *mcp.Server) http.Handler {
 		}
 		http.ServeFileFS(w, r, webFiles, "web/index.html")
 	})
-	return mux
+	return authMiddleware(mux, options.BearerToken)
 }
 
 func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {

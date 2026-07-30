@@ -21,39 +21,45 @@ import (
 
 const defaultUpdateCheckURL = "https://api.github.com/repos/jeeftor/ics-mcp/releases/latest"
 
+const defaultMaxCalendarBytes int64 = 8 << 20
+
 // ServiceOptions configures Service behavior.
 type ServiceOptions struct {
-	RefreshInterval     time.Duration
-	Lookahead           time.Duration
-	HTTPClient          *http.Client
-	Logger              *slog.Logger
-	BuildInfo           BuildInfo
-	Timezone            string
-	ExternalURL         string
-	DisableUpdateCheck  bool
-	UpdateCheckURL      string
-	UpdateCheckInterval time.Duration
+	RefreshInterval           time.Duration
+	Lookahead                 time.Duration
+	HTTPClient                *http.Client
+	MaxCalendarBytes          int64
+	AllowPrivateCalendarHosts bool
+	Logger                    *slog.Logger
+	BuildInfo                 BuildInfo
+	Timezone                  string
+	ExternalURL               string
+	DisableUpdateCheck        bool
+	UpdateCheckURL            string
+	UpdateCheckInterval       time.Duration
 }
 
 // Service coordinates calendar config, refreshes, and meeting queries.
 type Service struct {
-	store           *Store
-	refreshInterval time.Duration
-	lookahead       time.Duration
-	httpClient      *http.Client
-	logger          *slog.Logger
-	buildInfo       BuildInfo
-	location        *time.Location
-	timezone        string
-	externalURL     string
-	updateCheckURL  string
-	updateCheck     bool
-	updateInterval  time.Duration
-	updateMu        sync.Mutex
-	updateCached    UpdateCheck
-	updateExpires   time.Time
-	clockMu         sync.RWMutex
-	clock           func() time.Time
+	store                     *Store
+	refreshInterval           time.Duration
+	lookahead                 time.Duration
+	httpClient                *http.Client
+	maxCalendarBytes          int64
+	allowPrivateCalendarHosts bool
+	logger                    *slog.Logger
+	buildInfo                 BuildInfo
+	location                  *time.Location
+	timezone                  string
+	externalURL               string
+	updateCheckURL            string
+	updateCheck               bool
+	updateInterval            time.Duration
+	updateMu                  sync.Mutex
+	updateCached              UpdateCheck
+	updateExpires             time.Time
+	clockMu                   sync.RWMutex
+	clock                     func() time.Time
 }
 
 // NewService constructs a calendar service.
@@ -65,7 +71,10 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		opts.Lookahead = 30 * 24 * time.Hour
 	}
 	if opts.HTTPClient == nil {
-		opts.HTTPClient = http.DefaultClient
+		opts.HTTPClient = &http.Client{Timeout: 20 * time.Second}
+	}
+	if opts.MaxCalendarBytes == 0 {
+		opts.MaxCalendarBytes = defaultMaxCalendarBytes
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -78,19 +87,21 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 	}
 	location, timezone := resolveLocation(opts.Timezone, opts.Logger)
 	return &Service{
-		store:           store,
-		refreshInterval: opts.RefreshInterval,
-		lookahead:       opts.Lookahead,
-		httpClient:      opts.HTTPClient,
-		logger:          opts.Logger,
-		buildInfo:       normalizeBuildInfo(opts.BuildInfo),
-		location:        location,
-		timezone:        timezone,
-		externalURL:     normalizeExternalURL(opts.ExternalURL),
-		updateCheckURL:  strings.TrimSpace(opts.UpdateCheckURL),
-		updateCheck:     !opts.DisableUpdateCheck,
-		updateInterval:  opts.UpdateCheckInterval,
-		clock:           time.Now,
+		store:                     store,
+		refreshInterval:           opts.RefreshInterval,
+		lookahead:                 opts.Lookahead,
+		httpClient:                opts.HTTPClient,
+		maxCalendarBytes:          opts.MaxCalendarBytes,
+		allowPrivateCalendarHosts: opts.AllowPrivateCalendarHosts,
+		logger:                    opts.Logger,
+		buildInfo:                 normalizeBuildInfo(opts.BuildInfo),
+		location:                  location,
+		timezone:                  timezone,
+		externalURL:               normalizeExternalURL(opts.ExternalURL),
+		updateCheckURL:            strings.TrimSpace(opts.UpdateCheckURL),
+		updateCheck:               !opts.DisableUpdateCheck,
+		updateInterval:            opts.UpdateCheckInterval,
+		clock:                     time.Now,
 	}
 }
 
@@ -274,7 +285,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	next := attempt.Add(s.refreshInterval)
 	state.NextRefresh = &next
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cal.URL, nil)
+	req, err := s.calendarRequest(ctx, cal.URL)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -309,7 +320,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "status", resp.StatusCode)
 		return err
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := s.readCalendarBody(resp.Body)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -910,7 +921,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if strings.TrimSpace(in.URL) == "" {
 		return ValidateCalendarResult{OK: false, Error: "calendar URL is required"}, fmt.Errorf("calendar URL is required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(in.URL), nil)
+	req, err := s.calendarRequest(ctx, strings.TrimSpace(in.URL))
 	if err != nil {
 		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
 	}
@@ -925,7 +936,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 		result.Error = err.Error()
 		return result, err
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := s.readCalendarBody(resp.Body)
 	if err != nil {
 		result.Error = err.Error()
 		return result, err

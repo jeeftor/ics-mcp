@@ -2907,7 +2907,7 @@ func TestRunRefresherRefreshesUntilContextCancelled(t *testing.T) {
 		t.Fatalf("OpenStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	svc := NewService(store, ServiceOptions{RefreshInterval: 10 * time.Millisecond, Lookahead: 30 * 24 * time.Hour})
+	svc := NewService(store, ServiceOptions{RefreshInterval: 10 * time.Millisecond, Lookahead: 30 * 24 * time.Hour, AllowPrivateCalendarHosts: true})
 	var requests atomic.Int32
 	seenSecondRequest := make(chan struct{})
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
