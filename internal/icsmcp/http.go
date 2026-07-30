@@ -168,6 +168,32 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 		writeJSON(w, map[string]any{"ok": true, "message": "Model responded."}, svc.TestLLMModel(r.Context(), in))
 	})
+	mux.HandleFunc("/api/llm-profile/lemonade/model-status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in LLMModelTestInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result, err := svc.LemonadeModelStatus(r.Context(), in)
+		writeJSON(w, result, err)
+	})
+	mux.HandleFunc("/api/llm-profile/lemonade/model-load", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var in LLMModelTestInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result, err := svc.LoadLemonadeModel(r.Context(), in)
+		writeJSON(w, result, err)
+	})
 	mux.HandleFunc("/api/insight-inquiries", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1855,6 +1881,8 @@ func openAPISpec(build ...BuildInfo) map[string]any {
 			"/api/llm-profile/endpoint-test":         write("post", "Test an unsaved OpenAI-compatible endpoint"),
 			"/api/llm-profile/models":                write("post", "Discover models from an unsaved OpenAI-compatible endpoint"),
 			"/api/llm-profile/model-test":            write("post", "Test an unsaved OpenAI-compatible model"),
+			"/api/llm-profile/lemonade/model-status": write("post", "Check whether an unsaved Lemonade model is loaded"),
+			"/api/llm-profile/lemonade/model-load":   write("post", "Load and wait for an unsaved Lemonade model"),
 			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
 			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete an inquiry template or custom inquiry and its cached output")},
 			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},

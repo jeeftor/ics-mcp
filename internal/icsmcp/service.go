@@ -51,6 +51,7 @@ type Service struct {
 	refreshInterval           time.Duration
 	lookahead                 time.Duration
 	httpClient                *http.Client
+	lemonadePollInterval      time.Duration
 	maxCalendarBytes          int64
 	allowPrivateCalendarHosts bool
 	logger                    *slog.Logger
@@ -137,6 +138,7 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		refreshInterval:           opts.RefreshInterval,
 		lookahead:                 opts.Lookahead,
 		httpClient:                opts.HTTPClient,
+		lemonadePollInterval:      2 * time.Second,
 		maxCalendarBytes:          opts.MaxCalendarBytes,
 		allowPrivateCalendarHosts: opts.AllowPrivateCalendarHosts,
 		logger:                    opts.Logger,
