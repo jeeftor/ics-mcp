@@ -168,8 +168,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			last_run_at TEXT NOT NULL DEFAULT ''
 		)`,
 		`ALTER TABLE insight_inquiries ADD COLUMN trigger TEXT NOT NULL DEFAULT 'manual'`,
-		`INSERT OR IGNORE INTO insight_inquiries (name, question, builtin) VALUES ('daily_briefing', 'What should I know today?', 1)`,
-		`INSERT OR IGNORE INTO insight_inquiries (name, question, builtin) VALUES ('weekly_outlook', 'What should I know this week?', 1)`,
+		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('daily_briefing', 'What should I know today?', 0, 1)`,
+		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('weekly_outlook', 'What should I know this week?', 0, 1)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {

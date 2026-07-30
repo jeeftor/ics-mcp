@@ -1832,7 +1832,7 @@ func openAPISpec(build ...BuildInfo) map[string]any {
 			"/api/llm-profile/models":                write("post", "Discover models from an unsaved OpenAI-compatible endpoint"),
 			"/api/llm-profile/model-test":            write("post", "Test an unsaved OpenAI-compatible model"),
 			"/api/insight-inquiries":                 map[string]any{"get": operation("List saved insight inquiries without invoking an LLM"), "post": write("post", "Create a saved insight inquiry")["post"]},
-			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete a custom insight inquiry and its cached output")},
+			"/api/insight-inquiries/{name}":          map[string]any{"get": operation("Read one saved insight inquiry"), "put": write("put", "Update a saved insight inquiry")["put"], "delete": operation("Delete an inquiry template or custom inquiry and its cached output")},
 			"/api/insights":                          map[string]any{"get": operation("List cached insights without invoking an LLM"), "post": write("post", "Explicitly run and cache an insight")["post"]},
 			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
 			"/api/v1/prompts":                        get("List saved prompts with latest cached outputs without invoking an LLM"),
