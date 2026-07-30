@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.0 - 2026-07-30
+
+- Restore the full admin console: setup information, MCP tool execution, meeting previews, REST exploration, and OpenAPI links.
+- Add day, three-day, and week calendar views with half-hour grids, overlap lanes, all-day overflow, range counts, and timezone rulers.
+- Expand calendar and tag administration with feed validation, refresh safety, enabled state, atomic default-query selection, retained tag metadata, ordering, and refresh inheritance.
+- Document the complete public REST inventory in OpenAPI.
+- Add disabled-by-default, redacted OpenAI-compatible LLM profiles and explicit cached calendar insights available through REST and MCP reads.
+
 ## v2.0.15 - 2026-07-30
 
 - Add data freshness age to the toolbar and a configurable 12-hour/24-hour calendar display preference.

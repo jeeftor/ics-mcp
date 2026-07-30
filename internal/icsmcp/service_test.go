@@ -3031,6 +3031,65 @@ func TestCalendarTagsFilterQueriesAndAreSerialized(t *testing.T) {
 	}
 }
 
+func TestTagMetadataPersistsAfterDetachAndDrivesRefreshInheritance(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute})
+	calendar, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "school", Name: "School", URL: "https://example.test/school.ics", Tags: []string{"Family", "School"}})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	position := 4
+	if _, err := svc.UpdateTag(ctx, "Family", UpdateCalendarTagInput{Color: "#334455", Icon: "mdi:account-group", RefreshInterval: "17m", Position: &position}); err != nil {
+		t.Fatalf("UpdateTag() error = %v", err)
+	}
+	calendar, err = svc.UpdateCalendar(ctx, calendar.ID, UpdateCalendarInput{Tags: &[]string{"School"}})
+	if err != nil {
+		t.Fatalf("UpdateCalendar() error = %v", err)
+	}
+	tags, err := svc.ListTags(ctx)
+	if err != nil {
+		t.Fatalf("ListTags() error = %v", err)
+	}
+	var family CalendarTag
+	for _, tag := range tags {
+		if tag.Name == "Family" {
+			family = tag
+		}
+	}
+	if len(tags) != 2 || family.CalendarCount != 0 || family.Icon != "mdi:account-group" || family.RefreshInterval != "17m" {
+		t.Fatalf("retained tags = %#v", tags)
+	}
+	if got := svc.calendarRefreshInterval(calendar); got != 5*time.Minute {
+		t.Fatalf("calendar refresh interval after detaching tag = %s, want global", got)
+	}
+	calendar, err = svc.UpdateCalendar(ctx, calendar.ID, UpdateCalendarInput{Tags: &[]string{"Family", "School"}})
+	if err != nil {
+		t.Fatalf("UpdateCalendar() restoring tags error = %v", err)
+	}
+	if got := svc.calendarRefreshInterval(calendar); got != 17*time.Minute {
+		t.Fatalf("tag refresh interval = %s, want 17m", got)
+	}
+	calendar, err = svc.UpdateCalendar(ctx, calendar.ID, UpdateCalendarInput{TagOrder: &[]string{"School", "Family"}})
+	if err != nil {
+		t.Fatalf("UpdateCalendar() tag order error = %v", err)
+	}
+	if !slices.Equal(calendar.Tags, []string{"School", "Family"}) {
+		t.Fatalf("calendar tag order = %#v", calendar.Tags)
+	}
+	calendar, err = svc.UpdateCalendar(ctx, calendar.ID, UpdateCalendarInput{RefreshInterval: "3m"})
+	if err != nil {
+		t.Fatalf("UpdateCalendar() calendar override error = %v", err)
+	}
+	if got := svc.calendarRefreshInterval(calendar); got != 3*time.Minute {
+		t.Fatalf("calendar override interval = %s, want 3m", got)
+	}
+}
+
 func TestRuntimeConfigPersistsAndReportsSources(t *testing.T) {
 	ctx := context.Background()
 	store, err := OpenStore(":memory:")

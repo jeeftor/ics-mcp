@@ -2,6 +2,7 @@ package icsmcp
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +25,45 @@ func TestReadCalendarBodyEnforcesLimit(t *testing.T) {
 	svc.maxCalendarBytes = 3
 	if _, err := svc.readCalendarBody(strings.NewReader("four")); err == nil {
 		t.Fatal("readCalendarBody() accepted an oversized response")
+	}
+}
+
+func TestCalendarRefreshAndValidationApplyFeedURLGuards(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.allowPrivateCalendarHosts = false
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "local", Name: "Local", URL: "http://127.0.0.1/calendar.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+
+	if err := svc.RefreshCalendar(ctx, cal.ID, svc.now()); err == nil || !strings.Contains(err.Error(), "private or local") {
+		t.Fatalf("RefreshCalendar() error = %v, want private-host rejection", err)
+	}
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: cal.URL})
+	if err == nil || result.OK || !strings.Contains(result.Error, "private or local") {
+		t.Fatalf("ValidateCalendar() result=%#v error=%v, want private-host rejection", result, err)
+	}
+}
+
+func TestCalendarRefreshAndValidationApplyResponseSizeLimit(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	svc.maxCalendarBytes = 3
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("four"))}, nil
+	})}
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/calendar.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+
+	if err := svc.RefreshCalendar(ctx, cal.ID, svc.now()); err == nil || !strings.Contains(err.Error(), "byte limit") {
+		t.Fatalf("RefreshCalendar() error = %v, want response-size rejection", err)
+	}
+	result, err := svc.ValidateCalendar(ctx, ValidateCalendarInput{URL: cal.URL})
+	if err == nil || result.OK || !strings.Contains(result.Error, "byte limit") {
+		t.Fatalf("ValidateCalendar() result=%#v error=%v, want response-size rejection", result, err)
 	}
 }
 

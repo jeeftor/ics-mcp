@@ -59,9 +59,9 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 
 	var add Calendar
 	doJSON(t, http.MethodPost, server.URL+"/api/calendars", AddCalendarInput{
-		Key:  "team",
-		Name: "Team",
-		URL:  feed.URL,
+		Key:   "team",
+		Name:  "Team",
+		URL:   feed.URL,
 		Color: "#5b7cfa",
 		Icon:  "briefcase",
 	}, &add)
@@ -401,6 +401,111 @@ func TestHTTPRESTToolRoutesAliasesFormatsAndOpenAPI(t *testing.T) {
 	for _, want := range []string{"/api/rest/{tool_name}", "/api/update-check", "/api/events", "/api/events/today", "/api/free-busy", "/api/calendars/{calendar}/events", "/{calendar}/{index}", "/{calendar}/upcoming/{index}", "/{calendar}/ongoing/{index}"} {
 		if _, ok := paths[want]; !ok {
 			t.Fatalf("openapi paths missing %q: %#v", want, paths)
+		}
+	}
+}
+
+func TestHTTPRESTToolBridgeAcceptsWrappedAdminArgumentsAndEnforcesAccess(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	var updated calendarOutput
+	doJSON(t, http.MethodPost, server.URL+"/api/rest/update_calendar", ToolCallRequest{
+		Arguments: rawJSON(t, updateInput{ID: cal.ID, Name: "Wrapped Work"}),
+	}, &updated)
+	if updated.Calendar.Name != "Wrapped Work" {
+		t.Fatalf("wrapped REST update = %#v, want renamed calendar", updated)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+	}{
+		{name: "read tool rejects post", method: http.MethodPost, path: "/api/rest/upcoming_meetings", wantStatus: http.StatusMethodNotAllowed},
+		{name: "admin tool rejects get", method: http.MethodGet, path: "/api/rest/update_calendar", wantStatus: http.StatusMethodNotAllowed},
+		{name: "unknown tool is not found", method: http.MethodGet, path: "/api/rest/missing_tool", wantStatus: http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, server.URL+tc.path, nil)
+			if err != nil {
+				t.Fatalf("NewRequest() error = %v", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s error = %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.StatusCode, tc.wantStatus)
+			}
+		})
+	}
+}
+
+func TestOpenAPIInventoryCoversPublicRESTRoutes(t *testing.T) {
+	paths, ok := openAPISpec()["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("OpenAPI paths = %#v", openAPISpec()["paths"])
+	}
+
+	want := map[string][]string{
+		"/mcp":                                   {http.MethodPost},
+		"/healthz":                               {http.MethodGet},
+		"/readyz":                                {http.MethodGet},
+		"/metrics":                               {http.MethodGet},
+		"/openapi.json":                          {http.MethodGet},
+		"/docs":                                  {http.MethodGet},
+		"/api/status":                            {http.MethodGet},
+		"/api/config":                            {http.MethodGet, http.MethodPut},
+		"/api/update-check":                      {http.MethodGet},
+		"/api/llm-profile":                       {http.MethodGet, http.MethodPut},
+		"/api/insights":                          {http.MethodGet, http.MethodPost},
+		"/api/insights/{name}":                   {http.MethodGet},
+		"/api/rest/{tool_name}":                  {http.MethodGet, http.MethodPost},
+		"/api/meetings":                          {http.MethodGet},
+		"/api/meetings/by-calendar":              {http.MethodGet},
+		"/api/events":                            {http.MethodGet},
+		"/api/events/by-calendar":                {http.MethodGet},
+		"/api/events/today":                      {http.MethodGet},
+		"/api/events/tomorrow":                   {http.MethodGet},
+		"/api/events/today-tomorrow":             {http.MethodGet},
+		"/api/events/today_tomorrow":             {http.MethodGet},
+		"/api/events/current":                    {http.MethodGet},
+		"/api/events/next":                       {http.MethodGet},
+		"/api/events/search":                     {http.MethodGet},
+		"/api/free-busy":                         {http.MethodGet},
+		"/api/tools":                             {http.MethodGet},
+		"/api/tools/{tool_name}/call":            {http.MethodPost},
+		"/api/calendars":                         {http.MethodGet, http.MethodPost},
+		"/api/calendars/general-query-selection": {http.MethodGet, http.MethodPut},
+		"/api/calendars/validate":                {http.MethodPost},
+		"/api/calendars/{calendar}":              {http.MethodPatch, http.MethodDelete},
+		"/api/calendars/{calendar}/refresh":      {http.MethodPost},
+		"/api/calendars/{calendar}/events":       {http.MethodGet},
+		"/api/calendars/{calendar}/today":        {http.MethodGet},
+		"/api/tags":                              {http.MethodGet},
+		"/{calendar}/{index}":                    {http.MethodGet},
+		"/{calendar}/upcoming/{index}":           {http.MethodGet},
+		"/{calendar}/ongoing/{index}":            {http.MethodGet},
+	}
+	for path, methods := range want {
+		pathItem, ok := paths[path].(map[string]any)
+		if !ok {
+			t.Errorf("OpenAPI does not document %q", path)
+			continue
+		}
+		for _, method := range methods {
+			if _, ok := pathItem[strings.ToLower(method)]; !ok {
+				t.Errorf("OpenAPI %q does not document %s", path, method)
+			}
 		}
 	}
 }
@@ -1118,6 +1223,55 @@ func TestDecodeToolArgsDefaultsEmptyRawMessageToObject(t *testing.T) {
 	}
 	if got.Limit != 0 {
 		t.Fatalf("decodeToolArgs(nil) = %#v, want zero-value struct", got)
+	}
+}
+
+func TestToolPreviewExposesConfigAndTagMCPTools(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	infos := map[string]ToolInfo{}
+	for _, info := range ToolInfos() {
+		infos[info.Name] = info
+	}
+	for _, name := range []string{"list_tags", "get_config", "update_config"} {
+		info, ok := infos[name]
+		if !ok {
+			t.Fatalf("ToolInfos() does not expose %q", name)
+		}
+		if name == "update_config" && info.Category != "admin" {
+			t.Fatalf("update_config category = %q, want admin", info.Category)
+		}
+		if name != "update_config" && (!info.ReadOnly || info.Category != "read") {
+			t.Fatalf("%s metadata = %#v, want read-only tool", name, info)
+		}
+	}
+
+	tagsResp, err := PreviewToolCall(ctx, svc, "list_tags", nil)
+	if err != nil {
+		t.Fatalf("list_tags preview error = %v", err)
+	}
+	if _, ok := tagsResp.Result.(tagsOutput); !ok {
+		t.Fatalf("list_tags result type = %T, want tagsOutput", tagsResp.Result)
+	}
+
+	configResp, err := PreviewToolCall(ctx, svc, "get_config", nil)
+	if err != nil {
+		t.Fatalf("get_config preview error = %v", err)
+	}
+	configOut, ok := configResp.Result.(configOutput)
+	if !ok || configOut.Config.Timezone == "" {
+		t.Fatalf("get_config preview = %#v", configResp)
+	}
+
+	timezone := "America/Denver"
+	updateResp, err := PreviewToolCall(ctx, svc, "update_config", rawJSON(t, UpdateRuntimeConfigInput{Timezone: &timezone}))
+	if err != nil {
+		t.Fatalf("update_config preview error = %v", err)
+	}
+	updated, ok := updateResp.Result.(configOutput)
+	if !ok || updated.Config.Timezone != timezone {
+		t.Fatalf("update_config preview = %#v", updateResp)
 	}
 }
 

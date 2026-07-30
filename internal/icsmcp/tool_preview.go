@@ -42,6 +42,12 @@ func ToolInfos() []ToolInfo {
 		{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Omit fields for compact default busy-block output; pass fields=[...] only to override structured busy fields. Use window or after and before for a specific availability window.", Category: "read", ReadOnly: true, InputExample: `{"window":"today_tomorrow","after":"2026-06-30T15:00:00Z","before":"2026-07-01T00:00:00Z","limit":20,"format":"","exclude_cancelled":true,"sort":"start_time","include_disabled":false}`, DefaultArguments: map[string]any{"window": "today", "limit": 20, "format": "", "exclude_cancelled": true, "sort": "start_time", "include_disabled": false}},
 		{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "list_tags", Description: "List calendar tags and how many calendars use each tag.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "get_config", Description: "Return effective runtime configuration and each setting source.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "update_config", Description: "Persist and apply unlocked runtime configuration settings.", Category: "admin", InputExample: `{"refresh_interval":"5m","timezone":"America/Denver","external_url":"https://ics.example.test","update_check":true}`, DefaultArguments: map[string]any{}},
+		{Name: "list_insights", Description: "List cached LLM insights. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "get_insight", Description: "Read one cached LLM insight. This never invokes an LLM.", Category: "read", ReadOnly: true, InputExample: `{"name":"daily_briefing"}`, DefaultArguments: map[string]any{}},
+		{Name: "run_insight", Description: "Explicitly generate and cache a grounded LLM insight. Requires the optional LLM profile to be enabled.", Category: "admin", InputExample: `{"name":"daily_briefing","question":"What should I know today?"}`, DefaultArguments: map[string]any{"name": "daily_briefing", "question": "What should I know today?"}},
 		{Name: "add_calendar", Description: "Add or upsert an ICS calendar and refresh it immediately.", Category: "admin", InputExample: `{"key":"WORK","name":"Work","url":"https://example.invalid/calendar.ics"}`, DefaultArguments: map[string]any{"key": "WORK", "name": "Work", "url": "https://example.invalid/calendar.ics"}},
 		{Name: "validate_calendar", Description: "Fetch and parse an ICS calendar without saving it.", Category: "admin", ReadOnly: true, InputExample: `{"url":"https://example.invalid/calendar.ics","limit":5}`, DefaultArguments: map[string]any{"url": "https://example.invalid/calendar.ics", "limit": 5}},
 		{Name: "update_calendar", Description: "Rename, enable, disable, update a calendar URL, or control default query inclusion.", Category: "admin", InputExample: `{"id":"calendar-id","name":"Renamed","include_in_general_queries":true}`, DefaultArguments: map[string]any{"id": "", "name": "Renamed", "include_in_general_queries": true}},
@@ -135,6 +141,40 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 	case "list_calendars":
 		calendars, err := svc.ListCalendarStatus(ctx)
 		return ToolCallResponse{Tool: name, Result: calendarsOutput{Calendars: calendars}}, err
+	case "list_tags":
+		tags, err := svc.ListTags(ctx)
+		return ToolCallResponse{Tool: name, Result: tagsOutput{Tags: tags}}, err
+	case "get_config":
+		return ToolCallResponse{Tool: name, Result: configOutput{Config: svc.RuntimeConfig()}}, nil
+	case "update_config":
+		var in UpdateRuntimeConfigInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		config, err := svc.UpdateRuntimeConfig(ctx, in)
+		return ToolCallResponse{Tool: name, Result: configOutput{Config: config}}, err
+	case "list_insights":
+		insights, err := svc.ListInsights(ctx)
+		return ToolCallResponse{Tool: name, Result: insights}, err
+	case "get_insight":
+		var in struct {
+			Name string `json:"name"`
+		}
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		if in.Name == "" {
+			return ToolCallResponse{Tool: name, Result: Insight{}}, nil
+		}
+		insight, err := svc.GetInsight(ctx, in.Name)
+		return ToolCallResponse{Tool: name, Result: insight}, err
+	case "run_insight":
+		var in RunInsightInput
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		insight, err := svc.RunInsight(ctx, in)
+		return ToolCallResponse{Tool: name, Result: insight}, err
 	case "add_calendar":
 		var in AddCalendarInput
 		if err := decodeToolArgs(raw, &in); err != nil {
