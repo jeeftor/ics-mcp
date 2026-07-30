@@ -310,6 +310,8 @@ Add the bot to the destination channel before publishing. If the workflow report
 
 Telegram publishing is disabled by default. Set the repository variable `TELEGRAM_RELEASE_NOTIFICATIONS` to `true` only when you want tagged releases announced; set it to `false` or remove it to disable the action entirely.
 
+Run the manual **Telegram test** workflow from the GitHub Actions page after changing either secret. It sends one clearly labeled test message using the same secret pair as release publishing.
+
 ## Development
 
 ```bash
