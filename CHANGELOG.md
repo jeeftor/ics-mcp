@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.14 - 2026-07-30
+
+- Clarify calendar icon inheritance, tighten calendar administration rows, and use success styling for saved configuration.
+
 ## v2.2.13 - 2026-07-30
 
 - Compact all-day planner cards while retaining rounded segments and overlay overflow controls.
