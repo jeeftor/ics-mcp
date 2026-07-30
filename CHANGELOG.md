@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.12 - Unreleased
+
+- Add flexible calendar tags for MCP, REST, and admin UI queries.
+- Add persisted runtime configuration with environment and CLI override visibility.
+- Refresh the admin dashboard and add a Config tab.
+
 ## v2.0.11 - 2026-07-29
 
 ### Added

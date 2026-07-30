@@ -68,6 +68,10 @@ The suffix after `ICSMCP_CALENDAR_` is the stable key. Underscores are shown as 
 
 Each calendar also has an `include_in_general_queries` setting, exposed in the Calendars tab, `PATCH /api/calendars/{id}`, and `update_calendar`. It defaults to `true`. Set it to `false` when a calendar should keep refreshing and remain explicitly queryable, but should not appear in default/general upcoming meeting results. Explicit `calendar_id` or `calendar_ids` filters still return that calendar.
 
+Calendars may also have multiple tags such as `Work`, `School`, `Holidays`, or `Personal`. Query read tools with `tags` (MCP JSON) or repeated `tag` (REST). Explicit calendar IDs and tags are combined as a union; the General Queries selection is used only when neither filter is present. Use `list_tags` or `GET /api/tags` to discover available tags.
+
+The Config tab persists refresh interval, display timezone, external URL, and update-check preference in SQLite. Explicit CLI flags and `ICSMCP_` environment variables take precedence and are displayed as locked overrides.
+
 After startup, SQLite is the runtime source of truth for display names, enabled state, refresh state, and cached event instances.
 
 Outlook / Exchange feeds commonly use Windows timezone IDs such as `Eastern Standard Time`, `Mountain Standard Time`, and `Pacific Standard Time`; those are mapped to IANA zones during parsing before events are cached.
@@ -91,6 +95,8 @@ The startup output prints the Admin UI, MCP endpoint, status URL, display timezo
 - `GET /metrics`
 - `GET /api/status`
 - `GET /api/update-check`
+- `GET /api/config`, `PUT /api/config`
+- `GET /api/tags`
 - `GET /api/meetings`
 - `GET /api/meetings/by-calendar`
 - `GET /api/free-busy`

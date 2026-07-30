@@ -69,16 +69,46 @@ func NewRootCommand() *cobra.Command {
 			timezone := viper.GetString("timezone")
 			externalURL := viper.GetString("external-url")
 			updateCheck := viper.GetBool("update-check")
+			sources := map[string]string{}
+			if cmd.Flags().Changed("refresh-interval") {
+				sources["refresh_interval"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_REFRESH_INTERVAL"); ok {
+				sources["refresh_interval"] = "environment"
+			} else {
+				refreshInterval = 0
+			}
+			if cmd.Flags().Changed("timezone") {
+				sources["timezone"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_TIMEZONE"); ok {
+				sources["timezone"] = "environment"
+			} else {
+				timezone = ""
+			}
+			if cmd.Flags().Changed("external-url") {
+				sources["external_url"] = "flag"
+			} else if _, ok := os.LookupEnv("ICSMCP_EXTERNAL_URL"); ok {
+				sources["external_url"] = "environment"
+			} else {
+				externalURL = ""
+			}
+			var updateCheckOverride *bool
+			if cmd.Flags().Changed("update-check") {
+				sources["update_check"] = "flag"
+				updateCheckOverride = &updateCheck
+			} else if _, ok := os.LookupEnv("ICSMCP_UPDATE_CHECK"); ok {
+				sources["update_check"] = "environment"
+				updateCheckOverride = &updateCheck
+			}
 			logLevel, err := parseLogLevel(viper.GetString("log-level"))
 			if err != nil {
 				return err
 			}
 			logger := slog.New(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")))
-			return runServe(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
+			return runServeWithRuntimeConfig(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
 				Version: Version,
 				Commit:  Commit,
 				Date:    Date,
-			}, timezone, externalURL, updateCheck)
+			}, timezone, externalURL, updateCheckOverride, sources)
 		},
 	}
 	serve.Flags().String("http-addr", "127.0.0.1:3333", "HTTP listen address")
@@ -125,6 +155,10 @@ func resolveDBPath(configDir string, dbPath string) string {
 }
 
 func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool) error {
+	return runServeWithRuntimeConfig(ctx, httpAddr, dbPath, refreshInterval, calendars, logger, buildInfo, timezone, externalURL, &updateCheck, nil)
+}
+
+func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck *bool, sources map[string]string) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
 	}
@@ -133,7 +167,7 @@ func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, DisableUpdateCheck: !updateCheck})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, UpdateCheck: updateCheck, RuntimeSettingSources: sources})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}
