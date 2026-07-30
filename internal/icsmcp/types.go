@@ -9,15 +9,17 @@ import (
 
 // Calendar is a configured ICS feed.
 type Calendar struct {
-	ID                      string   `json:"id"`
-	Key                     string   `json:"key"`
-	Name                    string   `json:"name"`
-	URL                     string   `json:"url"`
-	Color                   string   `json:"color,omitempty"`
-	Icon                    string   `json:"icon,omitempty"`
-	Enabled                 bool     `json:"enabled"`
-	IncludeInGeneralQueries bool     `json:"include_in_general_queries"`
-	Tags                    []string `json:"tags"`
+	ID                      string        `json:"id"`
+	Key                     string        `json:"key"`
+	Name                    string        `json:"name"`
+	URL                     string        `json:"url"`
+	Color                   string        `json:"color,omitempty"`
+	Icon                    string        `json:"icon,omitempty"`
+	RefreshInterval         string        `json:"refresh_interval,omitempty"`
+	Enabled                 bool          `json:"enabled"`
+	IncludeInGeneralQueries bool          `json:"include_in_general_queries"`
+	Tags                    []string      `json:"tags"`
+	TagMetadata             []CalendarTag `json:"tag_metadata,omitempty"`
 }
 
 // CalendarStatus includes configuration plus refresh state.
@@ -61,12 +63,13 @@ type UpdateCheck struct {
 
 // AddCalendarInput creates or upserts a calendar.
 type AddCalendarInput struct {
-	Key  string   `json:"key,omitempty"`
-	Name string   `json:"name"`
-	URL  string   `json:"url"`
-	Tags []string `json:"tags,omitempty"`
-	Color string   `json:"color,omitempty"`
-	Icon  string   `json:"icon,omitempty"`
+	Key             string   `json:"key,omitempty"`
+	Name            string   `json:"name"`
+	URL             string   `json:"url"`
+	Tags            []string `json:"tags,omitempty"`
+	Color           string   `json:"color,omitempty"`
+	Icon            string   `json:"icon,omitempty"`
+	RefreshInterval string   `json:"refresh_interval,omitempty"`
 }
 
 // UpdateCalendarInput updates mutable calendar fields.
@@ -76,14 +79,28 @@ type UpdateCalendarInput struct {
 	Enabled                 *bool     `json:"enabled,omitempty"`
 	IncludeInGeneralQueries *bool     `json:"include_in_general_queries,omitempty"`
 	Tags                    *[]string `json:"tags,omitempty"`
+	TagOrder                *[]string `json:"tag_order,omitempty"`
 	Color                   string    `json:"color,omitempty"`
 	Icon                    string    `json:"icon,omitempty"`
+	RefreshInterval         string    `json:"refresh_interval,omitempty"`
 }
 
 // CalendarTag describes a tag available for calendar and meeting queries.
 type CalendarTag struct {
-	Name          string `json:"name"`
-	CalendarCount int    `json:"calendar_count"`
+	Name            string `json:"name"`
+	CalendarCount   int    `json:"calendar_count"`
+	Color           string `json:"color,omitempty"`
+	Icon            string `json:"icon,omitempty"`
+	RefreshInterval string `json:"refresh_interval,omitempty"`
+	Position        int    `json:"position,omitempty"`
+}
+
+// UpdateCalendarTagInput updates reusable tag presentation and refresh defaults.
+type UpdateCalendarTagInput struct {
+	Color           string `json:"color,omitempty"`
+	Icon            string `json:"icon,omitempty"`
+	RefreshInterval string `json:"refresh_interval,omitempty"`
+	Position        *int   `json:"position,omitempty"`
 }
 
 // RuntimeConfig exposes editable service settings and where each effective value came from.

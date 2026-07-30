@@ -269,6 +269,11 @@ func (s *Service) ListTags(ctx context.Context) ([]CalendarTag, error) {
 	return s.store.listTags(ctx)
 }
 
+// UpdateTag saves reusable tag metadata. Tags are retained even without calendars.
+func (s *Service) UpdateTag(ctx context.Context, name string, in UpdateCalendarTagInput) (CalendarTag, error) {
+	return s.store.updateTag(ctx, name, in)
+}
+
 // UpdateCalendar updates a calendar by ID.
 func (s *Service) UpdateCalendar(ctx context.Context, id string, in UpdateCalendarInput) (Calendar, error) {
 	return s.store.updateCalendar(ctx, id, in)
@@ -332,10 +337,10 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	}
 	attempt := now.UTC()
 	state.LastAttempt = &attempt
-	next := attempt.Add(s.refreshInterval)
+	next := attempt.Add(s.calendarRefreshInterval(cal))
 	state.NextRefresh = &next
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cal.URL, nil)
+	req, err := s.calendarRequest(ctx, cal.URL)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -370,7 +375,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 		s.logger.Warn("calendar refresh failed", "calendar_id", cal.ID, "key", cal.Key, "status", resp.StatusCode)
 		return err
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := s.readCalendarBody(resp.Body)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -402,6 +407,23 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	state.EventCount = len(events)
 	s.logger.Info("calendar refresh succeeded", "calendar_id", cal.ID, "key", cal.Key, "name", cal.Name, "event_count", len(events), "next_refresh", next.Format(time.RFC3339))
 	return s.store.updateRefreshState(ctx, id, state)
+}
+
+func (s *Service) calendarRefreshInterval(cal Calendar) time.Duration {
+	for _, value := range append([]string{cal.RefreshInterval}, tagRefreshIntervals(cal.TagMetadata)...) {
+		if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return s.refreshInterval
+}
+
+func tagRefreshIntervals(tags []CalendarTag) []string {
+	values := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		values = append(values, tag.RefreshInterval)
+	}
+	return values
 }
 
 // RefreshDueCalendars refreshes enabled calendars whose next refresh has arrived.
@@ -1089,7 +1111,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if strings.TrimSpace(in.URL) == "" {
 		return ValidateCalendarResult{OK: false, Error: "calendar URL is required"}, fmt.Errorf("calendar URL is required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(in.URL), nil)
+	req, err := s.calendarRequest(ctx, in.URL)
 	if err != nil {
 		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
 	}
@@ -1104,7 +1126,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 		result.Error = err.Error()
 		return result, err
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := s.readCalendarBody(resp.Body)
 	if err != nil {
 		result.Error = err.Error()
 		return result, err

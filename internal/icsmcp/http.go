@@ -1,6 +1,7 @@
 package icsmcp
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -94,6 +95,52 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 		update, err := svc.UpdateCheck(r.Context())
 		writeJSON(w, update, err)
+	})
+	mux.HandleFunc("/api/llm-profile", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			profile, err := svc.LLMProfile(r.Context())
+			writeJSON(w, profile, err)
+		case http.MethodPut:
+			var in UpdateLLMProfileInput
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			profile, err := svc.UpdateLLMProfile(r.Context(), in)
+			writeJSON(w, profile, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
+	mux.HandleFunc("/api/insights", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			insights, err := svc.ListInsights(r.Context())
+			writeJSON(w, insights, err)
+		case http.MethodPost:
+			var in RunInsightInput
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			insight, err := svc.RunInsight(r.Context(), in)
+			writeJSON(w, insight, err)
+		default:
+			methodNotAllowed(w)
+		}
+	})
+	mux.HandleFunc("/api/insights/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		insight, err := svc.GetInsight(r.Context(), strings.TrimPrefix(r.URL.Path, "/api/insights/"))
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, insight, err)
 	})
 	mux.HandleFunc("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -218,6 +265,24 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 		}
 		tags, err := svc.ListTags(r.Context())
 		writeJSON(w, tags, err)
+	})
+	mux.HandleFunc("/api/tags/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/tags/")
+		if name == "" || strings.Contains(name, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+			methodNotAllowed(w)
+			return
+		}
+		var in UpdateCalendarTagInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		tag, err := svc.UpdateTag(r.Context(), name, in)
+		writeJSON(w, tag, err)
 	})
 	mux.HandleFunc("/api/calendars/general-query-selection", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -1409,6 +1474,18 @@ func writeBusyText(b *strings.Builder, busy []BusyBlock) {
 }
 
 func openAPISpec() map[string]any {
+	get := func(summary string) map[string]any {
+		return map[string]any{"get": map[string]any{"summary": summary}}
+	}
+	post := func(summary string) map[string]any {
+		return map[string]any{"post": map[string]any{"summary": summary}}
+	}
+	eventAlias := func(summary string) map[string]any {
+		return map[string]any{"get": map[string]any{
+			"summary":     summary,
+			"description": "Supports the shared meeting query parameters and format negotiation through format, Accept, or a .json, .html, .md, .txt, .ascii, or .csv suffix.",
+		}}
+	}
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
@@ -1416,22 +1493,44 @@ func openAPISpec() map[string]any {
 			"version": "2.0.0",
 		},
 		"paths": map[string]any{
-			"/api/rest/{tool_name}":            map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},
-			"/api/update-check":                map[string]any{"get": map[string]any{"summary": "Check latest GitHub release version"}},
-			"/api/events":                      map[string]any{"get": map[string]any{"summary": "Upcoming events"}},
-			"/api/events/by-calendar":          map[string]any{"get": map[string]any{"summary": "Upcoming events grouped by calendar"}},
-			"/api/events/today":                map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day"}},
-			"/api/events/tomorrow":             map[string]any{"get": map[string]any{"summary": "Tomorrow's events"}},
-			"/api/events/today-tomorrow":       map[string]any{"get": map[string]any{"summary": "Today and tomorrow events"}},
-			"/api/events/current":              map[string]any{"get": map[string]any{"summary": "Current events"}},
-			"/api/events/next":                 map[string]any{"get": map[string]any{"summary": "Next meeting-focused events"}},
-			"/api/events/search":               map[string]any{"get": map[string]any{"summary": "Search events"}},
-			"/api/free-busy":                   map[string]any{"get": map[string]any{"summary": "Free/busy blocks"}},
-			"/api/calendars/{calendar}/events": map[string]any{"get": map[string]any{"summary": "Events for one calendar"}},
-			"/api/calendars/{calendar}/today":  map[string]any{"get": map[string]any{"summary": "Events that overlap the current display day for one calendar"}},
-			"/{calendar}/{index}":              map[string]any{"get": map[string]any{"summary": "One upcoming event for one calendar by 1-based index"}},
-			"/{calendar}/upcoming/{index}":     map[string]any{"get": map[string]any{"summary": "One upcoming event for one calendar by 1-based index"}},
-			"/{calendar}/ongoing/{index}":      map[string]any{"get": map[string]any{"summary": "One ongoing event for one calendar by 1-based index"}},
+			"/mcp":                                   post("Streamable HTTP MCP endpoint"),
+			"/healthz":                               get("Liveness check"),
+			"/readyz":                                get("Readiness check"),
+			"/metrics":                               get("Prometheus metrics"),
+			"/openapi.json":                          get("OpenAPI document"),
+			"/docs":                                  get("REST API documentation page"),
+			"/api/status":                            get("Service status"),
+			"/api/config":                            map[string]any{"get": map[string]any{"summary": "Read runtime configuration"}, "put": map[string]any{"summary": "Update runtime configuration"}},
+			"/api/update-check":                      get("Check latest GitHub release version"),
+			"/api/llm-profile":                       map[string]any{"get": map[string]any{"summary": "Read redacted optional LLM profile"}, "put": map[string]any{"summary": "Update optional LLM profile"}},
+			"/api/insights":                          map[string]any{"get": map[string]any{"summary": "List cached insights without invoking an LLM"}, "post": map[string]any{"summary": "Explicitly run and cache an insight"}},
+			"/api/insights/{name}":                   get("Read one cached insight without invoking an LLM"),
+			"/api/rest/{tool_name}":                  map[string]any{"get": map[string]any{"summary": "Call a read-only MCP tool"}, "post": map[string]any{"summary": "Call an admin MCP tool"}},
+			"/api/meetings":                          eventAlias("Upcoming meetings"),
+			"/api/meetings/by-calendar":              eventAlias("Upcoming meetings grouped by calendar"),
+			"/api/events":                            eventAlias("Upcoming events"),
+			"/api/events/by-calendar":                eventAlias("Upcoming events grouped by calendar"),
+			"/api/events/today":                      eventAlias("Events that overlap the current display day"),
+			"/api/events/tomorrow":                   eventAlias("Tomorrow's events"),
+			"/api/events/today-tomorrow":             eventAlias("Today and tomorrow events"),
+			"/api/events/today_tomorrow":             eventAlias("Today and tomorrow events"),
+			"/api/events/current":                    eventAlias("Current events"),
+			"/api/events/next":                       eventAlias("Next meeting-focused events"),
+			"/api/events/search":                     eventAlias("Search events"),
+			"/api/free-busy":                         eventAlias("Free/busy blocks"),
+			"/api/tools":                             get("MCP tool catalog"),
+			"/api/tools/{tool_name}/call":            post("Preview an MCP tool call"),
+			"/api/calendars":                         map[string]any{"get": map[string]any{"summary": "List calendar status"}, "post": map[string]any{"summary": "Add and refresh a calendar"}},
+			"/api/calendars/general-query-selection": map[string]any{"get": map[string]any{"summary": "Get default-query calendar selection"}, "put": map[string]any{"summary": "Atomically save default-query calendar selection"}},
+			"/api/calendars/validate":                post("Validate a calendar feed"),
+			"/api/calendars/{calendar}":              map[string]any{"patch": map[string]any{"summary": "Update a calendar"}, "delete": map[string]any{"summary": "Remove a calendar"}},
+			"/api/calendars/{calendar}/refresh":      post("Refresh a calendar"),
+			"/api/calendars/{calendar}/events":       eventAlias("Events for one calendar"),
+			"/api/calendars/{calendar}/today":        eventAlias("Events that overlap the current display day for one calendar"),
+			"/api/tags":                              get("List calendar tags"),
+			"/{calendar}/{index}":                    eventAlias("One upcoming event for one calendar by 1-based index"),
+			"/{calendar}/upcoming/{index}":           eventAlias("One upcoming event for one calendar by 1-based index"),
+			"/{calendar}/ongoing/{index}":            eventAlias("One ongoing event for one calendar by 1-based index"),
 		},
 	}
 }
