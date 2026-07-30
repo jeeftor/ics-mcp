@@ -266,4 +266,4 @@ jobs:
 
       - name: Explain skipped Telegram notification
         if: env.TELEGRAM_TO == '' || env.TELEGRAM_TOKEN == ''
-        run: echo "Telegram notification skipped: set TELEGRAM_TO and TELEGRAM_TOKEN repository secrets to enable it."
+        run: 'echo "Telegram notification skipped: set TELEGRAM_TO and TELEGRAM_TOKEN repository secrets to enable it."'
