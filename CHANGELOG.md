@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.6 - 2026-07-30
+
+- Restore all-day planner titles and normalize date-only event boundaries.
+- Add safe RSVP status cues when an ICS event has one unambiguous attendee.
+- Add rich event previews, Outlook-style card hierarchy, and a cleaner selected-event inspector.
+- Add custom SVG/GIF calendar icons with safe upload handling, palette-based calendar randomization, and distinct tag colors.
+- Streamline LLM setup into preset, server URL, and optional key; discovery now has an explicit model selector and generic examples.
+- Re-enable opt-in Telegram publishing after a successful manual delivery test.
+
 ## v2.2.5 - 2026-07-30
 
 - Fix date-only ICS events so one-day and multi-day all-day events render on their correct days.
