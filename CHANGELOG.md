@@ -1,8 +1,11 @@
 # Changelog
 
-## v2.0.12 - Unreleased
+## v2.0.12 - 2026-07-30
 
 - Add flexible calendar tags for MCP, REST, and admin UI queries.
+- Add a configurable runtime Config tab and environment override visibility.
+- Harden calendar feed fetching with private-address protection, response limits, and request timeouts.
+- Add optional bearer-token protection for REST and MCP endpoints and refresh the admin console theme.
 - Add persisted runtime configuration with environment and CLI override visibility.
 - Refresh the admin dashboard and add a Config tab.
 
