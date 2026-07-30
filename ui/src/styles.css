@@ -24,7 +24,11 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .day-column { min-width:0; padding:0 3px; }
 .event-card.timed-event { min-width:0; padding:4px 5px; border-radius:6px; }
 .event-card.timed-event span { line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.event-card.timed-event strong { display:flex; align-items:center; gap:2px; min-width:0; font-size:11px; }
+.event-card.timed-event { z-index:2; }
+.event-card.timed-event strong { display:flex; align-items:center; gap:3px; min-width:0; height:100%; font-size:11px; }
+.event-card.timed-event .event-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.event-card.timed-event.two-line-title strong { align-items:flex-start; line-height:1.2; }
+.event-card.timed-event.two-line-title .event-title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow:hidden; text-overflow:clip; }
 .event-card.timed-event.show-event-time { grid-template-rows:auto minmax(0,1fr); gap:4px; padding:6px 7px; }
 .event-card.timed-event.show-event-time span { color:#6b655b; font-size:11px; font-weight:700; }
 .event-card.timed-event.show-event-time strong { align-items:flex-start; white-space:normal; line-height:1.2; }
@@ -38,7 +42,7 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .time-ruler { position:relative; grid-template-rows:repeat(24,60px) !important; padding-top:0; }
 .time-ruler strong { position:absolute; z-index:2; top:4px; right:0; padding-right:10px; color:#526b56; background:#fbfaf7; }
 .time-ruler span { padding:2px 10px 0 0; }
-.current-time-line { position:absolute; z-index:4; right:0; left:0; height:2px; pointer-events:none; background:#d34d47; box-shadow:0 0 0 1px rgba(255,255,255,.75); }
+.current-time-line { position:absolute; z-index:1; right:0; left:0; height:2px; pointer-events:none; background:#d34d47; box-shadow:0 0 0 1px rgba(255,255,255,.75); }
 .current-time-line::before { content:''; position:absolute; top:-4px; left:-3px; width:8px; height:8px; border-radius:50%; background:#d34d47; }
 .refresh-setting-card { grid-column:span 2; align-items:center; }.refresh-interval-picker { display:grid; gap:9px; min-width:min(100%,430px); }.refresh-interval-label,.refresh-interval-custom { color:#60594f; font-size:11px; font-weight:750; }.refresh-interval-choices { display:flex; flex-wrap:wrap; gap:6px; }.refresh-interval-choices button { display:grid; gap:1px; min-width:48px; border:1px solid #ddd8ce; border-radius:8px; padding:6px 8px; color:#625b51; background:#fffdfa; font-size:12px; font-weight:800; }.refresh-interval-choices button:hover { border-color:#a7c1aa; background:#f5faf4; }.refresh-interval-choices button.active { border-color:#4b7953; color:#285036; background:#e3efe2; box-shadow:inset 0 0 0 1px #b9d5bd; }.refresh-interval-choices small { color:inherit; font-size:9px; font-weight:650; }.refresh-interval-custom { display:grid; gap:5px; }.refresh-interval-custom input { width:100%; border:1px solid #ddd8ce; border-radius:8px; padding:8px 10px; color:#39352d; background:#fffdfa; outline:none; }.refresh-interval-custom input:focus { border-color:#7ca380; box-shadow:0 0 0 3px #e6f0e5; }
 .all-day-overflow { align-self:end; justify-self:end; z-index:3; margin:3px 5px; border:0; border-radius:6px; padding:2px 5px; color:#27618d; background:#ddecf6; font-size:11px; font-weight:800; line-height:1.1; cursor:pointer; }
