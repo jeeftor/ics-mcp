@@ -1,5 +1,5 @@
 export type Calendar = {
-  id: string; key: string; name: string; url: string; color?: string; icon?: string; refresh_interval?: string; tags: string[]; enabled: boolean;
+  id: string; key: string; name: string; url: string; color?: string; icon?: string; custom_icon_url?: string; refresh_interval?: string; tags: string[]; enabled: boolean;
   include_in_general_queries: boolean; event_count: number; last_success?: string;
   last_attempt?: string; next_refresh?: string; last_error?: string;
 };
@@ -78,6 +78,8 @@ export const calendarAPI = {
   remove: (id: string) => api<void>(`/api/calendars/${id}`, { method: 'DELETE' }),
   refresh: (id: string) => api<void>(`/api/calendars/${id}/refresh`, { method: 'POST' }),
   refreshAll: () => api<unknown>('/api/rest/refresh_all_calendars', { method: 'POST', body: '{}' }),
+  uploadCustomIcon: (id: string, file: File) => api<{ custom_icon_url: string }>(`/api/calendars/${id}/custom-icon`, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file }),
+  clearCustomIcon: (id: string) => api<void>(`/api/calendars/${id}/custom-icon`, { method: 'DELETE' }),
   validate: (url: string) => api<FeedValidation>('/api/calendars/validate', { method: 'POST', body: JSON.stringify({ url }) }),
   saveGeneralQuerySelection: (calendarIDs: string[]) => api<{ calendar_ids: string[] }>('/api/calendars/general-query-selection', { method: 'PUT', body: JSON.stringify({ calendar_ids: calendarIDs }) })
 };
