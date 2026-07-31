@@ -9,7 +9,7 @@ export function startOfWeek(date: Date): Date {
 export function plannerViewAnchor(view: 1 | 3 | 7, today = new Date()): Date {
   const result = new Date(today);
   result.setHours(0, 0, 0, 0);
-  return view === 7 ? startOfWeek(result) : result;
+  return result;
 }
 
 export function addDays(date: Date, days: number): Date { const result = new Date(date); result.setDate(result.getDate() + days); return result; }
