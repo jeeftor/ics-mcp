@@ -1057,6 +1057,15 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 		payload["options"] = map[string]any{"num_predict": maxOutputTokens}
 	}
 	body, _ := json.Marshal(payload)
+	s.logger.Debug("llm request payload",
+		"action", action,
+		"backend", p.Backend,
+		"model", p.Model,
+		"endpoint", llmChatURL(p.Backend, p.Endpoint),
+		"system_prompt", systemPrompt,
+		"user_prompt", userPrompt,
+		"max_tokens", maxOutputTokens,
+		"event_count", eventCount)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmChatURL(p.Backend, p.Endpoint), bytes.NewReader(body))
 	if err != nil {
 		return Insight{}, err
@@ -1078,6 +1087,13 @@ func (s *Service) runInsight(ctx context.Context, in RunInsightInput, persist bo
 	if err != nil {
 		return Insight{}, fmt.Errorf("read LLM response: %w", err)
 	}
+	s.logger.Debug("llm response body",
+		"action", action,
+		"backend", p.Backend,
+		"model", p.Model,
+		"status_code", resp.StatusCode,
+		"response_bytes", len(rawBody),
+		"response_body", string(rawBody))
 	var wire struct {
 		Choices []struct {
 			Index        int    `json:"index"`

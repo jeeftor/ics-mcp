@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.13 - 2026-07-30
+
+- Log the full LLM request payload (system prompt, user prompt, model, endpoint, max tokens, event count) and the full response body at debug level, so the actual call to the LLM is visible in logs when running with --log-level debug.
+
 ## v2.6.12 - 2026-07-30
 
 - Include the current date, time, day of week, and configured timezone in the LLM prompt so the model can reason about "today" in the user's local time instead of seeing only UTC timestamps with no reference point.
