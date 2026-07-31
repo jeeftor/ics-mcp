@@ -31,9 +31,9 @@ export type LLMConnectionInput = { backend: LLMBackend; endpoint: string; api_ke
 export type LLMTestResult = { ok: boolean; message?: string; model?: string; error?: string };
 export type LemonadeModelLifecycle = { state: 'unreachable' | 'model_absent' | 'loading' | 'ready' | 'lifecycle_unavailable' | 'load_failed' | 'timed_out'; message: string };
 export type InsightTrigger = 'manual' | 'on_change' | 'scheduled';
-export type InsightScheduleMode = 'daily' | 'repeat';
+export type InsightScheduleMode = 'daily' | 'repeat' | 'cron';
 export type InsightDateScope = 'all' | 'today' | 'tomorrow' | 'this_week' | 'next_7_days' | 'custom';
-export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; date_scope?: InsightDateScope; start_date?: string; end_date?: string; trigger: InsightTrigger; schedule_mode?: InsightScheduleMode; schedule?: string; repeat_interval?: string; enabled: boolean; builtin?: boolean };
+export type InsightInquiry = { name: string; question: string; calendar_ids?: string[]; tags?: string[]; date_scope?: InsightDateScope; start_date?: string; end_date?: string; trigger: InsightTrigger; schedule_mode?: InsightScheduleMode; schedule?: string; repeat_interval?: string; cron_expression?: string; enabled: boolean; builtin?: boolean };
 export type Insight = { name: string; question: string; answer?: string; evidence?: string[]; caveat?: string; source_hash?: string; source_at?: string; generated_at?: string; stale?: boolean; error?: string; calendar_ids?: string[]; tags?: string[]; schedule?: string };
 
 export function parseTags(value: string): string[] {

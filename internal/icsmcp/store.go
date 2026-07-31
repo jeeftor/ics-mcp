@@ -178,6 +178,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE insight_inquiries ADD COLUMN date_scope TEXT NOT NULL DEFAULT 'all'`,
 		`ALTER TABLE insight_inquiries ADD COLUMN start_date TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE insight_inquiries ADD COLUMN end_date TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE insight_inquiries ADD COLUMN cron_expression TEXT NOT NULL DEFAULT ''`,
 		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('daily_briefing', 'What should I know today?', 0, 1)`,
 		`UPDATE insight_inquiries SET date_scope = 'today' WHERE name = 'daily_briefing' AND date_scope = 'all'`,
 	}
