@@ -6,4 +6,6 @@
 - Cover both direct JSON marshaling and MCP structured content when a field is part of an advertised tool output schema.
 
 ## Release Cadence
-- After implementing user-facing features or behavior changes, push a patch release frequently once verification passes.
+- Use SemVer deliberately. Patch releases are for compatible bug fixes and tightly scoped polish; do not create a long sequence of patch releases for a stream of distinct features.
+- Group related user-facing additions into the next minor release (for example, `v2.7.0` after the calendar/mobile/AI workspace additions). Use a patch only for follow-up fixes to that released feature set.
+- Keep unreleased changelog entries while related work is in progress, then tag at a natural verified checkpoint. When the user explicitly asks for a release after a single fix, release that fix as a patch unless it belongs to a broader, unreleased feature group.
