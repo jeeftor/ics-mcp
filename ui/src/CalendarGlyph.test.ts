@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarColor, calendarColorPalette, nextPaletteColor } from './CalendarGlyph';
+import { calendarColor, calendarColorPalette, nextPaletteColor, rotatePaletteColor } from './CalendarGlyph';
 
 describe('calendarColor', () => {
   it('uses the persisted color and gives unstyled calendars a stable fallback', () => {
@@ -19,5 +19,12 @@ describe('calendarColor', () => {
     expect(calendarColorPalette).toContain(first);
     expect(calendarColorPalette).toContain(second);
     expect(second).not.toBe(first);
+  });
+
+  it('rotates an existing calendar to a different available curated color', () => {
+    const current = calendarColorPalette[0];
+    const next = rotatePaletteColor(current, [current, calendarColorPalette[2]]);
+    expect(next).toBe(calendarColorPalette[1]);
+    expect(next).not.toBe(current);
   });
 });

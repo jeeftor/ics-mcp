@@ -43,6 +43,17 @@ export function nextPaletteColor(existing: Iterable<string | undefined>, seed: s
   return calendarColorPalette[start];
 }
 
+/** Pick the next available curated color for an existing calendar presentation. */
+export function rotatePaletteColor(current: string | undefined, existing: Iterable<string | undefined>): string {
+  const occupied = new Set([...existing].filter((color): color is string => Boolean(color)).map(color => color.toLowerCase()));
+  const currentIndex = current ? calendarColorPalette.findIndex(color => color.toLowerCase() === current.toLowerCase()) : -1;
+  for (let offset = 1; offset <= calendarColorPalette.length; offset += 1) {
+    const color = calendarColorPalette[((currentIndex >= 0 ? currentIndex : 0) + offset) % calendarColorPalette.length];
+    if (!occupied.has(color.toLowerCase())) return color;
+  }
+  return calendarColorPalette[((currentIndex >= 0 ? currentIndex : 0) + 1) % calendarColorPalette.length];
+}
+
 /** Render an MDI icon, falling back safely to calendar for an unknown name. */
 export function CalendarGlyph({ icon = 'calendar', customIconURL, color, size = 18 }: { icon?: string; customIconURL?: string; color: string; size?: number }) {
   return <span className="calendar-glyph" style={{ '--calendar-color': color, width: size, height: size } as React.CSSProperties} aria-hidden="true">{customIconURL ? <img src={customIconURL} alt=""/> : <svg viewBox="0 0 24 24"><path d={icons[iconKey(icon)] || icons.calendar}/></svg>}</span>;

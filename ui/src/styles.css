@@ -130,6 +130,9 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 @media (max-width:700px) { .planner-scroll { max-height:66vh; }.week-header,.week-grid { min-width:700px; }.all-day-grid { min-width:700px; } }
 .tag-chip { gap:3px; border-color:color-mix(in srgb, var(--tag-color, #4f8f72), white 64%); color:color-mix(in srgb, var(--tag-color, #4f8f72), #27332a 45%); background:color-mix(in srgb, var(--tag-color, #4f8f72), white 89%); }
 .tag-chip .tag-order { display:inline-flex; gap:3px; }
+.tag-chip .tag-order[draggable=true] { cursor:grab; }
+.tag-chip .tag-order[draggable=true]:active { cursor:grabbing; }
+.tag-order-handle { align-self:center; color:currentColor; font-size:13px; line-height:1; opacity:.72; }
 .tag-chip .tag-order button { width:18px; height:18px; border:0; border-radius:4px; padding:0; color:currentColor; background:color-mix(in srgb, var(--tag-color, #4f8f72), white 78%); font-size:11px; line-height:1; }
 .calendar-glyph img { width:76%; height:76%; object-fit:contain; }
 .custom-icon-control { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px; border:1px solid #e5dfd5; border-radius:10px; background:#fcfbf8; }
