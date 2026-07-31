@@ -5,6 +5,8 @@ set -eu
 browser_smoke_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 browser_smoke_output="$browser_smoke_root/output/playwright"
 browser_smoke_temp=$(mktemp -d "${TMPDIR:-/tmp}/icsmcp-browser-smoke.XXXXXX")
+browser_smoke_gocache=${GOCACHE:-"$browser_smoke_temp/go-cache"}
+export npm_config_cache=${npm_config_cache:-"$browser_smoke_temp/npm-cache"}
 browser_smoke_port=${ICSMCP_BROWSER_SMOKE_PORT:-}
 browser_smoke_session="icsmcp-browser-smoke-$$"
 browser_smoke_server_pid=""
@@ -83,7 +85,7 @@ click_button() {
 
 cd "$browser_smoke_root"
 pnpm -C ui build >/dev/null
-go build -o "$browser_smoke_temp/icsmcp" main.go
+GOCACHE="$browser_smoke_gocache" go build -o "$browser_smoke_temp/icsmcp" main.go
 (
   cd "$browser_smoke_temp"
   env -i PATH="$PATH" HOME="$HOME" "$browser_smoke_temp/icsmcp" serve \

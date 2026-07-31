@@ -53,6 +53,18 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 		assertOrder(t, bodyText, `data-tab="info"`, `data-tab="calendars"`, `data-tab="config"`, `data-tab="meetings"`, `data-tab="tools"`, `data-tab="rest"`)
 	}
 
+	mark, err := http.Get(server.URL + "/icsmcp-mark.svg")
+	if err != nil {
+		t.Fatalf("GET application mark error = %v", err)
+	}
+	defer mark.Body.Close()
+	if mark.StatusCode != http.StatusOK {
+		t.Fatalf("GET application mark status = %d, want %d", mark.StatusCode, http.StatusOK)
+	}
+	if got := mark.Header.Get("Content-Type"); !strings.Contains(got, "image/svg+xml") {
+		t.Fatalf("GET application mark content type = %q, want SVG", got)
+	}
+
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sampleOneTimeICS()))
 	}))

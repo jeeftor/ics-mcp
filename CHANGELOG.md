@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.7.1 - 2026-07-31
+
+- Serve the application SVG mark from the embedded console, fixing the missing header/favicon asset in deployed builds.
+- Show times on medium-height timed event cards when there is room, and give mobile agenda time ranges their own non-overlapping column.
+- Make the browser smoke command use temporary Go and npm caches when caller caches are unavailable.
+
 ## v2.7.0 - 2026-07-31
 
 - Add a rolling **7 days** calendar view alongside the conventional **Calendar week** view, so the planner can begin with today instead of showing expired weekdays with no cached events.

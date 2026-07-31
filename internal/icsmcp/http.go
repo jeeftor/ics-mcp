@@ -561,7 +561,7 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && !isAdminSPARoute(r.URL.Path) {
 			assetPath := strings.TrimPrefix(r.URL.Path, "/")
-			if strings.HasPrefix(assetPath, "assets/") && fs.ValidPath(assetPath) {
+			if (strings.HasPrefix(assetPath, "assets/") || assetPath == "icsmcp-mark.svg") && fs.ValidPath(assetPath) {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 				http.ServeFileFS(w, r, webFiles, "web/dist/"+assetPath)
 				return
