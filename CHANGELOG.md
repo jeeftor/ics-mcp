@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.14 - 2026-07-31
+
+- Detect and render markdown in LLM insight responses. Markdown is converted to sanitized HTML (via marked + DOMPurify) and rendered with formatted headings, bold, lists, code blocks, tables, and links. A "Source/Rendered" toggle switches between the raw markdown and the rendered view. JSON and HTML detection are unchanged; plain text still renders as-is.
+
 ## v2.6.13 - 2026-07-30
 
 - Log the full LLM request payload (system prompt, user prompt, model, endpoint, max tokens, event count) and the full response body at debug level, so the actual call to the LLM is visible in logs when running with --log-level debug.

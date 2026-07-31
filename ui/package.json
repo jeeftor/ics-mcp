@@ -11,11 +11,14 @@
   "dependencies": {
     "@mdi/js": "^7.4.47",
     "@radix-ui/react-dialog": "^1.1.15",
+    "dompurify": "^3.4.12",
     "lucide-react": "^0.468.0",
+    "marked": "^18.0.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
