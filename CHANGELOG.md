@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.5 - 2026-07-31
+
+- Preserve readable titles in three-way timed-event overlaps by withholding automatic time labels when the lane is too narrow; the explicit planner time setting still shows them on demand.
+
 ## v2.7.4 - 2026-07-31
 
 - Make the client-recognized `/calendar` URL reload-safe instead of routing it through legacy calendar shortcuts.
