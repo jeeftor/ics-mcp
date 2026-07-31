@@ -65,8 +65,10 @@ func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *tes
 }
 
 func TestRefreshCalendarRoutineLogsUseNameAndSummaryFields(t *testing.T) {
+	start := time.Now().Add(time.Hour).UTC()
+	end := start.Add(time.Hour)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:one\r\nDTSTAMP:20260730T000000Z\r\nDTSTART:20260730T120000Z\r\nDTEND:20260730T130000Z\r\nSUMMARY:One\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"))
+		_, _ = fmt.Fprintf(w, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:one\r\nDTSTAMP:%s\r\nDTSTART:%s\r\nDTEND:%s\r\nSUMMARY:One\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", start.Format("20060102T150405Z"), start.Format("20060102T150405Z"), end.Format("20060102T150405Z"))
 	}))
 	defer provider.Close()
 
