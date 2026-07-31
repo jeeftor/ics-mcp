@@ -60,4 +60,11 @@ describe('all-day event cards', () => {
 
     expect(markup).toContain('event-card-time">12:00 PM – 1:00 PM');
   });
+
+  it('keeps optional time labels out of three-way overlaps where they would be truncated', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03', start: '12:00', end: '13:00' }} selected={false} onSelect={() => undefined} timeFormat="12h" placement={{ meeting: { name: 'Planning' }, top: 720, height: 68, lane: 0, lanes: 3 }}/>);
+
+    expect(markup).not.toContain('show-event-time');
+    expect(markup).not.toContain('event-card-time');
+  });
 });
