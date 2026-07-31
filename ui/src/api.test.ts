@@ -33,7 +33,8 @@ describe('admin-console routes', () => {
     expect(routeForLocation(location('/config/environment'))).toEqual({ page: 'config', configSection: 'environment' });
     expect(routeForLocation(location('/config/calendars'))).toEqual({ page: 'config', configSection: 'calendars' });
     expect(routeForLocation(location('/config/tags'))).toEqual({ page: 'config', configSection: 'tags' });
-    expect(routeForLocation(location('/config/llm'))).toEqual({ page: 'config', configSection: 'insights' });
+    expect(routeForLocation(location('/config/llm'))).toEqual({ page: 'ai' });
+    expect(routeForLocation(location('/ai'))).toEqual({ page: 'ai' });
     expect(routeForLocation(location('/api/mcp-tools'))).toEqual({ page: 'api', apiSection: 'tools' });
     expect(routeForLocation(location('/api/meeting-preview'))).toEqual({ page: 'api', apiSection: 'meetings' });
     expect(routeForLocation(location('/api/rest-explorer'))).toEqual({ page: 'api', apiSection: 'rest' });
@@ -50,7 +51,7 @@ describe('admin-console routes', () => {
 
   it('generates canonical paths for navigation history', () => {
     expect(pathForRoute({ page: 'calendar' })).toBe('/');
-    expect(pathForRoute({ page: 'config', configSection: 'insights' })).toBe('/config/llm');
+    expect(pathForRoute({ page: 'ai' })).toBe('/ai');
     expect(pathForRoute({ page: 'api', apiSection: 'tools' })).toBe('/api/mcp-tools');
   });
 });

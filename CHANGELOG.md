@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.6.19 - 2026-07-31
+
+- Promote AI/LLM insights from a Config sub-tab to a top-level "AI" navigation item with a sparkles icon. The new AI page combines the LLM backend configuration and the briefing/inquiry workspace in one place. Legacy `/config/llm` URLs redirect to `/ai`.
+- Rename "LLM Insights" to "Calendar briefings" throughout the UI. Labels updated: "New inquiry" → "New briefing", "Enable insights" → "Enable AI", "LLM configuration" → "AI configuration", "OPTIONAL, EXPLICIT LLM CALLS" → "AI BRIEFINGS".
+- Add a duplicate button (copy icon) on each briefing card. Clicking it opens the editor pre-filled with the existing briefing's question, calendar scope, run policy, and schedule, with a `_copy` suffix on the name and disabled by default so you can customize before saving.
+- Remove the "LLM insights" tab from the Config page. Config now only has Runtime settings, Environment, Calendars, and Tags.
+
 ## v2.6.18 - 2026-07-31
 
 - Add a mobile-friendly calendar view with two modes: Agenda (scrollable list of events grouped by day) and Day (single-day event list). On screens narrower than 768px, the calendar automatically switches from the desktop grid to the mobile view. The mobile view includes a toggle between Agenda and Day modes, prev/next navigation with larger 44px tap targets, a Today button, and the same calendar filter and event detail panels as the desktop view. Event cards show time, title, and calendar color bar. Cancelled events are dimmed.
