@@ -20,12 +20,12 @@ describe('calendar planner date helpers', () => {
     expect(weekRangeLabel(start)).toBe('Dec 28 – Jan 3, 2027');
   });
 
-  it('returns to today whenever the planner view changes', () => {
+  it('anchors rolling planner views on today', () => {
     const today = new Date(2026, 6, 30, 15, 45);
 
     expect(dateKey(plannerViewAnchor(1, today))).toBe('2026-07-30');
     expect(dateKey(plannerViewAnchor(3, today))).toBe('2026-07-30');
-    expect(dateKey(plannerViewAnchor(7, today))).toBe('2026-07-27');
+    expect(dateKey(plannerViewAnchor(7, today))).toBe('2026-07-30');
   });
 
   it('keeps all-day events separate from timed event labels', () => {
