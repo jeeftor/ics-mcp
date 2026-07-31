@@ -186,6 +186,53 @@ func TestInsightInferenceUsesLongerDeadlineAndCompactGroundingPayload(t *testing
 	}
 }
 
+func TestLLMInferenceCanDecodeResponseAfterHeadersArrive(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	response := `{"choices":[{"message":{"content":"{\"answer\":\"OK\",\"evidence\":[]}"}}]}`
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       &requestContextBody{ctx: req.Context(), reader: strings.NewReader(response)},
+		}, nil
+	})}
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 7, 31, 15, 0, 0, 0, time.UTC)
+	if err := svc.store.replaceEvents(ctx, cal.ID, []EventInstance{{ID: "event-1", UID: "uid-1", Name: "Planning", Start: start, End: start.Add(time.Hour), CalendarID: cal.ID, CalendarName: "Work"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateLLMProfile(ctx, UpdateLLMProfileInput{Enabled: ptr(true), Endpoint: "http://llm.test/v1", Model: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	insight, err := svc.PreviewInsight(ctx, RunInsightInput{Question: "What should I know?", DateScope: InsightDateScopeToday})
+	if err != nil {
+		t.Fatalf("PreviewInsight() error = %v, want response body to remain readable after headers", err)
+	}
+	if insight.Answer != "OK" {
+		t.Fatalf("PreviewInsight() answer = %q, want OK", insight.Answer)
+	}
+}
+
+type requestContextBody struct {
+	ctx    context.Context
+	reader *strings.Reader
+}
+
+func (b *requestContextBody) Read(p []byte) (int, error) {
+	select {
+	case <-b.ctx.Done():
+		return 0, b.ctx.Err()
+	default:
+		return b.reader.Read(p)
+	}
+}
+
+func (b *requestContextBody) Close() error { return nil }
+
 func TestInsightOllamaPayloadCapsGeneratedOutput(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
