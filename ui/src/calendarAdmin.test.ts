@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Calendar } from './api';
-import { calendarIconInheritLabel, noticeClassName, openCalendarAppearance, supportsScreenColorPicker } from './App';
+import { calendarIconInheritLabel, noticeClassName, openCalendarAppearance, reorderAssignedTags, supportsScreenColorPicker } from './App';
 
 describe('calendar administration polish', () => {
   it('names the icon fallback that will actually apply', () => {
@@ -28,5 +28,10 @@ describe('calendar administration polish', () => {
   it('only enables the screen color picker when the browser supports it', () => {
     expect(supportsScreenColorPicker({})).toBe(false);
     expect(supportsScreenColorPicker({ EyeDropper: class { open = async () => ({ sRGBHex: '#123456' }); } })).toBe(true);
+  });
+
+  it('reorders a calendar tag with drag and drop while preserving the rest', () => {
+    expect(reorderAssignedTags(['Personal', 'School', 'Holiday'], 'Holiday', 0)).toEqual(['Holiday', 'Personal', 'School']);
+    expect(reorderAssignedTags(['Personal', 'School'], 'Missing', 0)).toEqual(['Personal', 'School']);
   });
 });
