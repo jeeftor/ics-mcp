@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.7.0 - 2026-07-31
+
+- Add a rolling **7 days** calendar view alongside the conventional **Calendar week** view, so the planner can begin with today instead of showing expired weekdays with no cached events.
+- Improve the planner on desktop and mobile with a compact contextual filter/details panel and use tall timed-event cards to reveal their time automatically when there is room.
+- Add drag-and-drop ordering for a calendar's assigned tags and a palette-shuffle action that rotates a calendar to a distinct curated color where possible.
+- Add the cached prompt list, definition, latest-output, and retained-history reads to the REST Explorer; these routes never invoke an LLM.
+- Add repeatable production browser smoke coverage for the desktop planner, direct SPA routes, and mobile calendar controls using an isolated temporary configuration.
+
 ## v2.6.20 - 2026-07-31
 
 - Keep the bounded LLM request context alive until its response body closes, fixing deployed streaming responses that failed during decode with `context canceled` after headers arrived.
