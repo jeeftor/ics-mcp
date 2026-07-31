@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.17 - 2026-07-31
+
+- Fix view switching (Day/3-day/Week) to preserve the current date position instead of jumping back to today. Only the Today button jumps to the current date. Switching to Week view snaps the anchor to the start of the current week; switching to Day or 3-day keeps the same anchor date.
+
 ## v2.6.16 - 2026-07-31
 
 - Move the Day/3-day/Week view toggle and Today button from the page header into a toolbar at the top of the calendar card, and move the previous/next navigation chevrons to the left and right edges of the day-header row (Outlook-style). The page header now only shows the date range and calendar count, making the navigation controls easier to reach while viewing the calendar.
