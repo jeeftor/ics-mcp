@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.16 - 2026-07-31
+
+- Move the Day/3-day/Week view toggle and Today button from the page header into a toolbar at the top of the calendar card, and move the previous/next navigation chevrons to the left and right edges of the day-header row (Outlook-style). The page header now only shows the date range and calendar count, making the navigation controls easier to reach while viewing the calendar.
+
 ## v2.6.15 - 2026-07-31
 
 - Flatten the run policy selector from a two-level dropdown (trigger → schedule mode → fields) to a single dropdown with five clear options: Manual only, When calendar data changes, Once per day, Every N minutes, and Custom cron. Selecting an option immediately shows the relevant input field (time picker, minute interval, or cron expression).
