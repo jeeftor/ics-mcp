@@ -54,4 +54,10 @@ describe('all-day event cards', () => {
     expect(markup).toContain('show-event-time');
     expect(markup).toContain('event-card-time">12:00 PM – 2:00 PM');
   });
+
+  it('shows the meeting time before a medium-height card leaves unused space', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03', start: '12:00', end: '13:00' }} selected={false} onSelect={() => undefined} timeFormat="12h" placement={{ meeting: { name: 'Planning' }, top: 720, height: 68, lane: 0, lanes: 1 }}/>);
+
+    expect(markup).toContain('event-card-time">12:00 PM – 1:00 PM');
+  });
 });
