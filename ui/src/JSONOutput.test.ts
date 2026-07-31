@@ -13,4 +13,13 @@ describe('JSON output formatting', () => {
     expect(jsonOutputValue('less than 5 items')).toEqual({ kind: 'text', raw: 'less than 5 items' });
     expect(jsonOutputValue('<3')).toEqual({ kind: 'text', raw: '<3' });
   });
+  it('detects markdown and tags it as markdown', () => {
+    expect(jsonOutputValue('# Today\'s Briefing\n\nYou have **2 meetings** today.')).toEqual({ kind: 'markdown', raw: '# Today\'s Briefing\n\nYou have **2 meetings** today.' });
+    expect(jsonOutputValue('- Item one\n- Item two\n- Item three')).toEqual({ kind: 'markdown', raw: '- Item one\n- Item two\n- Item three' });
+    expect(jsonOutputValue('```json\n{"answer":"yes"}\n```')).toEqual({ kind: 'markdown', raw: '```json\n{"answer":"yes"}\n```' });
+  });
+  it('does not misclassify plain prose as markdown', () => {
+    expect(jsonOutputValue('You have one meeting today at 9am.')).toEqual({ kind: 'text', raw: 'You have one meeting today at 9am.' });
+    expect(jsonOutputValue('The answer is 42.')).toEqual({ kind: 'text', raw: 'The answer is 42.' });
+  });
 });
