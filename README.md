@@ -320,4 +320,14 @@ make test
 
 The embedded admin UI is built from the React/TypeScript source in `ui/`. `make test` and `make run` install the pinned pnpm dependencies and build it first; use `make ui-build` when you only need to refresh the bundled UI assets.
 
+### Browser smoke coverage
+
+Run the built Go server and exercise the embedded console in a headless browser:
+
+```bash
+make browser-smoke
+```
+
+The smoke check creates an isolated temporary SQLite configuration, then verifies the desktop rolling **7 days** and **Calendar week** controls, direct Config/API SPA routes, and the mobile Agenda, Day, and calendar-filter context controls. It requires Node.js (`npx`), pnpm, Go, and the Playwright CLI; the first run may download the CLI/browser. Screenshots and snapshots are saved under `output/playwright/` when a failure occurs. Set `ICSMCP_BROWSER_SMOKE_PORT` to choose its local loopback port.
+
 The default `make` target prints help and does not mutate state.
