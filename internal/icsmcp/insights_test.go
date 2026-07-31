@@ -828,3 +828,107 @@ func TestInsightPromptIncludesCurrentDateAndTimezone(t *testing.T) {
 		t.Errorf("prompt missing timezone: %q", combined)
 	}
 }
+
+func TestCronScheduleParsing(t *testing.T) {
+	tests := []struct {
+		expr string
+		ok   bool
+	}{
+		{"0 6 * * *", true},       // daily at 6 AM
+		{"*/15 * * * *", true},    // every 15 minutes
+		{"0 9-17 * * 1-5", true},  // hourly 9-5 weekdays
+		{"30 6 1 * *", true},      // 6:30 AM on the 1st of each month
+		{"0 0 * * 0", true},       // midnight Sunday
+		{"0 0 * * 7", true},       // 7 is also Sunday
+		{"0,30 * * * *", true},    // every 30 minutes
+		{"0 6 * *", false},        // only 4 fields
+		{"0 6 * * * *", false},    // 6 fields
+		{"60 6 * * *", false},     // minute out of range
+		{"0 24 * * *", false},     // hour out of range
+		{"0 6 0 * *", false},      // day-of-month out of range
+		{"0 6 * 13 *", false},     // month out of range
+		{"", false},               // empty
+		{"abc", false},            // garbage
+	}
+	for _, tt := range tests {
+		_, err := parseCronExpression(tt.expr)
+		if tt.ok && err != nil {
+			t.Errorf("parseCronExpression(%q) unexpected error: %v", tt.expr, err)
+		}
+		if !tt.ok && err == nil {
+			t.Errorf("parseCronExpression(%q) expected error, got nil", tt.expr)
+		}
+	}
+}
+
+func TestCronDueLogic(t *testing.T) {
+	loc := time.UTC
+	// "0 6 * * *" = daily at 6:00 AM
+	schedule, err := parseCronExpression("0 6 * * *")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Never run, now is 6:00 AM → due
+	now := time.Date(2026, 7, 30, 6, 0, 0, 0, loc)
+	if !cronDue(schedule, time.Time{}, now) {
+		t.Fatal("cron should be due at 6:00 AM when never run")
+	}
+	// Last run was today at 6:00 AM, now is 6:01 → not due (already ran today)
+	lastRun := time.Date(2026, 7, 30, 6, 0, 0, 0, loc)
+	now = time.Date(2026, 7, 30, 6, 1, 0, 0, loc)
+	if cronDue(schedule, lastRun, now) {
+		t.Fatal("cron should not be due again same day after running at 6:00")
+	}
+	// Last run was yesterday at 6:00, now is today at 6:00 → due
+	lastRun = time.Date(2026, 7, 29, 6, 0, 0, 0, loc)
+	now = time.Date(2026, 7, 30, 6, 0, 0, 0, loc)
+	if !cronDue(schedule, lastRun, now) {
+		t.Fatal("cron should be due next day at 6:00")
+	}
+	// Now is 5:59 AM, last run was yesterday 6:00 → not due yet
+	now = time.Date(2026, 7, 30, 5, 59, 0, 0, loc)
+	if cronDue(schedule, lastRun, now) {
+		t.Fatal("cron should not be due before 6:00")
+	}
+	// "*/15 * * * *" = every 15 minutes
+	schedule15, _ := parseCronExpression("*/15 * * * *")
+	// Last run at :00, now is :14 → not due
+	lastRun = time.Date(2026, 7, 30, 6, 0, 0, 0, loc)
+	now = time.Date(2026, 7, 30, 6, 14, 0, 0, loc)
+	if cronDue(schedule15, lastRun, now) {
+		t.Fatal("*/15 should not be due at :14 after running at :00")
+	}
+	// Last run at :00, now is :15 → due
+	now = time.Date(2026, 7, 30, 6, 15, 0, 0, loc)
+	if !cronDue(schedule15, lastRun, now) {
+		t.Fatal("*/15 should be due at :15 after running at :00")
+	}
+}
+
+func TestSaveInsightInquiryCronMode(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	// Valid cron expression
+	saved, err := svc.SaveInsightInquiry(ctx, "cron_test", SaveInsightInquiryInput{
+		Question:       "Test cron",
+		Trigger:        InsightTriggerScheduled,
+		ScheduleMode:   InsightScheduleModeCron,
+		CronExpression: "0 6 * * *",
+	})
+	if err != nil {
+		t.Fatalf("SaveInsightInquiry with cron failed: %v", err)
+	}
+	if saved.CronExpression != "0 6 * * *" {
+		t.Fatalf("saved cron expression = %q, want %q", saved.CronExpression, "0 6 * * *")
+	}
+	// Invalid cron expression
+	_, err = svc.SaveInsightInquiry(ctx, "cron_bad", SaveInsightInquiryInput{
+		Question:       "Bad cron",
+		Trigger:        InsightTriggerScheduled,
+		ScheduleMode:   InsightScheduleModeCron,
+		CronExpression: "not a cron",
+	})
+	if err == nil || !strings.Contains(err.Error(), "cron") {
+		t.Fatalf("SaveInsightInquiry with bad cron expected error, got: %v", err)
+	}
+}

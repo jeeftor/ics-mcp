@@ -178,6 +178,7 @@ type InsightScheduleMode string
 const (
 	InsightScheduleModeDaily  InsightScheduleMode = "daily"
 	InsightScheduleModeRepeat InsightScheduleMode = "repeat"
+	InsightScheduleModeCron   InsightScheduleMode = "cron"
 )
 
 // InsightInquiry is a named, persisted request definition. Normal reads never
@@ -199,7 +200,10 @@ type InsightInquiry struct {
 	Schedule string `json:"schedule,omitempty"`
 	// RepeatInterval is a Go duration such as 15m or 1h30m when ScheduleMode is
 	// repeat.
-	RepeatInterval string    `json:"repeat_interval,omitempty"`
+	RepeatInterval string `json:"repeat_interval,omitempty"`
+	// CronExpression is a 5-field cron expression when ScheduleMode is cron.
+	// It uses the service's configured timezone.
+	CronExpression string    `json:"cron_expression,omitempty"`
 	Enabled        bool      `json:"enabled"`
 	Builtin        bool      `json:"builtin"`
 	LastRunAt      time.Time `json:"last_run_at,omitempty"`
@@ -217,6 +221,7 @@ type SaveInsightInquiryInput struct {
 	ScheduleMode   InsightScheduleMode `json:"schedule_mode,omitempty"`
 	Schedule       string              `json:"schedule,omitempty"`
 	RepeatInterval string              `json:"repeat_interval,omitempty"`
+	CronExpression string              `json:"cron_expression,omitempty"`
 	Enabled        *bool               `json:"enabled,omitempty"`
 }
 
@@ -684,7 +689,7 @@ func (s *Service) testLLMModel(ctx context.Context, p llmProfileSecret, model st
 
 // ListInsightInquiries returns saved inquiry definitions, never invoking an LLM.
 func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, cron_expression, enabled, builtin, last_run_at FROM insight_inquiries ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list insight inquiries: %w", err)
 	}
@@ -694,7 +699,7 @@ func (s *Service) ListInsightInquiries(ctx context.Context) ([]InsightInquiry, e
 		var item InsightInquiry
 		var calendars, tags, lastRun string
 		var enabled, builtin int
-		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.DateScope, &item.StartDate, &item.EndDate, &item.Trigger, &item.ScheduleMode, &item.Schedule, &item.RepeatInterval, &enabled, &builtin, &lastRun); err != nil {
+		if err := rows.Scan(&item.Name, &item.Question, &calendars, &tags, &item.DateScope, &item.StartDate, &item.EndDate, &item.Trigger, &item.ScheduleMode, &item.Schedule, &item.RepeatInterval, &item.CronExpression, &enabled, &builtin, &lastRun); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(calendars), &item.CalendarIDs)
@@ -777,23 +782,32 @@ func (s *Service) SaveInsightInquiry(ctx context.Context, name string, in SaveIn
 				return InsightInquiry{}, err
 			}
 			in.RepeatInterval = ""
+			in.CronExpression = ""
 		case InsightScheduleModeRepeat:
 			if _, err := parseRepeatInsightDuration(in.RepeatInterval); err != nil {
 				return InsightInquiry{}, err
 			}
 			in.Schedule = ""
+			in.CronExpression = ""
+		case InsightScheduleModeCron:
+			if err := validateCronExpression(in.CronExpression); err != nil {
+				return InsightInquiry{}, err
+			}
+			in.Schedule = ""
+			in.RepeatInterval = ""
 		default:
-			return InsightInquiry{}, fmt.Errorf("schedule mode must be daily or repeat")
+			return InsightInquiry{}, fmt.Errorf("schedule mode must be daily, repeat, or cron")
 		}
 	} else {
 		in.ScheduleMode = ""
 		in.Schedule = ""
 		in.RepeatInterval = ""
+		in.CronExpression = ""
 	}
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, date_scope=excluded.date_scope, start_date=excluded.start_date, end_date=excluded.end_date, trigger=excluded.trigger, schedule_mode=excluded.schedule_mode, schedule=excluded.schedule, repeat_interval=excluded.repeat_interval, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.DateScope, in.StartDate, in.EndDate, in.Trigger, in.ScheduleMode, in.Schedule, in.RepeatInterval, boolInt(enabled), boolInt(builtin))
+	_, err = s.store.db.ExecContext(ctx, `INSERT INTO insight_inquiries (name, question, calendar_ids_json, tags_json, date_scope, start_date, end_date, trigger, schedule_mode, schedule, repeat_interval, cron_expression, enabled, builtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET question=excluded.question, calendar_ids_json=excluded.calendar_ids_json, tags_json=excluded.tags_json, date_scope=excluded.date_scope, start_date=excluded.start_date, end_date=excluded.end_date, trigger=excluded.trigger, schedule_mode=excluded.schedule_mode, schedule=excluded.schedule, repeat_interval=excluded.repeat_interval, cron_expression=excluded.cron_expression, enabled=excluded.enabled`, name, in.Question, string(calendars), string(tags), in.DateScope, in.StartDate, in.EndDate, in.Trigger, in.ScheduleMode, in.Schedule, in.RepeatInterval, in.CronExpression, boolInt(enabled), boolInt(builtin))
 	if err != nil {
 		return InsightInquiry{}, fmt.Errorf("save insight inquiry: %w", err)
 	}
@@ -1545,6 +1559,144 @@ func parseDailyInsightTime(value string) (hour, minute int, err error) {
 	return parsed.Hour(), parsed.Minute(), nil
 }
 
+// cronSchedule is a parsed 5-field cron expression: minute hour day-of-month
+// month day-of-week. Each field is a set of allowed values.
+type cronSchedule struct {
+	minute    map[int]bool
+	hour      map[int]bool
+	dayOfMonth map[int]bool
+	month     map[int]bool
+	dayOfWeek map[int]bool
+}
+
+// parseCronField parses a single cron field into a set of allowed values.
+// Supports: * (wildcard), comma-separated lists, ranges (1-5), step values
+// (*/2, 1-10/2), and single integers.
+func parseCronField(field string, min, max int) (map[int]bool, error) {
+	result := make(map[int]bool)
+	for _, part := range strings.Split(field, ",") {
+		part = strings.TrimSpace(part)
+		if part == "*" {
+			for i := min; i <= max; i++ {
+				result[i] = true
+			}
+			continue
+		}
+		// Handle step: */N or range/N
+		var rangePart, stepStr string
+		if idx := strings.Index(part, "/"); idx >= 0 {
+			rangePart, stepStr = part[:idx], part[idx+1:]
+		} else {
+			rangePart, stepStr = part, ""
+		}
+		step := 1
+		if stepStr != "" {
+			if _, err := fmt.Sscanf(stepStr, "%d", &step); err != nil || step < 1 {
+				return nil, fmt.Errorf("invalid step %q in cron field %q", stepStr, field)
+			}
+		}
+		lo, hi := min, max
+		if rangePart != "*" {
+			if idx := strings.Index(rangePart, "-"); idx >= 0 {
+				if _, err := fmt.Sscanf(rangePart[:idx], "%d", &lo); err != nil {
+					return nil, fmt.Errorf("invalid range start %q in cron field %q", rangePart[:idx], field)
+				}
+				if _, err := fmt.Sscanf(rangePart[idx+1:], "%d", &hi); err != nil {
+					return nil, fmt.Errorf("invalid range end %q in cron field %q", rangePart[idx+1:], field)
+				}
+			} else {
+				if _, err := fmt.Sscanf(rangePart, "%d", &lo); err != nil {
+					return nil, fmt.Errorf("invalid value %q in cron field %q", rangePart, field)
+				}
+				hi = lo
+			}
+		}
+		if lo < min || hi > max || lo > hi {
+			return nil, fmt.Errorf("value out of range [%d-%d] in cron field %q", min, max, field)
+		}
+		for i := lo; i <= hi; i += step {
+			result[i] = true
+		}
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("empty cron field %q", field)
+	}
+	return result, nil
+}
+
+// parseCronExpression parses a standard 5-field cron expression:
+// minute hour day-of-month month day-of-week
+// Example: "0 6 * * *" = daily at 6 AM, "*/15 * * * *" = every 15 minutes.
+func parseCronExpression(expr string) (*cronSchedule, error) {
+	fields := strings.Fields(strings.TrimSpace(expr))
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("cron expression must have 5 fields (minute hour day-of-month month day-of-week), got %d", len(fields))
+	}
+	minute, err := parseCronField(fields[0], 0, 59)
+	if err != nil {
+		return nil, fmt.Errorf("cron minute field: %w", err)
+	}
+	hour, err := parseCronField(fields[1], 0, 23)
+	if err != nil {
+		return nil, fmt.Errorf("cron hour field: %w", err)
+	}
+	dayOfMonth, err := parseCronField(fields[2], 1, 31)
+	if err != nil {
+		return nil, fmt.Errorf("cron day-of-month field: %w", err)
+	}
+	month, err := parseCronField(fields[3], 1, 12)
+	if err != nil {
+		return nil, fmt.Errorf("cron month field: %w", err)
+	}
+	// day-of-week: 0-7 where both 0 and 7 are Sunday
+	dayOfWeek, err := parseCronField(fields[4], 0, 7)
+	if err != nil {
+		return nil, fmt.Errorf("cron day-of-week field: %w", err)
+	}
+	// Normalize 7 to 0 (Sunday)
+	if dayOfWeek[7] {
+		dayOfWeek[0] = true
+		delete(dayOfWeek, 7)
+	}
+	return &cronSchedule{minute: minute, hour: hour, dayOfMonth: dayOfMonth, month: month, dayOfWeek: dayOfWeek}, nil
+}
+
+// validateCronExpression returns nil if the expression is a valid 5-field cron.
+func validateCronExpression(expr string) error {
+	_, err := parseCronExpression(expr)
+	if err != nil {
+		return fmt.Errorf("invalid cron expression: %w", err)
+	}
+	return nil
+}
+
+// cronDue returns true if the cron schedule has a matching time between
+// lastRun (exclusive) and now (inclusive). If lastRun is zero, it returns true
+// if now itself matches.
+func cronDue(schedule *cronSchedule, lastRun time.Time, now time.Time) bool {
+	if lastRun.IsZero() {
+		return schedule.minute[now.Minute()] && schedule.hour[now.Hour()] &&
+			schedule.dayOfMonth[now.Day()] && schedule.month[int(now.Month())] &&
+			schedule.dayOfWeek[int(now.Weekday())]
+	}
+	// Check every minute from lastRun+1 to now (inclusive), capped at 48 hours
+	// to avoid scanning an unbounded range after downtime.
+	check := lastRun.Add(time.Minute)
+	limit := now.Add(48 * time.Hour)
+	for !check.After(now) {
+		if schedule.minute[check.Minute()] && schedule.hour[check.Hour()] &&
+			schedule.dayOfMonth[check.Day()] && schedule.month[int(check.Month())] &&
+			schedule.dayOfWeek[int(check.Weekday())] {
+			return true
+		}
+		check = check.Add(time.Minute)
+		if check.After(limit) {
+			return false
+		}
+	}
+	return false
+}
+
 func (s *Service) insightScheduledDue(item InsightInquiry, now time.Time) bool {
 	if item.ScheduleMode == InsightScheduleModeRepeat {
 		interval, err := parseRepeatInsightDuration(item.RepeatInterval)
@@ -1552,6 +1704,13 @@ func (s *Service) insightScheduledDue(item InsightInquiry, now time.Time) bool {
 			return false
 		}
 		return item.LastRunAt.IsZero() || !item.LastRunAt.Add(interval).After(now)
+	}
+	if item.ScheduleMode == InsightScheduleModeCron {
+		schedule, err := parseCronExpression(item.CronExpression)
+		if err != nil {
+			return false
+		}
+		return cronDue(schedule, item.LastRunAt, now.In(s.location))
 	}
 	hour, minute, err := parseDailyInsightTime(item.Schedule)
 	if err != nil {

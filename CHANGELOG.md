@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.6.15 - 2026-07-31
+
+- Flatten the run policy selector from a two-level dropdown (trigger → schedule mode → fields) to a single dropdown with five clear options: Manual only, When calendar data changes, Once per day, Every N minutes, and Custom cron. Selecting an option immediately shows the relevant input field (time picker, minute interval, or cron expression).
+- Add a cron schedule mode backed by a built-in 5-field cron parser (minute hour day-of-month month day-of-week). Supports wildcards, ranges, lists, and step values. Cron expressions are evaluated in the server's configured timezone.
+- Fix date scope labels: remove the confusing "Send" prefix from dropdown options ("Send today" → "Today", "Send next 7 days" → "Next 7 days", etc.). The "What calendar data should I send?" label is shortened to "Calendar data window".
+- Update trigger label on inquiry cards to show cron expressions and use clearer wording ("Every 15m" instead of "Repeats every 15m", "When calendar data changes" instead of "When scoped calendar data changes").
+
 ## v2.6.14 - 2026-07-31
 
 - Detect and render markdown in LLM insight responses. Markdown is converted to sanitized HTML (via marked + DOMPurify) and rendered with formatted headings, bold, lists, code blocks, tables, and links. A "Source/Rendered" toggle switches between the raw markdown and the rendered view. JSON and HTML detection are unchanged; plain text still renders as-is.
