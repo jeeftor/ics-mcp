@@ -185,6 +185,7 @@ func TestHTTPAPIManagesCalendarsAndServesAdminUI(t *testing.T) {
 
 func TestAdminSPARoutesAreReservedFromCalendarShortcuts(t *testing.T) {
 	for _, path := range []string{
+		"/ai",
 		"/config/runtime", "/config/environment", "/config/calendars", "/config/tags", "/config/llm",
 		"/api/mcp-tools", "/api/meeting-preview", "/api/rest-explorer", "/api/openapi",
 	} {

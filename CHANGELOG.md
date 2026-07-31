@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.2 - 2026-07-31
+
+- Serve the AI console route on direct navigation and browser reloads instead of sending it through legacy calendar shortcut routing.
+
 ## v2.7.1 - 2026-07-31
 
 - Serve the application SVG mark from the embedded console, fixing the missing header/favicon asset in deployed builds.
