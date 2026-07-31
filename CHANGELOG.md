@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.20 - 2026-07-31
+
+- Keep the bounded LLM request context alive until its response body closes, fixing deployed streaming responses that failed during decode with `context canceled` after headers arrived.
+
 ## v2.6.19 - 2026-07-31
 
 - Promote AI/LLM insights from a Config sub-tab to a top-level "AI" navigation item with a sparkles icon. The new AI page combines the LLM backend configuration and the briefing/inquiry workspace in one place. Legacy `/config/llm` URLs redirect to `/ai`.
