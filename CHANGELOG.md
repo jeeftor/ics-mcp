@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.18 - 2026-07-31
+
+- Add a mobile-friendly calendar view with two modes: Agenda (scrollable list of events grouped by day) and Day (single-day event list). On screens narrower than 768px, the calendar automatically switches from the desktop grid to the mobile view. The mobile view includes a toggle between Agenda and Day modes, prev/next navigation with larger 44px tap targets, a Today button, and the same calendar filter and event detail panels as the desktop view. Event cards show time, title, and calendar color bar. Cancelled events are dimmed.
+
 ## v2.6.17 - 2026-07-31
 
 - Fix view switching (Day/3-day/Week) to preserve the current date position instead of jumping back to today. Only the Today button jumps to the current date. Switching to Week view snaps the anchor to the start of the current week; switching to Day or 3-day keeps the same anchor date.

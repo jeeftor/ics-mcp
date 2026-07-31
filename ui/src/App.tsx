@@ -75,6 +75,44 @@ function LoadingPage() { return <div className="loading-page"><LoaderCircle clas
 function refreshAge(value?: string): string { if (!value) return 'No data yet'; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000)); return minutes < 1 ? 'Data updated now' : minutes < 60 ? `Data updated ${minutes}m ago` : `Data updated ${Math.round(minutes / 60)}h ago`; }
 function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) { return <div className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>; }
 
+function useIsMobile(breakpoint = 768): boolean { const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia(`(max-width: ${breakpoint}px)`).matches); useEffect(() => { const mq = window.matchMedia(`(max-width: ${breakpoint}px)`); const handler = (e: MediaQueryListEvent) => setMobile(e.matches); mq.addEventListener('change', handler); return () => mq.removeEventListener('change', handler); }, [breakpoint]); return mobile; }
+
+function MobileCalendar({ calendars, tags, timezone, timeFormat, visibleIDs, setVisibleIDs, meetings, loading, calendarByID, selected, setSelected, week, setWeek }: { calendars: Calendar[]; tags: CalendarTag[]; timezone?: string; timeFormat: '12h' | '24h'; visibleIDs: string[]; setVisibleIDs: (ids: string[] | ((prev: string[]) => string[])) => void; meetings: Meeting[]; loading: boolean; calendarByID: Map<string, Calendar>; selected?: Meeting; setSelected: (m: Meeting) => void; week: Date; setWeek: (d: Date) => void }) {
+  const [mobileView, setMobileView] = useState<'agenda' | 'day'>('agenda');
+  const today = dateKey(new Date());
+  const tagGroups = useMemo(() => groupCalendarsByTag(calendars), [calendars]);
+  const counts = new Map<string, number>(); meetings.forEach(meeting => { if (meeting.calendar_id) counts.set(meeting.calendar_id, (counts.get(meeting.calendar_id) || 0) + 1); });
+  const toggleCalendar = (id: string) => setVisibleIDs(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id]);
+  const toggleTag = (members: Calendar[]) => setVisibleIDs(ids => members.every(calendar => ids.includes(calendar.id)) ? ids.filter(id => !members.some(calendar => calendar.id === id)) : [...new Set([...ids, ...members.map(calendar => calendar.id)])]);
+
+  // Group meetings by date for agenda view
+  const byDate = useMemo(() => {
+    const map = new Map<string, Meeting[]>();
+    for (const m of meetings) {
+      const d = meetingDate(m);
+      if (!d) continue;
+      if (!map.has(d)) map.set(d, []);
+      map.get(d)!.push(m);
+    }
+    for (const [, list] of map) list.sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [meetings]);
+
+  // Day view: meetings for the selected day
+  const dayKey = dateKey(week);
+  const dayMeetings = useMemo(() => meetings.filter(m => meetingDate(m) === dayKey).sort((a, b) => (a.start || '').localeCompare(b.start || '')), [meetings, dayKey]);
+
+  const dayLabel = (d: string) => { const date = new Date(d + 'T00:00:00'); return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };
+  const isToday = (d: string) => d === today;
+
+  return <><PageHeader eyebrow="CALENDAR" title={mobileView === 'day' ? dayLabel(dayKey) : 'Agenda'} description={`${visibleIDs.length} visible calendars · ${timezone || 'server timezone'}`}/><section className="mobile-calendar"><div className="mobile-toolbar"><div className="view-toggle" aria-label="Mobile calendar view"><button className={mobileView === 'agenda' ? 'active' : ''} onClick={() => setMobileView('agenda')}>Agenda</button><button className={mobileView === 'day' ? 'active' : ''} onClick={() => setMobileView('day')}>Day</button></div><button className="button secondary calendar-today-btn" onClick={() => setWeek(new Date())}>Today</button></div><div className="mobile-nav"><button className="nav-chevron nav-chevron-left" title="Previous" onClick={() => setWeek(addDays(week, mobileView === 'day' ? -1 : -7))}><ChevronLeft size={20}/></button><span className="mobile-nav-label">{mobileView === 'day' ? dayLabel(dayKey) : byDate.length ? `${byDate.length} days with events` : 'No events in range'}</span><button className="nav-chevron nav-chevron-right" title="Next" onClick={() => setWeek(addDays(week, mobileView === 'day' ? 1 : 7))}><ChevronRight size={20}/></button></div>{loading ? <LoadingPage/> : <div className="mobile-content">{mobileView === 'agenda' ? (byDate.length === 0 ? <div className="mobile-empty">No events in range</div> : byDate.map(([date, list]) => <div key={date} className="mobile-day-group"><div className={isToday(date) ? 'mobile-day-header today' : 'mobile-day-header'}><span>{new Date(date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>{new Date(date + 'T00:00:00').getDate()}</strong></div><div className="mobile-event-list">{list.map(m => <MobileEventCard key={`${m.calendar_id}-${m.name}-${m.start}-${m.date}`} meeting={m} calendar={calendarByID.get(m.calendar_id || '')} timeFormat={timeFormat} selected={selected === m} onSelect={setSelected}/>)}</div></div>)) : (dayMeetings.length === 0 ? <div className="mobile-empty">No events on this day</div> : <div className="mobile-event-list">{dayMeetings.map(m => <MobileEventCard key={`${m.calendar_id}-${m.name}-${m.start}-${m.date}`} meeting={m} calendar={calendarByID.get(m.calendar_id || '')} timeFormat={timeFormat} selected={selected === m} onSelect={setSelected}/>)}</div>)}</div>}<aside className="mobile-agenda-panel" aria-live="polite"><div><span className="eyebrow">{selected ? 'SELECTED EVENT' : 'CALENDAR FILTERS'}</span><h2>{selected ? selected.name : 'Calendars'}</h2></div>{selected ? <EventDetails meeting={selected} calendar={calendarByID.get(selected.calendar_id || '')} timeFormat={timeFormat}/> : <CalendarFilters groups={tagGroups} visibleIDs={visibleIDs} counts={counts} onToggleCalendar={toggleCalendar} onToggleTag={toggleTag}/>}</aside></section></>;
+}
+
+function MobileEventCard({ meeting, calendar, timeFormat, selected, onSelect }: { meeting: Meeting; calendar?: Calendar; timeFormat: '12h' | '24h'; selected: boolean; onSelect: (m: Meeting) => void }) {
+  const color = calendar ? calendarColor(calendar) : '#4f8f72';
+  return <button className={`mobile-event-card${selected ? ' selected' : ''}${meeting.cancelled ? ' cancelled' : ''}`} style={{ '--event-color': color } as React.CSSProperties} onClick={() => onSelect(meeting)}><span className="mobile-event-time">{meeting.all_day ? 'All day' : meetingTime(meeting, timeFormat)}</span><span className="mobile-event-body"><strong>{meeting.name}</strong><small>{calendar?.name || meeting.calendar_name || ''}</small></span><span className="mobile-event-color"/></button>;
+}
+
 function LegacyCalendarWorkspace({ calendars, tags, timezone, timeFormat, sideTimezones }: { calendars: Calendar[]; tags: CalendarTag[]; timezone?: string; timeFormat: '12h' | '24h'; sideTimezones: string[] }) {
   const [view, setView] = useState<1 | 3 | 7>(7); const [week, setWeek] = useState(() => startOfWeek(new Date())); const [meetings, setMeetings] = useState<Meeting[]>([]); const [selected, setSelected] = useState<Meeting>(); const [loading, setLoading] = useState(true);
   const [visibleIDs, setVisibleIDs] = useState<string[]>([]);
@@ -85,6 +123,7 @@ function LegacyCalendarWorkspace({ calendars, tags, timezone, timeFormat, sideTi
 }
 
 function CalendarWorkspace({ calendars, tags, timezone, timeFormat, showEventTimes, sideTimezones }: { calendars: Calendar[]; tags: CalendarTag[]; timezone?: string; timeFormat: '12h' | '24h'; showEventTimes: boolean; sideTimezones: string[] }) {
+  const isMobile = useIsMobile();
   const [view, setView] = useState<1 | 3 | 7>(7);
   const [week, setWeek] = useState(() => startOfWeek(new Date()));
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -126,6 +165,8 @@ function CalendarWorkspace({ calendars, tags, timezone, timeFormat, showEventTim
   const counts = new Map<string, number>(); meetings.forEach(meeting => { if (meeting.calendar_id) counts.set(meeting.calendar_id, (counts.get(meeting.calendar_id) || 0) + 1); });
   const toggleCalendar = (id: string) => setVisibleIDs(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id]);
   const toggleTag = (members: Calendar[]) => setVisibleIDs(ids => members.every(calendar => ids.includes(calendar.id)) ? ids.filter(id => !members.some(calendar => calendar.id === id)) : [...new Set([...ids, ...members.map(calendar => calendar.id)])]);
+
+  if (isMobile) return <MobileCalendar calendars={calendars} tags={tags} timezone={timezone} timeFormat={timeFormat} visibleIDs={visibleIDs} setVisibleIDs={setVisibleIDs} meetings={visibleMeetings} loading={loading} calendarByID={calendarByID} selected={selected} setSelected={setSelected} week={week} setWeek={setWeek}/>;
 
   return <>
     <PageHeader eyebrow={`${view === 7 ? 'WEEK' : view === 3 ? '3-DAY' : 'DAY'} CALENDAR`} title={view === 7 ? weekRangeLabel(week) : days.map(day => day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })).join(' – ')} description={`${visibleIDs.length} visible calendars · ${timezone || 'server timezone'}`}/>
