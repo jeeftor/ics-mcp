@@ -43,8 +43,15 @@ describe('all-day event cards', () => {
   it('uses tall timed cards for their available title space and keeps context adjacent', () => {
     const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Cancelled: long planning meeting with the team', date: '2026-08-03', start: '12:00', end: '14:00', cancelled: true }} selected={false} onSelect={() => undefined} timeFormat="12h" placement={{ meeting: { name: 'Cancelled: long planning meeting with the team' }, top: 720, height: 120, lane: 0, lanes: 1 }}/>);
 
-    expect(markup).toContain('title-lines-4');
+    expect(markup).toContain('title-lines-3');
     expect(markup).toContain('has-event-secondary');
     expect(markup).toContain('event-card-secondary">Cancelled');
+  });
+
+  it('uses unused height on a tall card for the meeting time even when compact times are disabled', () => {
+    const markup = renderToStaticMarkup(<EventCard meeting={{ name: 'Planning', date: '2026-08-03', start: '12:00', end: '14:00' }} selected={false} onSelect={() => undefined} timeFormat="12h" placement={{ meeting: { name: 'Planning' }, top: 720, height: 120, lane: 0, lanes: 1 }}/>);
+
+    expect(markup).toContain('show-event-time');
+    expect(markup).toContain('event-card-time">12:00 PM – 2:00 PM');
   });
 });
