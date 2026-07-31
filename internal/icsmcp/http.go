@@ -582,7 +582,7 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 // shortcuts get a chance to interpret their first path segment as a calendar.
 func isAdminSPARoute(path string) bool {
 	switch path {
-	case "/ai", "/config", "/config/runtime", "/config/environment", "/config/calendars", "/config/tags", "/config/llm", "/api", "/api/mcp-tools", "/api/meeting-preview", "/api/rest-explorer", "/api/openapi":
+	case "/ai", "/calendar", "/config", "/config/runtime", "/config/environment", "/config/calendars", "/config/tags", "/config/llm", "/api", "/api/mcp-tools", "/api/meeting-preview", "/api/rest-explorer", "/api/openapi":
 		return true
 	default:
 		return false

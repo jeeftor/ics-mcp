@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.4 - 2026-07-31
+
+- Make the client-recognized `/calendar` URL reload-safe instead of routing it through legacy calendar shortcuts.
+
 ## v2.7.3 - 2026-07-31
 
 - Keep the active Config sub-tab reachable on narrow screens with a contained horizontal tab rail; it no longer clips the active section or shifts the entire page sideways.
