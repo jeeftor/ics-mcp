@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseTags } from './api';
-import { compactArguments, pathForRoute, restEndpointInventory, restQuery, routeForLocation, splitList } from './App';
+import { compactArguments, pathForRoute, promptHistoryQuery, restEndpointInventory, restQuery, routeForLocation, splitList } from './App';
 
 describe('parseTags', () => {
   it('trims, removes empty values, and deduplicates calendar tags', () => {
@@ -21,7 +21,13 @@ describe('API workspace controls', () => {
   it('keeps safe service reads and the read-only MCP bridge discoverable', () => {
     expect(restEndpointInventory.map(endpoint => endpoint.path)).toEqual(expect.arrayContaining([
       '/api/status', '/api/config', '/api/environment', '/api/calendars', '/api/tags', '/api/insights', '/api/rest/{tool_name}',
+      '/api/v1/prompts', '/api/v1/prompts/{id}', '/api/v1/prompts/{id}/output', '/api/v1/prompts/{id}/history',
     ]));
+  });
+
+  it('builds prompt-history URLs with only the supported cache-read limit', () => {
+    expect(promptHistoryQuery('5')).toBe('limit=5');
+    expect(promptHistoryQuery('')).toBe('');
   });
 });
 
