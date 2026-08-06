@@ -200,6 +200,7 @@ export function AllDayGrid({ meetings, rangeStart, days, calendarByID, selected,
     return next;
   });
   return <div className="all-day-grid" style={{ '--day-count': days, gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, 34px)` } as React.CSSProperties}>
+    {Array.from({ length: days }, (_, day) => <span aria-hidden="true" className={`all-day-day-track${day === 0 ? ' first' : ''}`} style={{ gridColumn: day + 1, gridRow: '1 / -1' }} key={`track-${day}`}/>)}
     {visible.map(placement => <EventCard meeting={placement.meeting} calendar={calendarByID.get(placement.meeting.calendar_id || '')} selected={selected === placement.meeting} onSelect={onSelect} timeFormat={timeFormat} key={`${placement.meeting.calendar_id}-${placement.meeting.name}-${placement.meeting.date}`} allDayPlacement={placement}/>)}
     {overflowByDay.map((overflow, day) => overflow > 0 && <button className="all-day-overflow" style={{ gridColumn: day + 1, gridRow: rows }} aria-expanded={expandedDays.has(day)} aria-label={`${expandedDays.has(day) ? 'Hide' : 'Show'} ${overflow} additional all-day events for this day`} onClick={() => toggleDay(day)} key={day}>{expandedDays.has(day) ? '⌃' : `+${overflow}⌄`}</button>)}
   </div>;
