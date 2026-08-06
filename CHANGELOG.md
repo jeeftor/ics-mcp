@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.2 - 2026-08-06
+
+- Give the weekday header its own shared time-gutter grid column, eliminating the remaining all-day/header border and day-track alignment artifacts.
+
 ## v2.8.1 - 2026-08-06
 
 - Align weekday headers with the all-day and timed planner grids by reserving the shared time gutter without narrowing the calendar columns.
