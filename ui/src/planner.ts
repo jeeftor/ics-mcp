@@ -6,6 +6,34 @@ export function meetingsForVisibleCalendars(meetings: Meeting[], visibleIDs: str
   return meetings.filter((meeting) => !meeting.calendar_id || visible.has(meeting.calendar_id));
 }
 
+export type AgendaGroupMode = 'date' | 'calendar' | 'all';
+export type AgendaGroup = { key: string; label: string; meetings: Meeting[] };
+
+/** Sorts agenda items predictably, keeping all-day events ahead of timed events on a given day. */
+export function sortAgendaMeetings(meetings: Meeting[]): Meeting[] {
+  return [...meetings].sort((left, right) => (
+    (left.date || '').localeCompare(right.date || '')
+    || Number(Boolean(right.all_day)) - Number(Boolean(left.all_day))
+    || (left.start || '').localeCompare(right.start || '')
+    || left.name.localeCompare(right.name)
+  ));
+}
+
+/** Produces presentation groups for the agenda without changing the REST data contract. */
+export function groupAgendaMeetings(meetings: Meeting[], mode: AgendaGroupMode, calendarName: (meeting: Meeting) => string): AgendaGroup[] {
+  const sorted = sortAgendaMeetings(meetings);
+  if (mode === 'all') return [{ key: 'all', label: '', meetings: sorted }];
+  const groups = new Map<string, AgendaGroup>();
+  for (const meeting of sorted) {
+    const label = mode === 'date' ? meeting.date || 'Undated' : calendarName(meeting) || 'Calendar';
+    const key = mode === 'date' ? `date:${label}` : `calendar:${label}`;
+    const group = groups.get(key) || { key, label, meetings: [] };
+    group.meetings.push(meeting);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((left, right) => mode === 'date' ? left.label.localeCompare(right.label) : left.label.localeCompare(right.label));
+}
+
 export type TimedPlacement = {
   meeting: Meeting;
   top: number;
