@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.6 - 2026-08-06
+
+- Align weekday headers with the all-day and timed planner grids by reserving the shared time gutter without narrowing the calendar columns.
+
 ## v2.7.5 - 2026-07-31
 
 - Preserve readable titles in three-way timed-event overlaps by withholding automatic time labels when the lane is too narrow; the explicit planner time setting still shows them on demand.
