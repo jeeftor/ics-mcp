@@ -1,6 +1,6 @@
 module github.com/jeeftor/icsmcp
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/apognu/gocal v0.9.1

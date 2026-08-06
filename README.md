@@ -4,10 +4,11 @@ ICS MCP is a small Go MCP server for homelab calendar feeds. It watches ICS URLs
 
 [![Tests](https://github.com/jeeftor/ics-mcp/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/jeeftor/ics-mcp/actions/workflows/test.yml)
 [![Security](https://github.com/jeeftor/ics-mcp/actions/workflows/security.yml/badge.svg?branch=master)](https://github.com/jeeftor/ics-mcp/actions/workflows/security.yml)
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fjeeftor%2Fics--mcp-2f6fed?style=flat-square&logo=docker&logoColor=white)](https://github.com/jeeftor/ics-mcp/pkgs/container/ics-mcp)
 [![Release](https://img.shields.io/github/v/release/jeeftor/ics-mcp?style=flat-square&color=2f6fed)](https://github.com/jeeftor/ics-mcp/releases)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/github.com/jeeftor/ics-mcp/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jeeftor/ics-mcp)
 
 By default the server is unauthenticated for trusted local use. Set `ICSMCP_AUTH_TOKEN` (or `--auth-token`) to require a bearer token for every API and MCP request; health and readiness probes remain public. For an internet-facing deployment, put it behind an authenticated reverse proxy as well.
 
