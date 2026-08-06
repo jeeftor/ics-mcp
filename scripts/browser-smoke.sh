@@ -83,6 +83,32 @@ click_button() {
   "$browser_smoke_cli" -s="$browser_smoke_session" click "$browser_smoke_ref" >/dev/null
 }
 
+expect_planner_alignment() {
+  browser_smoke_width=$1
+  "$browser_smoke_cli" -s="$browser_smoke_session" resize "$browser_smoke_width" 900 >/dev/null
+  browser_smoke_alignment=$("$browser_smoke_cli" -s="$browser_smoke_session" eval '
+    (() => {
+      const headings = Array.from(document.querySelectorAll(".day-heading"));
+      const allDay = document.querySelector(".all-day-grid");
+      const timed = document.querySelector(".week-grid");
+      if (!headings.length || !allDay || !timed) return "planner-alignment-missing-elements";
+      const first = headings[0].getBoundingClientRect();
+      const allDayRect = allDay.getBoundingClientRect();
+      const timedRect = timed.getBoundingClientRect();
+      const dayWidth = timedRect.width / headings.length;
+      const close = (a, b) => Math.abs(a - b) < 0.5;
+      const aligned = close(first.left, allDayRect.left) && close(first.left, timedRect.left) && close(allDayRect.width, timedRect.width) &&
+        headings.every((heading, index) => close(heading.getBoundingClientRect().left, timedRect.left + dayWidth * index) && close(heading.getBoundingClientRect().width, dayWidth));
+      return aligned ? "planner-alignment-pass" : JSON.stringify({ first: first.left, allDay: allDayRect.left, timed: timedRect.left, dayWidth, headings: headings.map(heading => ({ left: heading.getBoundingClientRect().left, width: heading.getBoundingClientRect().width })) });
+    })()
+  ')
+  if ! printf '%s\n' "$browser_smoke_alignment" | rg -Fq 'planner-alignment-pass'; then
+    echo "planner columns were not aligned at ${browser_smoke_width}px" >&2
+    printf '%s\n' "$browser_smoke_alignment" >&2
+    exit 1
+  fi
+}
+
 cd "$browser_smoke_root"
 pnpm -C ui build >/dev/null
 GOCACHE="$browser_smoke_gocache" go build -o "$browser_smoke_temp/icsmcp" main.go
@@ -111,6 +137,9 @@ done
 take_snapshot
 expect_text "7-DAY CALENDAR"
 expect_text "Calendar week"
+for browser_smoke_width in 1440 1100 900 769; do
+  expect_planner_alignment "$browser_smoke_width"
+done
 click_button "Calendar week"
 take_snapshot
 expect_text "CALENDAR WEEK"
@@ -137,4 +166,4 @@ expect_text "CALENDAR FILTERS"
 expect_text "Calendars"
 click_button "Done"
 
-echo "Browser smoke passed: desktop planner, SPA routes, and mobile agenda/day/context controls."
+echo "Browser smoke passed: planner alignment across desktop widths, SPA routes, and mobile agenda/day/context controls."
