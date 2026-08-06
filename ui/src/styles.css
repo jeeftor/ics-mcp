@@ -69,6 +69,11 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .refresh-setting-card { grid-column:span 2; align-items:center; }.refresh-interval-picker { display:grid; gap:9px; min-width:min(100%,430px); }.refresh-interval-label,.refresh-interval-custom { color:#60594f; font-size:11px; font-weight:750; }.refresh-interval-choices { display:flex; flex-wrap:wrap; gap:6px; }.refresh-interval-choices button { display:grid; gap:1px; min-width:48px; border:1px solid #ddd8ce; border-radius:8px; padding:6px 8px; color:#625b51; background:#fffdfa; font-size:12px; font-weight:800; }.refresh-interval-choices button:hover { border-color:#a7c1aa; background:#f5faf4; }.refresh-interval-choices button.active { border-color:#4b7953; color:#285036; background:#e3efe2; box-shadow:inset 0 0 0 1px #b9d5bd; }.refresh-interval-choices small { color:inherit; font-size:9px; font-weight:650; }.refresh-interval-custom { display:grid; gap:5px; }.refresh-interval-custom input { width:100%; border:1px solid #ddd8ce; border-radius:8px; padding:8px 10px; color:#39352d; background:#fffdfa; outline:none; }.refresh-interval-custom input:focus { border-color:#7ca380; box-shadow:0 0 0 3px #e6f0e5; }
 .all-day-overflow { align-self:end; justify-self:end; z-index:3; margin:0 4px 2px 0; border:0; border-radius:7px; padding:2px 5px; color:#27618d; background:#ddecf6; font-size:11px; font-weight:800; line-height:1.1; cursor:pointer; }
 .all-day-overflow:hover { background:#c8e2f1; }
+.week-card-nav { position:relative; display:block; }
+.week-card-nav .week-header { box-sizing:border-box; width:100%; padding-left:68px; }
+.week-card-nav .nav-chevron { position:absolute; top:0; bottom:0; z-index:3; }
+.week-card-nav .nav-chevron-left { left:0; }
+.week-card-nav .nav-chevron-right { right:0; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .environment-settings { padding:24px; }
 .environment-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:22px; }
