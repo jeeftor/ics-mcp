@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDayRows, meetingMinutes, meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings, timedEventTitleLines, visibleAllDayPlacements } from './planner';
+import { allDayRows, groupAgendaMeetings, meetingMinutes, meetingsForVisibleCalendars, placeAllDayMeetings, placeTimedMeetings, timedEventTitleLines, visibleAllDayPlacements } from './planner';
 import { Meeting } from './api';
 
 const event = (start: string, end: string): Meeting => ({ name: start, date: '2026-07-30', start, end });
@@ -79,5 +79,22 @@ describe('planner placement', () => {
 
     expect(meetingsForVisibleCalendars(meetings, ['one']).map((meeting) => meeting.name)).toEqual(['Visible']);
     expect(meetings).toHaveLength(2);
+  });
+
+  it('groups the agenda by date, calendar, or without headings', () => {
+    const meetings: Meeting[] = [
+      { name: 'Later', date: '2026-08-08', start: '10:00', calendar_id: 'home' },
+      { name: 'All day', date: '2026-08-07', all_day: true, calendar_id: 'work' },
+      { name: 'Earlier', date: '2026-08-07', start: '09:00', calendar_id: 'home' },
+    ];
+    const calendarName = (meeting: Meeting) => meeting.calendar_id === 'home' ? 'Home' : 'Work';
+
+    expect(groupAgendaMeetings(meetings, 'date', calendarName).map(group => [group.label, group.meetings.map(meeting => meeting.name)])).toEqual([
+      ['2026-08-07', ['All day', 'Earlier']], ['2026-08-08', ['Later']],
+    ]);
+    expect(groupAgendaMeetings(meetings, 'calendar', calendarName).map(group => [group.label, group.meetings.map(meeting => meeting.name)])).toEqual([
+      ['Home', ['Earlier', 'Later']], ['Work', ['All day']],
+    ]);
+    expect(groupAgendaMeetings(meetings, 'all', calendarName)).toEqual([{ key: 'all', label: '', meetings: [meetings[1], meetings[2], meetings[0]] }]);
   });
 });

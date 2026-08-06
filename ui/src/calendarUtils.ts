@@ -18,6 +18,14 @@ export function weekRangeLabel(start: Date): string {
   const end = addDays(start, 6); const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
   return `${start.toLocaleDateString(undefined, options)} – ${end.toLocaleDateString(undefined, { ...options, year: 'numeric' })}`;
 }
+/** Formats an inclusive planner range without repeating every intermediate day. */
+export function dateRangeLabel(start: Date, days: number): string {
+  if (days <= 1) return start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const end = addDays(start, days - 1);
+  const startLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const endOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  return `${startLabel} – ${end.toLocaleDateString(undefined, endOptions)}`;
+}
 export function meetingDate(meeting: Meeting): string { return meeting.date || ''; }
 function formatClock(value: string | undefined, format: '12h' | '24h'): string {
   if (!value || format === '24h') return value || '';

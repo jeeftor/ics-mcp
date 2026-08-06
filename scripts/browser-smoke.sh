@@ -148,6 +148,13 @@ done
 click_button "Calendar week"
 take_snapshot
 expect_text "CALENDAR WEEK"
+click_button "Agenda"
+take_snapshot
+expect_text "UPCOMING MEETINGS"
+expect_text "Group events"
+click_button "7 days"
+take_snapshot
+expect_text "7-DAY CALENDAR"
 
 "$browser_smoke_cli" -s="$browser_smoke_session" goto "$browser_smoke_url/config/environment" >/dev/null
 take_snapshot
