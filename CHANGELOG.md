@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.8.3 - 2026-08-06
+
+- Draw all-day separators from the calendar's actual grid tracks instead of a percentage background, eliminating fractional-pixel seams against weekday and timed columns.
+- Expand browser smoke coverage to assert separator-track alignment at desktop and narrow-desktop widths.
+
 ## v2.8.2 - 2026-08-06
 
 - Give the weekday header its own shared time-gutter grid column, eliminating the remaining all-day/header border and day-track alignment artifacts.

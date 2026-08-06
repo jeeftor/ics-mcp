@@ -56,8 +56,10 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 .event-time-toggle { display:flex; align-items:center; gap:7px; margin-top:9px; color:#526052; font-size:12px; font-weight:750; }
 .event-time-toggle input { width:16px; height:16px; accent-color:#3f704b; }
 .all-day-band { min-height:0; }
-.all-day-band > span { padding:10px; }
-.all-day-grid { grid-auto-rows:34px; min-height:34px; }
+.all-day-band > span { padding:10px; border-right:1px solid #eeeae3; }
+.all-day-grid { isolation:isolate; grid-auto-rows:34px; min-height:34px; background:none; }
+.all-day-day-track { z-index:0; min-width:0; border-left:1px solid #eeeae3; pointer-events:none; }
+.all-day-day-track.first { border-left:0; }
 .all-day-grid .event-card { align-self:center; min-height:28px; height:28px; margin:3px 1px !important; padding:3px 6px; border-radius:7px; }
 .all-day-grid .event-card strong { font-size:11px; line-height:1.1; }
 .all-day-grid .event-card > strong .event-title { display:inline; }
