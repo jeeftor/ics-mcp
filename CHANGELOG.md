@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.7.6 - 2026-08-06
+## v2.8.1 - 2026-08-06
 
 - Align weekday headers with the all-day and timed planner grids by reserving the shared time gutter without narrowing the calendar columns.
 
