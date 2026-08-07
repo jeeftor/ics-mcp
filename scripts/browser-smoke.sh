@@ -90,21 +90,25 @@ expect_planner_alignment() {
     (() => {
       const headings = Array.from(document.querySelectorAll(".day-heading"));
       const tracks = Array.from(document.querySelectorAll(".all-day-day-track"));
+      const nav = document.querySelector(".week-card-nav");
+      const leftNav = document.querySelector(".nav-chevron-left");
       const allDay = document.querySelector(".all-day-grid");
       const timed = document.querySelector(".week-grid");
-      if (!headings.length || headings.length !== tracks.length || !allDay || !timed) return "planner-alignment-missing-elements";
+      if (!headings.length || headings.length !== tracks.length || !nav || !leftNav || !allDay || !timed) return "planner-alignment-missing-elements";
       const first = headings[0].getBoundingClientRect();
+      const navRect = nav.getBoundingClientRect();
+      const leftNavRect = leftNav.getBoundingClientRect();
       const allDayRect = allDay.getBoundingClientRect();
       const timedRect = timed.getBoundingClientRect();
       const dayWidth = timedRect.width / headings.length;
       const close = (a, b) => Math.abs(a - b) < 0.5;
-      const aligned = close(first.left, allDayRect.left) && close(first.left, timedRect.left) && close(allDayRect.width, timedRect.width) &&
+      const aligned = close(first.left, navRect.left + leftNavRect.width) && close(leftNavRect.left, navRect.left) && close(first.left, allDayRect.left) && close(first.left, timedRect.left) && close(allDayRect.width, timedRect.width) &&
         headings.every((heading, index) => {
           const headingRect = heading.getBoundingClientRect();
           const trackRect = tracks[index].getBoundingClientRect();
           return close(headingRect.left, timedRect.left + dayWidth * index) && close(headingRect.width, dayWidth) && close(headingRect.left, trackRect.left) && close(headingRect.width, trackRect.width);
         });
-      return aligned ? "planner-alignment-pass" : JSON.stringify({ first: first.left, allDay: allDayRect.left, timed: timedRect.left, dayWidth, headings: headings.map(heading => ({ left: heading.getBoundingClientRect().left, width: heading.getBoundingClientRect().width })), tracks: tracks.map(track => ({ left: track.getBoundingClientRect().left, width: track.getBoundingClientRect().width })) });
+      return aligned ? "planner-alignment-pass" : JSON.stringify({ first: first.left, nav: navRect.left, leftNav: { left: leftNavRect.left, width: leftNavRect.width }, allDay: allDayRect.left, timed: timedRect.left, dayWidth, headings: headings.map(heading => ({ left: heading.getBoundingClientRect().left, width: heading.getBoundingClientRect().width })), tracks: tracks.map(track => ({ left: track.getBoundingClientRect().left, width: track.getBoundingClientRect().width })) });
     })()
   ')
   if ! printf '%s\n' "$browser_smoke_alignment" | rg -Fq 'planner-alignment-pass'; then
