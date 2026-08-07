@@ -164,6 +164,12 @@ expect_text "Environment overrides"
 take_snapshot
 expect_text "MCP tools"
 
+"$browser_smoke_cli" -s="$browser_smoke_session" goto "$browser_smoke_url/ai" >/dev/null
+take_snapshot
+expect_text "Grounded calendar briefings"
+expect_text "AI CONNECTION"
+expect_text "Scheduled and on-demand questions"
+
 "$browser_smoke_cli" -s="$browser_smoke_session" resize 390 844 >/dev/null
 "$browser_smoke_cli" -s="$browser_smoke_session" goto "$browser_smoke_url/" >/dev/null
 take_snapshot
