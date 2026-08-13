@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.6 - 2026-08-13
+
+- Redesign mobile calendar interactions to use bottom-sheet popovers: tapping an event now opens a slide-up sheet with event details instead of inserting an inline panel that shifts the event list. Calendar filters open the same way. The event list stays stable with zero scroll displacement. Sheets animate up from the bottom with a drag handle, dimmed backdrop, and close on backdrop tap or Escape.
+
 ## v2.8.5 - 2026-08-13
 
 - Render the mobile Calendar filters / event details panel in place (right below the toggle button) instead of after the event list, so opening it no longer scrolls to the bottom of the page.
