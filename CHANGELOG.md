@@ -2,7 +2,7 @@
 
 ## v2.8.7 - 2026-08-13
 
-- Show the version number in the toolbar on mobile (was hidden by the 700px breakpoint).
+- Tap the ICS MCP brand in the toolbar to open an About dialog showing version, commit, build date, timezone, and calendar/tag counts. Works on both desktop and mobile.
 
 ## v2.8.6 - 2026-08-13
 
