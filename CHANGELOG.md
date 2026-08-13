@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.5 - 2026-08-13
+
+- Render the mobile Calendar filters / event details panel in place (right below the toggle button) instead of after the event list, so opening it no longer scrolls to the bottom of the page.
+
 ## v2.8.4 - 2026-08-13
 
 - Align the mobile calendar CSS breakpoint with the JS `useIsMobile` hook (both now use 768px). At exactly 768px viewport width the mobile view was rendered but the toggle button and panel were unstyled, making the Calendar filters panel appear broken on tablets and narrow screens at that boundary.
