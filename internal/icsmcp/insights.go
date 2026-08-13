@@ -345,11 +345,16 @@ func (s *Service) TestLLMProfile(ctx context.Context) error {
 // this test fail. When the active profile is environment-managed, that
 // effective profile remains authoritative and user-provided staging values are
 // ignored.
-func (s *Service) TestLLMEndpoint(ctx context.Context, in LLMConnectionInput) error {
+func (s *Service) TestLLMEndpoint(ctx context.Context, in LLMConnectionInput) (err error) {
+	finish := s.startLLMAction("endpoint_test", in.Backend, "")
+	phase := "profile"
+	defer func() { finish(phase, -1, err) }()
 	p, err := s.stagedLLMProfile(ctx, in)
 	if err != nil {
 		return err
 	}
+	s.logger.Info("llm action configured", "action", "endpoint_test", "backend", p.Backend, "model", p.Model)
+	phase = "request"
 	if p.Endpoint == "" {
 		return fmt.Errorf("LLM endpoint is required")
 	}

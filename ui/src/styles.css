@@ -173,7 +173,7 @@ main { max-width: 1440px; margin:0 auto; padding:48px 28px 80px; }.page-header {
 @media (max-width:980px) { .insights-overview,.inquiry-list { grid-template-columns:1fr; }.insights-status { min-height:0; }.inquiry-actions { max-width:none; } }
 
 /* On a phone the event list remains the primary surface; filters and details open on demand. */
-@media (max-width:767px) {
+@media (max-width:768px) {
   .mobile-page-header { margin-bottom:16px; }
   .mobile-page-header h1 { margin:3px 0 2px; font-size:30px; }
   .mobile-page-header p { font-size:12px; line-height:1.35; }

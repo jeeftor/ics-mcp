@@ -57,6 +57,53 @@ func TestLLMActionLogsRedactInquiryData(t *testing.T) {
 	}
 }
 
+func TestLLMEndpointTestLogsActionWithoutLeakingSecrets(t *testing.T) {
+	const endpoint = "http://10.0.0.91:13305/v1"
+	const apiKey = "private-bearer-token"
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer provider.Close()
+
+	svc := newTestService(t)
+	var logs bytes.Buffer
+	svc.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	ctx := context.Background()
+	if err := svc.TestLLMEndpoint(ctx, LLMConnectionInput{Endpoint: provider.URL, APIKey: apiKey}); err != nil {
+		t.Fatal(err)
+	}
+	got := logs.String()
+	for _, want := range []string{"msg=\"llm action started\"", "msg=\"llm action completed\"", "action=endpoint_test"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("endpoint test logs missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range []string{provider.URL, apiKey} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("endpoint test logs exposed %q: %s", secret, got)
+		}
+	}
+
+	// A timeout must also produce a failure log so operators can see it in server logs.
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("Get %q: context deadline exceeded (Client.Timeout exceeded while awaiting headers)", endpoint+"/models?key="+apiKey)
+	})}
+	logs.Reset()
+	if err := svc.TestLLMEndpoint(ctx, LLMConnectionInput{Endpoint: endpoint, APIKey: apiKey}); err == nil {
+		t.Fatal("TestLLMEndpoint timeout = nil, want error")
+	}
+	got = logs.String()
+	if !strings.Contains(got, "msg=\"llm action failed\"") {
+		t.Fatalf("endpoint test timeout logs missing failure entry: %s", got)
+	}
+	for _, secret := range []string{endpoint, apiKey} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("endpoint test timeout logs exposed %q: %s", secret, got)
+		}
+	}
+}
+
 func TestInsightInquiriesPersistScopeAndStarterTemplatesAreOptional(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

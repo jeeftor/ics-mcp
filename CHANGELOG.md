@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.8.4 - 2026-08-13
+
+- Align the mobile calendar CSS breakpoint with the JS `useIsMobile` hook (both now use 768px). At exactly 768px viewport width the mobile view was rendered but the toggle button and panel were unstyled, making the Calendar filters panel appear broken on tablets and narrow screens at that boundary.
+- Scroll the mobile Calendar filters / event details panel into view when it opens, so it is visible even when the event list is long.
+- Add `type="button"` to the mobile context toggle to prevent any implicit form submission behavior.
+- Log LLM endpoint test actions (start, configured, completed/failed) so timeout and connection errors appear in server logs alongside other LLM action logs.
+
 ## v2.8.3 - 2026-08-06
 
 - Draw all-day separators from the calendar's actual grid tracks instead of a percentage background, eliminating fractional-pixel seams against weekday and timed columns.
