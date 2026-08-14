@@ -35,6 +35,7 @@ type ServiceOptions struct {
 	MaxCalendarBytes          int64
 	AllowPrivateCalendarHosts bool
 	Logger                    *slog.Logger
+	LogBuffer                 *LogBuffer
 	BuildInfo                 BuildInfo
 	Timezone                  string
 	ExternalURL               string
@@ -55,6 +56,7 @@ type Service struct {
 	maxCalendarBytes          int64
 	allowPrivateCalendarHosts bool
 	logger                    *slog.Logger
+	logBuffer                 *LogBuffer
 	buildInfo                 BuildInfo
 	location                  *time.Location
 	timezone                  string
@@ -142,6 +144,7 @@ func NewService(store *Store, opts ServiceOptions) *Service {
 		maxCalendarBytes:          opts.MaxCalendarBytes,
 		allowPrivateCalendarHosts: opts.AllowPrivateCalendarHosts,
 		logger:                    opts.Logger,
+		logBuffer:                 opts.LogBuffer,
 		buildInfo:                 normalizeBuildInfo(opts.BuildInfo),
 		location:                  location,
 		timezone:                  timezone,
@@ -1116,6 +1119,15 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	return Status{Now: s.now(), Version: localizeBuildInfoDate(s.buildInfo, s.location), Timezone: s.timezone, ExternalURL: s.externalURL, Calendars: calendars}, nil
+}
+
+// RecentLogs returns up to limit recent log entries from the in-memory
+// ring buffer. If limit <= 0, all buffered entries are returned.
+func (s *Service) RecentLogs(limit int) []LogEntry {
+	if s.logBuffer == nil {
+		return nil
+	}
+	return s.logBuffer.Recent(limit)
 }
 
 // UpdateCheck returns the latest-release status, cached for the configured interval.

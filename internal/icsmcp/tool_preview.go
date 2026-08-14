@@ -41,6 +41,7 @@ func ToolInfos() []ToolInfo {
 		{Name: "calendar_meeting", Description: "Return one meeting from one calendar by 1-based index. Set calendar to a calendar ID or key and list to upcoming or ongoing. Omit fields for compact default output; pass fields=[...] only to override structured fields.", Category: "read", ReadOnly: true, InputExample: `{"calendar":"work","index":1,"list":"upcoming","timezone":"","format":"","include_links":true,"include_disabled":false}`, DefaultArguments: map[string]any{"calendar": "work", "index": 1, "list": "upcoming", "timezone": "", "format": "", "include_links": true, "include_disabled": false}},
 		{Name: "free_busy", Description: "List busy blocks without meeting titles or descriptions. Omit fields for compact default busy-block output; pass fields=[...] only to override structured busy fields. Use window or after and before for a specific availability window.", Category: "read", ReadOnly: true, InputExample: `{"window":"today_tomorrow","after":"2026-06-30T15:00:00Z","before":"2026-07-01T00:00:00Z","limit":20,"format":"","exclude_cancelled":true,"sort":"start_time","include_disabled":false}`, DefaultArguments: map[string]any{"window": "today", "limit": 20, "format": "", "exclude_cancelled": true, "sort": "start_time", "include_disabled": false}},
 		{Name: "server_status", Description: "Return server version, timezone, calendars, and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
+		{Name: "get_logs", Description: "Return recent server log entries (warnings, errors, calendar refresh outcomes, LLM actions) from the in-memory ring buffer for AI-assisted diagnostics.", Category: "read", ReadOnly: true, InputExample: `{"limit":100}`, DefaultArguments: map[string]any{"limit": 100}},
 		{Name: "list_calendars", Description: "List configured calendars and refresh state.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "list_tags", Description: "List calendar tags and how many calendars use each tag.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
 		{Name: "get_config", Description: "Return effective runtime configuration and each setting source.", Category: "read", ReadOnly: true, InputExample: `{}`, DefaultArguments: map[string]any{}},
@@ -140,6 +141,19 @@ func PreviewToolCall(ctx context.Context, svc *Service, name string, raw json.Ra
 	case "server_status":
 		status, err := svc.Status(ctx)
 		return ToolCallResponse{Tool: name, Result: statusOutput{Status: status}}, err
+	case "get_logs":
+		var in logsQuery
+		if err := decodeToolArgs(raw, &in); err != nil {
+			return ToolCallResponse{}, err
+		}
+		limit := in.Limit
+		if limit <= 0 {
+			limit = 100
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		return ToolCallResponse{Tool: name, Result: logsOutput{Entries: svc.RecentLogs(limit)}}, nil
 	case "list_calendars":
 		calendars, err := svc.ListCalendarStatus(ctx)
 		return ToolCallResponse{Tool: name, Result: calendarsOutput{Calendars: calendars}}, err

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.9.0 - 2026-08-13
+
+- Add an in-memory log ring buffer (200 entries, INFO and above) that captures structured slog records alongside the existing console output. Expose recent entries through a new `GET /api/logs?limit=100` REST endpoint and a read-only `get_logs` MCP tool so AI assistants can diagnose server issues without access to stderr. Each entry includes timestamp, level, message, and all structured attributes (calendar name, error, duration, etc.).
+- Refresh the app icon with a gradient background, calendar card with date grid, binder rings, and a gold sparkle accent.
+
 ## v2.8.7 - 2026-08-13
 
 - Tap the ICS MCP brand in the toolbar to open an About dialog showing version, commit, build date, timezone, and calendar/tag counts. Works on both desktop and mobile.

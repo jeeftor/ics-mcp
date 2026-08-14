@@ -105,8 +105,9 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logger := slog.New(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")))
-			return runServeWithRuntimeConfig(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, app.BuildInfo{
+			logBuffer := app.NewLogBuffer(200, slog.LevelInfo)
+			logger := slog.New(app.NewSnapshotHandler(newSlogHandler(os.Stderr, logLevel, viper.GetBool("log-color")), logBuffer))
+			return runServeWithRuntimeConfig(cmd.Context(), httpAddr, dbPath, refreshInterval, calendars, logger, logBuffer, app.BuildInfo{
 				Version: Version,
 				Commit:  Commit,
 				Date:    Date,
@@ -161,7 +162,7 @@ func resolveDBPath(configDir string, dbPath string) string {
 }
 
 func runServe(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck bool) error {
-	return runServeWithRuntimeConfig(ctx, httpAddr, dbPath, refreshInterval, calendars, logger, buildInfo, timezone, externalURL, &updateCheck, nil)
+	return runServeWithRuntimeConfig(ctx, httpAddr, dbPath, refreshInterval, calendars, logger, app.NewLogBuffer(200, slog.LevelInfo), buildInfo, timezone, externalURL, &updateCheck, nil)
 }
 
 type serveSecurityOptions struct {
@@ -169,7 +170,7 @@ type serveSecurityOptions struct {
 	AllowPrivateCalendarHosts bool
 }
 
-func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck *bool, sources map[string]string, security ...serveSecurityOptions) error {
+func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, refreshInterval time.Duration, calendars []string, logger *slog.Logger, logBuffer *app.LogBuffer, buildInfo app.BuildInfo, timezone string, externalURL string, updateCheck *bool, sources map[string]string, security ...serveSecurityOptions) error {
 	securityOptions := serveSecurityOptions{}
 	if len(security) > 0 {
 		securityOptions = security[0]
@@ -182,7 +183,7 @@ func runServeWithRuntimeConfig(ctx context.Context, httpAddr, dbPath string, ref
 		return err
 	}
 	defer store.Close()
-	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, UpdateCheck: updateCheck, RuntimeSettingSources: sources, AllowPrivateCalendarHosts: securityOptions.AllowPrivateCalendarHosts})
+	svc := app.NewService(store, app.ServiceOptions{RefreshInterval: refreshInterval, Logger: logger, LogBuffer: logBuffer, BuildInfo: buildInfo, Timezone: timezone, ExternalURL: externalURL, UpdateCheck: updateCheck, RuntimeSettingSources: sources, AllowPrivateCalendarHosts: securityOptions.AllowPrivateCalendarHosts})
 	if err := svc.ImportStartupCalendars(ctx, app.EnvMap(), calendars); err != nil {
 		return err
 	}

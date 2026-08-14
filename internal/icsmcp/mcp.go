@@ -175,6 +175,17 @@ func NewMCPServer(svc *Service) *mcp.Server {
 			status, err := svc.Status(ctx)
 			return nil, statusOutput{Status: status}, err
 		})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_logs", Description: "Return recent server log entries (warnings, errors, calendar refresh outcomes, LLM actions) from the in-memory ring buffer for AI-assisted diagnostics. Pass limit to cap the number of entries (default 100, max 500)."},
+		func(ctx context.Context, req *mcp.CallToolRequest, in logsQuery) (*mcp.CallToolResult, logsOutput, error) {
+			limit := in.Limit
+			if limit <= 0 {
+				limit = 100
+			}
+			if limit > 500 {
+				limit = 500
+			}
+			return nil, logsOutput{Entries: svc.RecentLogs(limit)}, nil
+		})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_calendars", Description: "List configured calendars and refresh state."},
 		func(ctx context.Context, req *mcp.CallToolRequest, in any) (*mcp.CallToolResult, calendarsOutput, error) {
 			calendars, err := svc.ListCalendarStatus(ctx)

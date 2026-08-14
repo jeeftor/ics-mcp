@@ -1,13 +1,43 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <title>ICS MCP calendar workspace</title>
-  <rect width="64" height="64" rx="16" fill="#375B45"/>
-  <path d="M17 23.5C17 20.462 19.462 18 22.5 18h16C41.538 18 44 20.462 44 23.5v18C44 44.538 41.538 47 38.5 47h-16A5.5 5.5 0 0 1 17 41.5v-18Z" fill="#FFFDF8"/>
-  <path d="M17 27h27" stroke="#B5CDBA" stroke-width="3"/>
-  <path d="M25 14v8M36 14v8" stroke="#FFFDF8" stroke-width="4" stroke-linecap="round"/>
-  <path d="m23.5 38 5-5 4 4 6.5-7" stroke="#375B45" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="49" cy="20" r="5" fill="#F5C65D"/>
-  <circle cx="49" cy="20" r="2" fill="#375B45"/>
-  <path d="M44 22.5 46.4 21M44 33l4.2-9" stroke="#F5C65D" stroke-width="2.5" stroke-linecap="round"/>
-  <circle cx="49" cy="37" r="5" fill="#F5C65D"/>
-  <circle cx="49" cy="37" r="2" fill="#375B45"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B6850"/>
+      <stop offset="1" stop-color="#2A4A38"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="18" x2="0" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFEF9"/>
+      <stop offset="1" stop-color="#F5F1E8"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="44" y1="12" x2="56" y2="24" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8D058"/>
+      <stop offset="1" stop-color="#E8A830"/>
+    </linearGradient>
+    <filter id="shadow" x="-4" y="-2" width="36" height="40" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feOffset dy="2" in="b" result="o"/>
+      <feFlood flood-color="#1A2E22" flood-opacity="0.18"/>
+      <feComposite in2="o" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <rect x="14" y="17" width="32" height="32" rx="7" fill="url(#card)"/>
+  </g>
+  <rect x="14" y="17" width="32" height="10" rx="7" fill="#3B6850"/>
+  <rect x="14" y="22" width="32" height="5" fill="#3B6850"/>
+  <path d="M22 13v7M32 13v7M42 13v7" stroke="#FFFEF9" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="22" cy="13" r="2.5" fill="#FFFEF9"/>
+  <circle cx="32" cy="13" r="2.5" fill="#FFFEF9"/>
+  <circle cx="42" cy="13" r="2.5" fill="#FFFEF9"/>
+  <rect x="19" y="30" width="6" height="5" rx="2" fill="#5C8A70" opacity="0.35"/>
+  <rect x="27" y="30" width="6" height="5" rx="2" fill="#5C8A70" opacity="0.35"/>
+  <rect x="35" y="30" width="6" height="5" rx="2" fill="#3B6850"/>
+  <rect x="19" y="38" width="6" height="5" rx="2" fill="#3B6850"/>
+  <rect x="27" y="38" width="6" height="5" rx="2" fill="#5C8A70" opacity="0.35"/>
+  <rect x="35" y="38" width="6" height="5" rx="2" fill="#5C8A70" opacity="0.35"/>
+  <path d="M48 11l1.8 4.7L54.5 17.5l-4.7 1.8L48 24l-1.8-4.7L41.5 17.5l4.7-1.8L48 11Z" fill="url(#spark)"/>
+  <path d="M48 11l1.8 4.7L54.5 17.5l-4.7 1.8L48 24l-1.8-4.7L41.5 17.5l4.7-1.8L48 11Z" fill="none" stroke="#D49820" stroke-width="0.5" stroke-linejoin="round"/>
+  <circle cx="48" cy="17.5" r="1.5" fill="#FFFEF9"/>
 </svg>
