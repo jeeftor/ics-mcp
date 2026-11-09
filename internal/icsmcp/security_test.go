@@ -67,6 +67,54 @@ func TestCalendarRefreshAndValidationApplyResponseSizeLimit(t *testing.T) {
 	}
 }
 
+func TestCalendarHTTPClientBlocksPrivateRedirects(t *testing.T) {
+	svc := newTestService(t)
+	svc.allowPrivateCalendarHosts = false
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": []string{"http://127.0.0.1/internal"}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	})}
+	req, err := http.NewRequest(http.MethodGet, "https://feeds.example.test/calendar.ics", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.calendarHTTPClient().Do(req); err == nil || !strings.Contains(err.Error(), "private or local") {
+		t.Fatalf("redirect to private host error = %v, want private-host rejection", err)
+	}
+}
+
+func TestCalendarHTTPClientAllowsPrivateRedirectsWhenConfigured(t *testing.T) {
+	svc := newTestService(t)
+	svc.allowPrivateCalendarHosts = true
+	var secondHop bool
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "127.0.0.1" {
+			secondHop = true
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok"))}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": []string{"http://127.0.0.1/internal"}},
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	})}
+	req, err := http.NewRequest(http.MethodGet, "https://feeds.example.test/calendar.ics", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := svc.calendarHTTPClient().Do(req)
+	if err != nil {
+		t.Fatalf("redirect with private hosts allowed error = %v", err)
+	}
+	defer resp.Body.Close()
+	if !secondHop || resp.StatusCode != http.StatusOK {
+		t.Fatalf("secondHop=%v status=%d, want redirect followed", secondHop, resp.StatusCode)
+	}
+}
+
 func TestBearerTokenProtectsAPIAndMCP(t *testing.T) {
 	svc := newTestService(t)
 	server := httptest.NewServer(NewHTTPHandlerWithOptions(svc, NewMCPServer(svc), HTTPOptions{BearerToken: "secret"}))

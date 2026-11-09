@@ -2485,6 +2485,89 @@ func newTestService(t *testing.T) *Service {
 	return NewService(store, ServiceOptions{RefreshInterval: 5 * time.Minute, Lookahead: 30 * 24 * time.Hour, Timezone: "UTC", AllowPrivateCalendarHosts: true})
 }
 
+func TestCalendarUnknownSubPathReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+
+	for _, path := range []string{"/api/calendars/" + cal.ID + "/bogus", "/api/calendars/" + cal.ID + "/custom-icon/extra", "/api/calendars/" + cal.ID + "/events/extra"} {
+		for _, method := range []string{http.MethodDelete, http.MethodPatch} {
+			req, err := http.NewRequest(method, server.URL+path, strings.NewReader(`{}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want 404", method, path, resp.StatusCode)
+			}
+		}
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 1 || calendars[0].Name != "Work" {
+		t.Fatalf("calendar mutated by unknown sub-path requests: %#v", calendars)
+	}
+}
+
+func TestCalendarCustomIconRejectsExternalURLReferences(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Name: "Icons", URL: "https://example.test/icons.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	server := httptest.NewServer(NewHTTPHandler(svc, NewMCPServer(svc)))
+	defer server.Close()
+	path := server.URL + "/api/calendars/" + cal.ID + "/custom-icon"
+
+	for _, svg := range []string{
+		`<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(https://evil.example/x.svg#p)"/></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(&quot;https://evil.example/x.svg#p&quot;)"/></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><rect clip-path="url(http://169.254.169.254/latest)"/></svg>`,
+	} {
+		req, err := http.NewRequest(http.MethodPut, path, strings.NewReader(svg))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "image/svg+xml")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("external url() SVG status = %d, want 400 for %s", resp.StatusCode, svg)
+		}
+	}
+
+	fragmentRef := `<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g"/></defs><rect fill="url(#g)"/></svg>`
+	req, err := http.NewRequest(http.MethodPut, path, strings.NewReader(fragmentRef))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "image/svg+xml")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fragment url() SVG status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestTagsHTTPAndMCPContracts(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)

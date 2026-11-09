@@ -19,7 +19,15 @@ type Store struct {
 
 // OpenStore opens and migrates a SQLite database.
 func OpenStore(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	// foreign_keys is a per-connection pragma, so it must be applied through
+	// the driver DSN to cover every pooled connection. Without it the
+	// ON DELETE CASCADE clauses never fire.
+	dsn := path
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	db, err := sql.Open("sqlite", dsn+separator+"_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -180,7 +188,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE insight_inquiries ADD COLUMN end_date TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE insight_inquiries ADD COLUMN cron_expression TEXT NOT NULL DEFAULT ''`,
 		`INSERT OR IGNORE INTO insight_inquiries (name, question, enabled, builtin) VALUES ('daily_briefing', 'What should I know today?', 0, 1)`,
-		`UPDATE insight_inquiries SET date_scope = 'today' WHERE name = 'daily_briefing' AND date_scope = 'all'`,
+		// Remove tag and icon rows orphaned before foreign keys were enforced.
+		`DELETE FROM calendar_tags WHERE calendar_id NOT IN (SELECT id FROM calendars)`,
+		`DELETE FROM calendar_custom_icons WHERE calendar_id NOT IN (SELECT id FROM calendars)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -190,7 +200,23 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migrate sqlite: %w", err)
 		}
 	}
-	return nil
+	return s.migrateDailyBriefingScope(ctx)
+}
+
+// migrateDailyBriefingScope applies the one-time date_scope correction for the
+// builtin daily_briefing inquiry. A runtime_settings marker ensures it runs at
+// most once so later deliberate user changes are not reverted on startup.
+func (s *Store) migrateDailyBriefingScope(ctx context.Context) error {
+	const marker = "migration_daily_briefing_scope_v1"
+	if done, ok, err := s.runtimeSetting(ctx, marker); err != nil {
+		return err
+	} else if ok && done == "1" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE insight_inquiries SET date_scope = 'today' WHERE name = 'daily_briefing' AND date_scope = 'all'`); err != nil {
+		return fmt.Errorf("migrate daily briefing scope: %w", err)
+	}
+	return s.setRuntimeSetting(ctx, marker, "1")
 }
 
 func (s *Store) setCalendarCustomIcon(ctx context.Context, calendarID, contentType string, data []byte) error {
@@ -261,8 +287,11 @@ func (s *Store) upsertCalendar(ctx context.Context, cal Calendar, preserveName b
 	if preserveName {
 		name = existing.Name
 	}
+	// Startup imports (preserveName) carry no enablement intent, so a calendar
+	// disabled in the UI must stay disabled across restarts. Explicit API adds
+	// keep the previous behavior: a truthy incoming flag re-enables the feed.
 	enabled := cal.Enabled
-	if !enabled {
+	if preserveName || !enabled {
 		enabled = existing.Enabled
 	}
 	color, icon, refreshInterval := cal.Color, cal.Icon, cal.RefreshInterval
@@ -421,14 +450,27 @@ func (s *Store) setGeneralQueryCalendarIDs(ctx context.Context, calendarIDs []st
 }
 
 func (s *Store) deleteCalendar(ctx context.Context, id string) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE calendar_id = ?`, id); err != nil {
-		return fmt.Errorf("delete events: %w", err)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete calendar: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM refresh_state WHERE calendar_id = ?`, id); err != nil {
-		return fmt.Errorf("delete refresh state: %w", err)
+	defer tx.Rollback()
+	for _, step := range []struct {
+		label string
+		stmt  string
+	}{
+		{"delete events", `DELETE FROM events WHERE calendar_id = ?`},
+		{"delete refresh state", `DELETE FROM refresh_state WHERE calendar_id = ?`},
+		{"delete calendar tags", `DELETE FROM calendar_tags WHERE calendar_id = ?`},
+		{"delete calendar custom icon", `DELETE FROM calendar_custom_icons WHERE calendar_id = ?`},
+		{"delete calendar", `DELETE FROM calendars WHERE id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, step.stmt, id); err != nil {
+			return fmt.Errorf("%s: %w", step.label, err)
+		}
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM calendars WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("delete calendar: %w", err)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete calendar: %w", err)
 	}
 	return nil
 }
@@ -716,10 +758,21 @@ func (s *Store) updateTag(ctx context.Context, name string, in UpdateCalendarTag
 	if err := s.db.QueryRowContext(ctx, `SELECT name, color, icon, refresh_interval, position FROM tags WHERE normalized_name = ?`, strings.ToLower(name)).Scan(&tag.Name, &tag.Color, &tag.Icon, &tag.RefreshInterval, &tag.Position); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			tag.Name = name
+			tag.Color = strings.TrimSpace(in.Color)
+			tag.Icon = strings.TrimSpace(in.Icon)
+			if in.RefreshInterval != "" {
+				if _, err := time.ParseDuration(in.RefreshInterval); err != nil {
+					return CalendarTag{}, fmt.Errorf("parse tag refresh interval: %w", err)
+				}
+				tag.RefreshInterval = in.RefreshInterval
+			}
 			if in.Position != nil {
+				if *in.Position < 0 {
+					return CalendarTag{}, fmt.Errorf("tag position must not be negative")
+				}
 				tag.Position = *in.Position
 			}
-			if _, err := s.db.ExecContext(ctx, `INSERT INTO tags (name, normalized_name, color, icon, refresh_interval, position) VALUES (?, ?, ?, ?, ?, ?)`, tag.Name, strings.ToLower(tag.Name), strings.TrimSpace(in.Color), strings.TrimSpace(in.Icon), strings.TrimSpace(in.RefreshInterval), tag.Position); err != nil {
+			if _, err := s.db.ExecContext(ctx, `INSERT INTO tags (name, normalized_name, color, icon, refresh_interval, position) VALUES (?, ?, ?, ?, ?, ?)`, tag.Name, strings.ToLower(tag.Name), tag.Color, tag.Icon, tag.RefreshInterval, tag.Position); err != nil {
 				return CalendarTag{}, fmt.Errorf("create tag: %w", err)
 			}
 			return tag, nil

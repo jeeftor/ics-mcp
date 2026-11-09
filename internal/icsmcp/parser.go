@@ -14,6 +14,11 @@ import (
 
 var tzidParamPattern = regexp.MustCompile(`TZID=("[^"]+"|[^;:\r\n]+)`)
 
+// maxRecurrenceGenerations bounds how many occurrences a single RRULE may
+// generate while expanding one feed. It protects the refresher from
+// pathological high-frequency rules anchored far in the past.
+const maxRecurrenceGenerations = 500_000
+
 var windowsTimezoneMap = map[string]string{
 	"Central Standard Time":      "America/Chicago",
 	"Eastern Standard Time":      "America/New_York",
@@ -133,6 +138,27 @@ func expandEvent(ve *ical.VEvent, overrides map[string]map[int64]bool, windowSta
 		recurrenceID = ridProp.Value
 	}
 	rruleProps := ve.GetProperties(ical.ComponentPropertyRrule)
+	exdates, err := ve.GetExDates()
+	if err != nil {
+		return nil, fmt.Errorf("parse event exdates: %w", err)
+	}
+	rdates, err := ve.GetRDates()
+	if err != nil {
+		return nil, fmt.Errorf("parse event rdates: %w", err)
+	}
+	if startAllDay {
+		exdates = utcMidnights(exdates)
+		rdates = utcMidnights(rdates)
+	}
+	duration := end.Sub(start)
+	excluded := func(t time.Time) bool {
+		for _, exdate := range exdates {
+			if exdate.Equal(t) {
+				return true
+			}
+		}
+		return false
+	}
 
 	newInstance := func(start, end time.Time, recurring bool, recurrenceID string) EventInstance {
 		// gocal canonicalized inclusive all-day DTEND representations (23:59:59.999)
@@ -160,24 +186,26 @@ func expandEvent(ve *ical.VEvent, overrides map[string]map[int64]bool, windowSta
 	}
 
 	if len(rruleProps) == 0 {
-		if !overlapsWindow(start, end, windowStart, windowEnd) {
-			return nil, nil
+		// RFC 5545 allows RDATE without RRULE: DTSTART plus each RDATE forms
+		// the recurrence set, with EXDATE and RECURRENCE-ID exclusions applied.
+		candidates := append([]time.Time{start}, rdates...)
+		seen := map[int64]bool{}
+		var out []EventInstance
+		for _, occurrence := range candidates {
+			key := occurrence.UTC().Unix()
+			// RECURRENCE-ID override events share their master's UID, so the
+			// override map contains their own instant; they must still emit.
+			if seen[key] || excluded(occurrence) || (recurrenceID == "" && overrides[uid][key]) {
+				continue
+			}
+			seen[key] = true
+			occurrenceEnd := occurrence.Add(duration)
+			if !overlapsWindow(occurrence, occurrenceEnd, windowStart, windowEnd) {
+				continue
+			}
+			out = append(out, newInstance(occurrence, occurrenceEnd, len(rdates) > 0 || recurrenceID != "", recurrenceID))
 		}
-		return []EventInstance{newInstance(start, end, recurrenceID != "", recurrenceID)}, nil
-	}
-
-	duration := end.Sub(start)
-	exdates, err := ve.GetExDates()
-	if err != nil {
-		exdates = nil
-	}
-	rdates, err := ve.GetRDates()
-	if err != nil {
-		rdates = nil
-	}
-	if startAllDay {
-		exdates = utcMidnights(exdates)
-		rdates = utcMidnights(rdates)
+		return out, nil
 	}
 
 	var out []EventInstance
@@ -195,9 +223,21 @@ func expandEvent(ve *ical.VEvent, overrides map[string]map[int64]bool, windowSta
 		if len(rdates) > 0 {
 			set.SetRDates(rdates)
 		}
-		// Expand far enough back that an occurrence starting before the window can
-		// still overlap it, then apply the same overlap test gocal used.
-		for _, occurrence := range set.Between(windowStart.Add(-duration), windowEnd, true) {
+		// Iterate manually instead of Set.Between so expansion can be bounded:
+		// the iterator always starts at DTSTART, so a high-frequency rule
+		// anchored years in the past would otherwise generate millions of
+		// occurrences on every refresh.
+		next := set.Iterator()
+		generated := 0
+		for {
+			occurrence, ok := next()
+			if !ok || occurrence.After(windowEnd) {
+				break
+			}
+			generated++
+			if generated > maxRecurrenceGenerations {
+				return nil, fmt.Errorf("parse ics rrule %q: recurrence expansion exceeded %d occurrences", rp.Value, maxRecurrenceGenerations)
+			}
 			occurrenceEnd := occurrence.Add(duration)
 			if !occurrenceEnd.After(windowStart) || !occurrence.Before(windowEnd) {
 				continue

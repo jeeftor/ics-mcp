@@ -81,6 +81,28 @@ func TestExtractMeetingURLCleansEscapedNewlineMarkersAndSkipsInvalidURLs(t *test
 	}
 }
 
+func TestExtractMeetingURLRequiresExactProviderHosts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		text     string
+		wantType string
+	}{
+		{name: "teams subdomain", text: "https://teams.microsoft.com/l/meetup-join/x", wantType: "teams"},
+		{name: "teams nested subdomain", text: "https://sub.teams.microsoft.com/x", wantType: "teams"},
+		{name: "teams suffix attack", text: "https://evilteams.microsoft.com/x", wantType: "link"},
+		{name: "teams domain suffix attack", text: "https://teams.microsoft.com.evil.test/x", wantType: "link"},
+		{name: "zoom subdomain", text: "https://us02web.zoom.us/j/123", wantType: "zoom"},
+		{name: "zoom suffix attack", text: "https://notzoom.us.evil.test/j/1", wantType: "link"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, gotType := ExtractMeetingURL(tc.text)
+			if gotType != tc.wantType {
+				t.Fatalf("ExtractMeetingURL(%q) type = %q, want %q", tc.text, gotType, tc.wantType)
+			}
+		})
+	}
+}
+
 func TestClassifyMeetingURLSkipsMalformedRawURL(t *testing.T) {
 	got := classifyMeetingURL("%")
 	if got != (meetingURLCandidate{}) {

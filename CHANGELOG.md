@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.9.4 - 2026-11-09
+
+- Close an SSRF gap in calendar feed fetching: HTTP redirects are now re-validated against the private-host policy on every hop, so a feed URL can no longer bounce the server to loopback, private, or link-local addresses (for example cloud metadata endpoints) after passing the initial URL check.
+- Enable SQLite `foreign_keys` on every connection and make calendar deletion transactional across `events`, `refresh_state`, `calendar_tags`, and `calendar_custom_icons`, so deleting a calendar no longer leaves orphaned tag assignments or custom icons behind.
+- Return 404 for unknown `/api/calendars/{id}/...` sub-paths instead of letting `DELETE`/`PATCH` fall through and mutate or delete the calendar itself (for example `DELETE /api/calendars/{id}/custom-icon/extra`).
+- Stop silently dropping malformed `EXDATE`/`RDATE` values during ICS parsing; a broken exclusion now fails the refresh loudly (keeping last-good cached events) instead of resurrecting previously cancelled occurrences. Also expand `RDATE`-only events (recurrence sets without `RRULE`), which were previously reduced to their `DTSTART` instance.
+- Bound recurrence expansion at 500,000 generated occurrences per `RRULE` so a pathological high-frequency rule anchored years in the past cannot burn CPU on every refresh.
+- Preserve a calendar's disabled state across restarts for environment/CLI-imported calendars; startup imports previously re-enabled feeds disabled in the UI.
+- Run the `daily_briefing` `date_scope` correction only once via a migration marker instead of reverting deliberate user changes on every startup.
+- Validate tag position and refresh interval on tag creation (previously only enforced on update), and return the created tag's full fields.
+- Tighten meeting-URL provider detection to exact host/suffix matching so lookalike hosts such as `evilteams.microsoft.com` are no longer classified as Teams/Zoom/Webex/Meet.
+- Reject SVG calendar icons whose attributes contain external `url(...)` references (for example `fill="url(https://...)"`), while still allowing in-document fragment references like `url(#gradient)`.
+
 ## v2.9.3 - 2026-11-09
 
 - Fix recurring meetings silently landing on the wrong date for monthly and yearly `BYDAY` rules with ordinals (for example `BYDAY=2MO`, `BYDAY=-1FR`, `BYDAY=4TH`). The previous ICS engine ignored the ordinal and anchored expansion to the DTSTART day-of-month, so "second Tuesday" meetings could appear a week late or vanish from the queried window entirely. Recurrence expansion now uses `rrule-go` (a port of python-dateutil's reference implementation), which also fixes plain multi-weekday `BYDAY` sets, `RDATE`, and `BYSETPOS` rules.

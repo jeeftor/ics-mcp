@@ -556,6 +556,12 @@ func NewHTTPHandlerWithOptions(svc *Service, mcpServer *mcp.Server, options HTTP
 			handleCalendarCustomIcon(w, r, svc, id)
 			return
 		}
+		if action != "" {
+			// Only the calendar root supports PATCH/DELETE; unknown sub-paths
+			// must not fall through to mutating the calendar itself.
+			http.NotFound(w, r)
+			return
+		}
 		switch r.Method {
 		case http.MethodPatch:
 			var in UpdateCalendarInput
@@ -719,6 +725,9 @@ func validateCalendarCustomIcon(contentType string, data []byte) error {
 			if strings.HasPrefix(value, "javascript:") || strings.HasPrefix(value, "data:") || strings.HasPrefix(value, "http:") || strings.HasPrefix(value, "https:") || strings.HasPrefix(value, "//") {
 				return errors.New("calendar icon SVG contains an external reference")
 			}
+			if svgValueHasExternalURLRef(value) {
+				return errors.New("calendar icon SVG contains an external reference")
+			}
 			if (attrName == "href" || attrName == "src") && value != "" && !strings.HasPrefix(value, "#") {
 				return errors.New("calendar icon SVG contains an external reference")
 			}
@@ -728,6 +737,28 @@ func validateCalendarCustomIcon(contentType string, data []byte) error {
 		return errors.New("calendar icon SVG must have an svg root element")
 	}
 	return nil
+}
+
+// svgValueHasExternalURLRef reports whether an SVG attribute value contains a
+// CSS url() reference that does not point at an in-document fragment. Paint
+// servers like fill="url(#gradient)" are allowed; url(https://...) is not.
+func svgValueHasExternalURLRef(value string) bool {
+	for {
+		idx := strings.Index(value, "url(")
+		if idx < 0 {
+			return false
+		}
+		rest := value[idx+len("url("):]
+		end := strings.Index(rest, ")")
+		if end < 0 {
+			return true
+		}
+		ref := strings.Trim(strings.TrimSpace(rest[:end]), `'"`)
+		if !strings.HasPrefix(ref, "#") {
+			return true
+		}
+		value = rest[end+1:]
+	}
 }
 
 func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {

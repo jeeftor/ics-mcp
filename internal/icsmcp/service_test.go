@@ -256,6 +256,151 @@ func TestOpenStoreMigratesLegacyEventsTableForRecurrenceMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenStoreEnablesForeignKeys(t *testing.T) {
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	var enabled int
+	if err := store.db.QueryRow(`PRAGMA foreign_keys`).Scan(&enabled); err != nil {
+		t.Fatalf("PRAGMA foreign_keys error = %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("PRAGMA foreign_keys = %d, want 1", enabled)
+	}
+}
+
+func TestDeleteCalendarRemovesRelatedRows(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(t.TempDir() + "/icsmcp.sqlite3")
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	cal, err := store.upsertCalendar(ctx, Calendar{ID: "cal-1", Key: "WORK", Name: "Work", URL: "https://example.test/work.ics", Enabled: true, IncludeInGeneralQueries: true, Tags: []string{"Team"}}, false)
+	if err != nil {
+		t.Fatalf("upsertCalendar() error = %v", err)
+	}
+	if err := store.setCalendarCustomIcon(ctx, cal.ID, "image/svg+xml", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)); err != nil {
+		t.Fatalf("setCalendarCustomIcon() error = %v", err)
+	}
+	if err := store.replaceEvents(ctx, cal.ID, []EventInstance{{ID: "evt-1", UID: "u1", Name: "Standup", Start: time.Now(), End: time.Now().Add(time.Hour)}}); err != nil {
+		t.Fatalf("replaceEvents() error = %v", err)
+	}
+	if err := store.deleteCalendar(ctx, cal.ID); err != nil {
+		t.Fatalf("deleteCalendar() error = %v", err)
+	}
+	for table, query := range map[string]string{
+		"events":                `SELECT COUNT(*) FROM events WHERE calendar_id = ?`,
+		"refresh_state":         `SELECT COUNT(*) FROM refresh_state WHERE calendar_id = ?`,
+		"calendar_tags":         `SELECT COUNT(*) FROM calendar_tags WHERE calendar_id = ?`,
+		"calendar_custom_icons": `SELECT COUNT(*) FROM calendar_custom_icons WHERE calendar_id = ?`,
+	} {
+		var count int
+		if err := store.db.QueryRow(query, cal.ID).Scan(&count); err != nil {
+			t.Fatalf("count %s error = %v", table, err)
+		}
+		if count != 0 {
+			t.Fatalf("%s rows remain after deleteCalendar: %d", table, count)
+		}
+	}
+}
+
+func TestStartupImportPreservesDisabledCalendar(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	disabled := false
+	if _, err := svc.UpdateCalendar(ctx, cal.ID, UpdateCalendarInput{Enabled: &disabled}); err != nil {
+		t.Fatalf("UpdateCalendar() error = %v", err)
+	}
+	if err := svc.ImportStartupCalendars(ctx, map[string]string{"ICSMCP_CALENDAR_WORK": "https://example.test/work.ics"}, nil); err != nil {
+		t.Fatalf("ImportStartupCalendars() error = %v", err)
+	}
+	calendars, err := svc.ListCalendars(ctx)
+	if err != nil {
+		t.Fatalf("ListCalendars() error = %v", err)
+	}
+	if len(calendars) != 1 || calendars[0].Enabled {
+		t.Fatalf("calendar after startup import = %#v, want still disabled", calendars)
+	}
+}
+
+func TestUpdateTagValidatesCreateInput(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	negative := -1
+	if _, err := svc.UpdateTag(ctx, "newtag", UpdateCalendarTagInput{Position: &negative}); err == nil {
+		t.Fatal("UpdateTag() accepted a negative position on create")
+	}
+	if _, err := svc.UpdateTag(ctx, "badinterval", UpdateCalendarTagInput{RefreshInterval: "not-a-duration"}); err == nil {
+		t.Fatal("UpdateTag() accepted an invalid refresh interval on create")
+	}
+	position := 3
+	tag, err := svc.UpdateTag(ctx, "goodtag", UpdateCalendarTagInput{Position: &position, RefreshInterval: "15m", Color: "#fff"})
+	if err != nil {
+		t.Fatalf("UpdateTag() error = %v", err)
+	}
+	if tag.Position != 3 || tag.RefreshInterval != "15m" || tag.Color != "#fff" {
+		t.Fatalf("created tag = %#v, want position=3 refresh_interval=15m color=#fff", tag)
+	}
+}
+
+func TestDailyBriefingScopeMigrationRunsOnce(t *testing.T) {
+	path := t.TempDir() + "/icsmcp.sqlite3"
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	// Simulate a legacy database from before the one-time migration existed.
+	if _, err := store.db.Exec(`UPDATE insight_inquiries SET date_scope = 'all' WHERE name = 'daily_briefing'`); err != nil {
+		t.Fatalf("reset date_scope error = %v", err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM runtime_settings WHERE key = 'migration_daily_briefing_scope_v1'`); err != nil {
+		t.Fatalf("delete migration marker error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	// First reopen applies the one-time migration.
+	store, err = OpenStore(path)
+	if err != nil {
+		t.Fatalf("reopen OpenStore() error = %v", err)
+	}
+	var scope string
+	if err := store.db.QueryRow(`SELECT date_scope FROM insight_inquiries WHERE name = 'daily_briefing'`).Scan(&scope); err != nil {
+		t.Fatalf("read date_scope error = %v", err)
+	}
+	if scope != "today" {
+		t.Fatalf("date_scope after migration = %q, want today", scope)
+	}
+
+	// A deliberate user change must survive subsequent startups.
+	if _, err := store.db.Exec(`UPDATE insight_inquiries SET date_scope = 'all' WHERE name = 'daily_briefing'`); err != nil {
+		t.Fatalf("second reset error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	store, err = OpenStore(path)
+	if err != nil {
+		t.Fatalf("second reopen OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.db.QueryRow(`SELECT date_scope FROM insight_inquiries WHERE name = 'daily_briefing'`).Scan(&scope); err != nil {
+		t.Fatalf("second read date_scope error = %v", err)
+	}
+	if scope != "all" {
+		t.Fatalf("date_scope after second reopen = %q, want preserved user value 'all'", scope)
+	}
+}
+
 func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleRecurringICS(), now, 5*24*time.Hour)
@@ -506,6 +651,96 @@ func TestParseICSExpandsMonthlyWeekdaySetRules(t *testing.T) {
 	}
 	if !slices.Equal(starts, want) {
 		t.Fatalf("starts = %#v, want %#v", starts, want)
+	}
+}
+
+func TestParseICSExpandsRDateOnlyEvents(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:rdate-only\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260630T150000Z\r\n" +
+		"DTEND:20260630T153000Z\r\n" +
+		"RDATE:20260701T150000Z\r\n" +
+		"RDATE:20260702T150000Z\r\n" +
+		"SUMMARY:Ad-hoc Dates\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	events, err := ParseICS(ics, now, 5*24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	starts := make([]string, 0, len(events))
+	for _, event := range events {
+		starts = append(starts, event.Start.Format(time.RFC3339))
+		if !event.Recurring {
+			t.Fatalf("RDATE instance %s not marked recurring", event.Start)
+		}
+	}
+	want := []string{"2026-06-30T15:00:00Z", "2026-07-01T15:00:00Z", "2026-07-02T15:00:00Z"}
+	if !slices.Equal(starts, want) {
+		t.Fatalf("starts = %#v, want %#v", starts, want)
+	}
+}
+
+func TestParseICSAppliesExDateToRDateOnlyEvents(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:rdate-exdate\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260630T150000Z\r\n" +
+		"DTEND:20260630T153000Z\r\n" +
+		"RDATE:20260701T150000Z\r\n" +
+		"EXDATE:20260701T150000Z\r\n" +
+		"SUMMARY:Ad-hoc Dates\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	events, err := ParseICS(ics, now, 5*24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 || events[0].Start.Format(time.RFC3339) != "2026-06-30T15:00:00Z" {
+		t.Fatalf("events = %#v, want only the DTSTART instance", events)
+	}
+}
+
+func TestParseICSErrorsOnMalformedExDate(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:bad-exdate\r\n" +
+		"DTSTAMP:20260629T120000Z\r\n" +
+		"DTSTART:20260630T150000Z\r\n" +
+		"DTEND:20260630T153000Z\r\n" +
+		"EXDATE:NOT_A_DATE\r\n" +
+		"SUMMARY:Broken Exclusion\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	if _, err := ParseICS(ics, now, 24*time.Hour); err == nil || !strings.Contains(err.Error(), "exdate") {
+		t.Fatalf("ParseICS(malformed EXDATE) error = %v, want exdate parse error", err)
+	}
+}
+
+func TestParseICSErrorsOnRunawayRecurrence(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:minutely-forever\r\n" +
+		"DTSTAMP:20200101T000000Z\r\n" +
+		"DTSTART:20200101T000000Z\r\n" +
+		"DTEND:20200101T000500Z\r\n" +
+		"RRULE:FREQ=MINUTELY\r\n" +
+		"SUMMARY:Every Minute Since 2020\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	if _, err := ParseICS(ics, now, 24*time.Hour); err == nil || !strings.Contains(err.Error(), "recurrence expansion exceeded") {
+		t.Fatalf("ParseICS(runaway RRULE) error = %v, want expansion limit error", err)
 	}
 }
 
@@ -1878,7 +2113,9 @@ func TestStoreDeleteCalendarReportsTableSpecificErrors(t *testing.T) {
 	}{
 		{name: "events table", table: "events", wantError: "delete events"},
 		{name: "refresh state table", table: "refresh_state", wantError: "delete refresh state"},
-		{name: "calendars table", table: "calendars", wantError: "delete calendar"},
+		// With foreign keys enforced, dropping calendars makes the first child
+		// delete fail at prepare time because the parent table is unresolvable.
+		{name: "calendars table", table: "calendars", wantError: "no such table"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

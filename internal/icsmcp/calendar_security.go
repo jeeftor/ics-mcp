@@ -28,6 +28,25 @@ func (s *Service) calendarRequest(ctx context.Context, rawURL string) (*http.Req
 	return http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 }
 
+// calendarHTTPClient returns a copy of the service HTTP client that re-checks
+// every redirect hop against the private-host policy. Without this, a feed URL
+// that passes the initial calendarRequest check could 302 the server to an
+// internal or link-local address (for example cloud metadata endpoints).
+func (s *Service) calendarHTTPClient() *http.Client {
+	client := *s.httpClient
+	previous := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !s.allowPrivateCalendarHosts && privateCalendarHost(req.Context(), req.URL.Hostname()) {
+			return fmt.Errorf("calendar redirect to private or local address %q blocked", req.URL.Hostname())
+		}
+		if previous != nil {
+			return previous(req, via)
+		}
+		return nil
+	}
+	return &client
+}
+
 func privateCalendarHost(ctx context.Context, host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true

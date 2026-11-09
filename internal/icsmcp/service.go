@@ -410,7 +410,7 @@ func (s *Service) RefreshCalendar(ctx context.Context, id string, now time.Time)
 	if state.LastModified != "" {
 		req.Header.Set("If-Modified-Since", state.LastModified)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.calendarHTTPClient().Do(req)
 	if err != nil {
 		state.LastError = err.Error()
 		_ = s.store.updateRefreshState(ctx, id, state)
@@ -1235,7 +1235,7 @@ func (s *Service) ValidateCalendar(ctx context.Context, in ValidateCalendarInput
 	if err != nil {
 		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.calendarHTTPClient().Do(req)
 	if err != nil {
 		return ValidateCalendarResult{OK: false, Error: err.Error()}, err
 	}

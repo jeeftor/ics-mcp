@@ -54,16 +54,19 @@ func classifyMeetingURL(raw string) meetingURLCandidate {
 	if err != nil {
 		return meetingURLCandidate{}
 	}
-	host := strings.ToLower(parsed.Host)
+	host := strings.ToLower(parsed.Hostname())
 	path := strings.ToLower(parsed.Path)
+	hostMatches := func(domain string) bool {
+		return host == domain || strings.HasSuffix(host, "."+domain)
+	}
 	switch {
-	case strings.Contains(host, "teams.microsoft.com"):
+	case hostMatches("teams.microsoft.com"):
 		return meetingURLCandidate{url: raw, urlType: "teams", priority: 1}
-	case strings.Contains(host, "zoom.us"):
+	case hostMatches("zoom.us"):
 		return meetingURLCandidate{url: raw, urlType: "zoom", priority: 2}
-	case strings.Contains(host, "meet.google.com"):
+	case hostMatches("meet.google.com"):
 		return meetingURLCandidate{url: raw, urlType: "meet", priority: 3}
-	case strings.Contains(host, "webex.com"):
+	case hostMatches("webex.com"):
 		return meetingURLCandidate{url: raw, urlType: "webex", priority: 4}
 	case strings.Contains(path, "meetup-join") || strings.Contains(path, "join"):
 		return meetingURLCandidate{url: raw, urlType: "link", priority: 5}
