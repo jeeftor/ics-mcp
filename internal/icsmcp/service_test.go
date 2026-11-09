@@ -418,6 +418,37 @@ func TestParseICSExpandsRecurringEventsWithinWindow(t *testing.T) {
 	}
 }
 
+func TestParseICSBackfillsRecentlyPastEvents(t *testing.T) {
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	ics := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:recent-past\r\n" +
+		"DTSTAMP:20260620T120000Z\r\n" +
+		"DTSTART:20260626T150000Z\r\n" +
+		"DTEND:20260626T153000Z\r\n" +
+		"SUMMARY:Three Days Ago\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:old-past\r\n" +
+		"DTSTAMP:20260610T120000Z\r\n" +
+		"DTSTART:20260615T150000Z\r\n" +
+		"DTEND:20260615T153000Z\r\n" +
+		"SUMMARY:Two Weeks Ago\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+	events, err := ParseICS(ics, now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1 (only the event inside the 7-day backfill)", len(events))
+	}
+	if events[0].UID != "recent-past" {
+		t.Fatalf("event UID = %q, want recent-past", events[0].UID)
+	}
+}
+
 func TestParseICSMapsExchangeWindowsTimezones(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleExchangeWindowsTimezoneICS(), now, 48*time.Hour)
@@ -643,6 +674,7 @@ func TestParseICSExpandsMonthlyWeekdaySetRules(t *testing.T) {
 		starts = append(starts, event.Start.Format(time.RFC3339))
 	}
 	want := []string{
+		"2026-11-02T14:00:00Z",
 		"2026-11-09T14:00:00Z",
 		"2026-11-16T14:00:00Z",
 		"2026-11-23T14:00:00Z",
@@ -1473,23 +1505,23 @@ func TestFreeBusyReportsInvalidTimezone(t *testing.T) {
 
 func TestMeetingJSONDefaultsToCompactTokenEfficientShape(t *testing.T) {
 	meeting := Meeting{
-		Day:             "Tue",
-		Date:            "2026-06-30",
-		EndDate:         "2026-06-30",
-		Start:           "09:00",
-		End:             "10:30",
-		Timezone:        "America/Denver",
-		DurationMinutes: 90,
-		Name:            "Planning",
-		CalendarID:      "calendar-1",
-		CalendarName:    "Work",
-		Ongoing:         true,
-		Recurring:       true,
-		MeetingURL:      "https://meet.example.test/planning",
-		MeetingURLType:  "meet",
+		Day:              "Tue",
+		Date:             "2026-06-30",
+		EndDate:          "2026-06-30",
+		Start:            "09:00",
+		End:              "10:30",
+		Timezone:         "America/Denver",
+		DurationMinutes:  90,
+		Name:             "Planning",
+		CalendarID:       "calendar-1",
+		CalendarName:     "Work",
+		Ongoing:          true,
+		Recurring:        true,
+		MeetingURL:       "https://meet.example.test/planning",
+		MeetingURLType:   "meet",
 		AttendanceStatus: "accepted",
-		Description:     "private notes",
-		RecurrenceID:    "20260630T150000Z",
+		Description:      "private notes",
+		RecurrenceID:     "20260630T150000Z",
 	}
 
 	data, err := json.Marshal(meeting)
@@ -1720,20 +1752,20 @@ func TestMeetingAndGroupJSONDecodeErrorsAndFallbacks(t *testing.T) {
 
 func TestMeetingJSONSupportsFullDetailShape(t *testing.T) {
 	meeting := Meeting{
-		Day:             "Tue",
-		Date:            "2026-06-30",
-		Start:           "09:00",
-		End:             "10:30",
-		Timezone:        "America/Denver",
-		DurationMinutes: 90,
-		Name:            "Planning",
-		Description:     "private notes",
-		CalendarID:      "calendar-1",
-		CalendarName:    "Work",
-		Recurring:       true,
+		Day:              "Tue",
+		Date:             "2026-06-30",
+		Start:            "09:00",
+		End:              "10:30",
+		Timezone:         "America/Denver",
+		DurationMinutes:  90,
+		Name:             "Planning",
+		Description:      "private notes",
+		CalendarID:       "calendar-1",
+		CalendarName:     "Work",
+		Recurring:        true,
 		AttendanceStatus: "tentative",
-		RecurrenceID:    "20260630T150000Z",
-		Detail:          "full",
+		RecurrenceID:     "20260630T150000Z",
+		Detail:           "full",
 	}
 
 	data, err := json.Marshal(meeting)
@@ -3518,4 +3550,66 @@ func (e errReadCloser) Read([]byte) (int, error) {
 
 func (e errReadCloser) Close() error {
 	return nil
+}
+
+func TestUpcomingMeetingsHonorsExplicitPastRange(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	cal, err := svc.AddCalendar(ctx, AddCalendarInput{Key: "work", Name: "Work", URL: "https://example.test/work.ics"})
+	if err != nil {
+		t.Fatalf("AddCalendar() error = %v", err)
+	}
+	mk := func(uid, name string, start time.Time) EventInstance {
+		return EventInstance{
+			CalendarID:   cal.ID,
+			CalendarName: cal.Name,
+			UID:          uid,
+			Name:         name,
+			Start:        start,
+			End:          start.Add(time.Hour),
+		}
+	}
+	if err := svc.ReplaceEvents(ctx, cal.ID, []EventInstance{
+		mk("recent-past", "Two Days Ago", now.Add(-48*time.Hour)),
+		mk("old-past", "Two Weeks Ago", now.Add(-14*24*time.Hour)),
+		mk("future", "Tomorrow", now.Add(24*time.Hour)),
+	}); err != nil {
+		t.Fatalf("ReplaceEvents() error = %v", err)
+	}
+
+	meetings, err := svc.UpcomingMeetings(ctx, UpcomingQuery{
+		Now:    now,
+		After:  now.Add(-7 * 24 * time.Hour),
+		Before: now.Add(48 * time.Hour),
+		Limit:  10,
+		Sort:   "agenda",
+	})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() error = %v", err)
+	}
+	names := meetingNames(meetings)
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"Tomorrow", "Two Days Ago"}) {
+		t.Fatalf("range meetings = %#v, want recent past + future only", names)
+	}
+
+	meetings, err = svc.UpcomingMeetings(ctx, UpcomingQuery{Now: now, Limit: 10})
+	if err != nil {
+		t.Fatalf("UpcomingMeetings() default error = %v", err)
+	}
+	if names := meetingNames(meetings); !slices.Equal(names, []string{"Tomorrow"}) {
+		t.Fatalf("default meetings = %#v, want future only", names)
+	}
+}
+
+func TestConfiguredLookaheadDefaultsAndEnvOverride(t *testing.T) {
+	t.Setenv("ICSMCP_LOOKAHEAD_DAYS", "")
+	if got := configuredLookahead(); got != 90*24*time.Hour {
+		t.Fatalf("configuredLookahead() = %v, want 90d", got)
+	}
+	t.Setenv("ICSMCP_LOOKAHEAD_DAYS", "45")
+	if got := configuredLookahead(); got != 45*24*time.Hour {
+		t.Fatalf("configuredLookahead() = %v, want 45d", got)
+	}
 }

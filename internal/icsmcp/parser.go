@@ -19,6 +19,11 @@ var tzidParamPattern = regexp.MustCompile(`TZID=("[^"]+"|[^;:\r\n]+)`)
 // pathological high-frequency rules anchored far in the past.
 const maxRecurrenceGenerations = 500_000
 
+// parseBackfillWindow is how far before the refresh instant ParseICS retains
+// event instances. It covers consumers that render recently-past days (the
+// household dashboard fetches a 7-day lookback for its dimmed past events).
+const parseBackfillWindow = 7 * 24 * time.Hour
+
 var windowsTimezoneMap = map[string]string{
 	"Central Standard Time":      "America/Chicago",
 	"Eastern Standard Time":      "America/New_York",
@@ -40,9 +45,9 @@ func loadLocation(value string) (*time.Location, string, error) {
 	return location, value, err
 }
 
-// ParseICS parses event instances between now-24h and now+lookahead.
+// ParseICS parses event instances between now-parseBackfillWindow and now+lookahead.
 func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstance, error) {
-	windowStart := now.UTC().Add(-24 * time.Hour)
+	windowStart := now.UTC().Add(-parseBackfillWindow)
 	windowEnd := now.UTC().Add(lookahead)
 	if err := validateICSTimezones(raw); err != nil {
 		return nil, err

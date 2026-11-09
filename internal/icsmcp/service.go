@@ -76,8 +76,8 @@ type Service struct {
 
 // NewService constructs a calendar service.
 func NewService(store *Store, opts ServiceOptions) *Service {
-	if opts.Lookahead == 0 {
-		opts.Lookahead = 30 * 24 * time.Hour
+	if opts.Lookahead <= 0 {
+		opts.Lookahead = configuredLookahead()
 	}
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = &http.Client{Timeout: 20 * time.Second}
@@ -572,7 +572,7 @@ func (s *Service) UpcomingMeetings(ctx context.Context, query UpcomingQuery) ([]
 	if err != nil {
 		return nil, err
 	}
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
+	events, err := s.store.queryEvents(ctx, queryWindowStart(now, query), until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +703,7 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 	if err != nil {
 		return nil, err
 	}
-	events, err := s.store.queryEvents(ctx, now, until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
+	events, err := s.store.queryEvents(ctx, queryWindowStart(now, query), until, query.CalendarIDs, 10000, generalOnly, query.IncludeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -732,6 +732,26 @@ func (s *Service) UpcomingMeetingsByCalendar(ctx context.Context, query Upcoming
 		return strings.Compare(a.CalendarName, b.CalendarName)
 	})
 	return groups, nil
+}
+
+// configuredLookahead returns the refresh-time expansion horizon. It defaults
+// to 90 days so range consumers (e.g. the household dashboard, which fetches
+// ~80 days ahead) are covered; ICSMCP_LOOKAHEAD_DAYS overrides it.
+func configuredLookahead() time.Duration {
+	if days, err := strconv.Atoi(strings.TrimSpace(envValue("ICSMCP_LOOKAHEAD_DAYS"))); err == nil && days > 0 {
+		return time.Duration(days) * 24 * time.Hour
+	}
+	return 90 * 24 * time.Hour
+}
+
+// queryWindowStart returns the lower bound for the store query. An explicit
+// After in the past widens it so callers can retrieve recently-past events;
+// meetingsFromEvents still receives the real "now" for ongoing semantics.
+func queryWindowStart(now time.Time, query UpcomingQuery) time.Time {
+	if !query.After.IsZero() && query.After.Before(now) {
+		return query.After
+	}
+	return now
 }
 
 func (s *Service) resolveUpcomingWindow(query UpcomingQuery) (time.Time, int) {
@@ -1018,6 +1038,7 @@ func (s *Service) EnvironmentVariables(ctx context.Context) ([]EnvironmentVariab
 		value("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS", envValue("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_ALLOW_PRIVATE_CALENDAR_HOSTS")]),
 		value("ICSMCP_LOG_LEVEL", envValue("ICSMCP_LOG_LEVEL"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_LOG_LEVEL")]),
 		value("ICSMCP_LOG_COLOR", envValue("ICSMCP_LOG_COLOR"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_LOG_COLOR")]),
+		value("ICSMCP_LOOKAHEAD_DAYS", envValue("ICSMCP_LOOKAHEAD_DAYS"), map[bool]string{true: "environment", false: "not set"}[envPresent("ICSMCP_LOOKAHEAD_DAYS")]),
 	}
 	for name := range EnvMap() {
 		if strings.HasPrefix(name, "ICSMCP_CALENDAR_") {

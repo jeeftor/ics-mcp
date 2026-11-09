@@ -811,6 +811,23 @@ func upcomingQueryFromRequest(r *http.Request) (UpcomingQuery, error) {
 		}
 		query.DescriptionMaxChars = maxChars
 	}
+	// start/end accept YYYY-MM-DD calendar dates (end inclusive) for
+	// date-range consumers such as the household dashboard. Explicit
+	// after/before instants below take precedence when both are given.
+	if raw := values.Get("start"); raw != "" {
+		start, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.After = start
+	}
+	if raw := values.Get("end"); raw != "" {
+		end, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+		if err != nil {
+			return UpcomingQuery{}, err
+		}
+		query.Before = end.AddDate(0, 0, 1)
+	}
 	if raw := values.Get("after"); raw != "" {
 		after, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
@@ -1977,7 +1994,7 @@ func openAPIDocs(build BuildInfo) string {
 	if version == "" {
 		version = "dev"
 	}
-	return fmt.Sprintf(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICS MCP API reference</title><style>body{max-width:960px;margin:3rem auto;padding:0 1.25rem;font:16px/1.5 system-ui,sans-serif;color:#292720;background:#faf9f5}h1{margin-bottom:.25rem}code{padding:.15rem .35rem;border-radius:.25rem;background:#ece9e1}table{width:100%%;border-collapse:collapse;margin:1.5rem 0}th,td{padding:.65rem;text-align:left;border-bottom:1px solid #ded9cf}a{color:#245b39}.note{padding:1rem;border-radius:.5rem;background:#eaf3e8}</style></head><body><h1>ICS MCP API reference</h1><p>Version <code>%s</code>. This page describes the public HTTP interface; use the <a href="/">admin console</a> for interactive configuration and the REST Explorer for meeting-format controls.</p><p class="note">Read routes never invoke an LLM. An insight runs only through its explicit <code>POST /api/insights</code> operation. Secrets are redacted from <code>/api/environment</code> and LLM-profile reads.</p><h2>Documents and service status</h2><table><tr><th>Route</th><th>Purpose</th></tr><tr><td><code>GET /openapi.json</code></td><td>Machine-readable OpenAPI 3.1 inventory.</td></tr><tr><td><code>GET /api/status</code></td><td>Build, timezone, and calendar refresh status.</td></tr><tr><td><code>GET /api/config</code>, <code>/api/environment</code></td><td>Runtime configuration and redacted environment inventory.</td></tr></table><h2>Calendar reads</h2><p><code>GET /api/events</code>, <code>/api/meetings</code>, <code>/api/free-busy</code>, and their documented aliases accept <code>limit</code>, repeated <code>calendar_id</code>/<code>tag</code>, <code>after</code>, <code>before</code>, and <code>format</code>. Calendar-scoped routes are available at <code>/api/calendars/{calendar}/events</code> and <code>/today</code>.</p><h2>Administration and insights</h2><p>Calendar and tag mutations require explicit <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code>. Tag updates are available at <code>PUT|PATCH /api/tags/{name}</code>. Cached insight reads are <code>GET /api/insights</code>; invoke generation explicitly with <code>POST /api/insights</code>.</p><h2>MCP REST bridge</h2><p><code>GET /api/rest/{tool_name}</code> calls read-only MCP tools. <code>POST /api/rest/{tool_name}</code> is reserved for admin tools and accepts either a JSON arguments object or <code>{"arguments": {...}}</code>. Inspect <code>GET /api/tools</code> for the current catalog.</p><p><a href="/openapi.json">Open OpenAPI JSON</a> · <a href="/">Open admin console</a></p></body></html>`, version)
+	return fmt.Sprintf(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICS MCP API reference</title><style>body{max-width:960px;margin:3rem auto;padding:0 1.25rem;font:16px/1.5 system-ui,sans-serif;color:#292720;background:#faf9f5}h1{margin-bottom:.25rem}code{padding:.15rem .35rem;border-radius:.25rem;background:#ece9e1}table{width:100%%;border-collapse:collapse;margin:1.5rem 0}th,td{padding:.65rem;text-align:left;border-bottom:1px solid #ded9cf}a{color:#245b39}.note{padding:1rem;border-radius:.5rem;background:#eaf3e8}</style></head><body><h1>ICS MCP API reference</h1><p>Version <code>%s</code>. This page describes the public HTTP interface; use the <a href="/">admin console</a> for interactive configuration and the REST Explorer for meeting-format controls.</p><p class="note">Read routes never invoke an LLM. An insight runs only through its explicit <code>POST /api/insights</code> operation. Secrets are redacted from <code>/api/environment</code> and LLM-profile reads.</p><h2>Documents and service status</h2><table><tr><th>Route</th><th>Purpose</th></tr><tr><td><code>GET /openapi.json</code></td><td>Machine-readable OpenAPI 3.1 inventory.</td></tr><tr><td><code>GET /api/status</code></td><td>Build, timezone, and calendar refresh status.</td></tr><tr><td><code>GET /api/config</code>, <code>/api/environment</code></td><td>Runtime configuration and redacted environment inventory.</td></tr></table><h2>Calendar reads</h2><p><code>GET /api/events</code>, <code>/api/meetings</code>, <code>/api/free-busy</code>, and their documented aliases accept <code>limit</code>, repeated <code>calendar_id</code>/<code>tag</code>, <code>after</code>, <code>before</code>, <code>start</code>/<code>end</code> (<code>YYYY-MM-DD</code> dates, end inclusive), and <code>format</code>. Calendar-scoped routes are available at <code>/api/calendars/{calendar}/events</code> and <code>/today</code>.</p><h2>Administration and insights</h2><p>Calendar and tag mutations require explicit <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code>. Tag updates are available at <code>PUT|PATCH /api/tags/{name}</code>. Cached insight reads are <code>GET /api/insights</code>; invoke generation explicitly with <code>POST /api/insights</code>.</p><h2>MCP REST bridge</h2><p><code>GET /api/rest/{tool_name}</code> calls read-only MCP tools. <code>POST /api/rest/{tool_name}</code> is reserved for admin tools and accepts either a JSON arguments object or <code>{"arguments": {...}}</code>. Inspect <code>GET /api/tools</code> for the current catalog.</p><p><a href="/openapi.json">Open OpenAPI JSON</a> · <a href="/">Open admin console</a></p></body></html>`, version)
 }
 
 func parseBoolQuery(value string) bool {

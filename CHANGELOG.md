@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.10.0 - 2026-11-09
+
+- Add `start`/`end` query parameters (`YYYY-MM-DD` calendar dates, `end` inclusive) to the meeting and event read endpoints (`/api/events`, `/api/meetings`, `/api/free-busy`, and calendar-scoped variants). These parameters were previously ignored, so date-range consumers such as the household dashboard always received the default 30-day window no matter what range they requested. Explicit `after`/`before` instants still take precedence when both forms are supplied.
+- Allow queries with an `after` bound in the past to return recently-past events: the store query window now begins at `after` when it precedes the current instant instead of always starting "now". Day-window presets (`window=today`, the `/today` endpoints, etc.) consequently include meetings that already finished earlier the same day, which were previously invisible.
+- Extend the refresh expansion window: parsed events are now retained from 7 days in the past (was 24 hours) through 90 days ahead by default (was 30 days), covering consumers that render recently-past days or plan ~80 days out. The forward horizon can be overridden with the `ICSMCP_LOOKAHEAD_DAYS` environment variable.
+
 ## v2.9.4 - 2026-11-09
 
 - Close an SSRF gap in calendar feed fetching: HTTP redirects are now re-validated against the private-host policy on every hop, so a feed URL can no longer bounce the server to loopback, private, or link-local addresses (for example cloud metadata endpoints) after passing the initial URL check.

@@ -1172,6 +1172,42 @@ func TestUpcomingQueryFromRequestParsesAllSupportedFilters(t *testing.T) {
 	}
 }
 
+func TestUpcomingQueryFromRequestParsesStartEndDates(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/events?start=2026-06-29&end=2026-07-01", nil)
+	query, err := upcomingQueryFromRequest(req)
+	if err != nil {
+		t.Fatalf("upcomingQueryFromRequest() error = %v", err)
+	}
+	// start maps to After at local midnight; end is inclusive so Before is
+	// the following day's midnight.
+	if want := time.Date(2026, 6, 29, 0, 0, 0, 0, time.Local); !query.After.Equal(want) {
+		t.Fatalf("after = %s, want %s", query.After, want)
+	}
+	if want := time.Date(2026, 7, 2, 0, 0, 0, 0, time.Local); !query.Before.Equal(want) {
+		t.Fatalf("before = %s, want %s", query.Before, want)
+	}
+
+	// Explicit after/before instants take precedence over start/end dates.
+	req = httptest.NewRequest(http.MethodGet, "/api/events?start=2026-06-29&end=2026-07-01&after=2026-06-30T15:00:00Z&before=2026-07-01T15:00:00Z", nil)
+	query, err = upcomingQueryFromRequest(req)
+	if err != nil {
+		t.Fatalf("upcomingQueryFromRequest() with overrides error = %v", err)
+	}
+	if got := query.After.Format(time.RFC3339); got != "2026-06-30T15:00:00Z" {
+		t.Fatalf("after override = %s", got)
+	}
+	if got := query.Before.Format(time.RFC3339); got != "2026-07-01T15:00:00Z" {
+		t.Fatalf("before override = %s", got)
+	}
+
+	for _, path := range []string{"/api/events?start=not-a-date", "/api/events?end=2026-13-40"} {
+		req = httptest.NewRequest(http.MethodGet, path, nil)
+		if _, err := upcomingQueryFromRequest(req); err == nil {
+			t.Fatalf("upcomingQueryFromRequest(%s) error = nil, want parse error", path)
+		}
+	}
+}
+
 func TestHTTPMeetingAPIFormatsTelegramText(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
