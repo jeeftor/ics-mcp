@@ -16,8 +16,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/apognu/gocal"
 )
 
 func TestCalendarEnvImportDerivesStableKeysAndPreservesRenamedDisplayName(t *testing.T) {
@@ -472,6 +470,45 @@ func TestParseICSMarksRecurringInstancesAndCancelledOverrides(t *testing.T) {
 	}
 }
 
+func TestParseICSExpandsMonthlyOrdinalWeekdayRules(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleMonthlySecondMondayICS(), now, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1: %#v", len(events), events)
+	}
+	// November 2026's second Monday is the 9th. The series is anchored on
+	// August 10 (day-of-month 10), which previously pushed expansion to the
+	// following week's Monday (the 16th).
+	if got := events[0].Start.Format(time.RFC3339); got != "2026-11-09T14:00:00Z" {
+		t.Fatalf("start = %s, want second Monday 2026-11-09T14:00:00Z", got)
+	}
+}
+
+func TestParseICSExpandsMonthlyWeekdaySetRules(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	events, err := ParseICS(sampleMonthlyEveryMondayICS(), now, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
+	}
+	starts := make([]string, 0, len(events))
+	for _, event := range events {
+		starts = append(starts, event.Start.Format(time.RFC3339))
+	}
+	want := []string{
+		"2026-11-09T14:00:00Z",
+		"2026-11-16T14:00:00Z",
+		"2026-11-23T14:00:00Z",
+		"2026-11-30T14:00:00Z",
+		"2026-12-07T14:00:00Z",
+	}
+	if !slices.Equal(starts, want) {
+		t.Fatalf("starts = %#v, want %#v", starts, want)
+	}
+}
+
 func TestParseICSDefaultsUntitledEvents(t *testing.T) {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
 	events, err := ParseICS(sampleUntitledICS(), now, 24*time.Hour)
@@ -521,36 +558,6 @@ func TestParseICSReportsMissingUIDErrors(t *testing.T) {
 	_, err := ParseICS(sampleMissingUIDICS(), now, 24*time.Hour)
 	if err == nil || !strings.Contains(err.Error(), "could not parse event without UID") {
 		t.Fatalf("ParseICS(missing UID) error = %v, want missing UID parse error", err)
-	}
-}
-
-func TestNormalizeParsedEventSkipsEventsMissingStartOrEnd(t *testing.T) {
-	start := time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC)
-	end := start.Add(30 * time.Minute)
-
-	for _, parsed := range []gocal.Event{
-		{Uid: "missing-start", End: &end},
-		{Uid: "missing-end", Start: &start},
-	} {
-		if event, ok := normalizeParsedEvent(parsed); ok {
-			t.Fatalf("normalizeParsedEvent(%s) = %#v, true; want skipped", parsed.Uid, event)
-		}
-	}
-}
-
-func TestNormalizeParsedEventDefaultsMissingUID(t *testing.T) {
-	start := time.Date(2026, 6, 29, 13, 0, 0, 0, time.UTC)
-	end := start.Add(30 * time.Minute)
-
-	event, ok := normalizeParsedEvent(gocal.Event{Summary: "No UID", Start: &start, End: &end})
-	if !ok {
-		t.Fatalf("normalizeParsedEvent() skipped event, want normalized event")
-	}
-	if event.UID == "" {
-		t.Fatalf("UID is empty, want generated fallback")
-	}
-	if event.Name != "No UID" {
-		t.Fatalf("name = %q, want No UID", event.Name)
 	}
 }
 

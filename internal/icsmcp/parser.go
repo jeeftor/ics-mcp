@@ -1,14 +1,15 @@
 package icsmcp
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/apognu/gocal"
+	duration "github.com/ChannelMeter/iso8601duration"
+	ical "github.com/arran4/golang-ical"
 	"github.com/google/uuid"
+	"github.com/teambition/rrule-go"
 )
 
 var tzidParamPattern = regexp.MustCompile(`TZID=("[^"]+"|[^;:\r\n]+)`)
@@ -22,17 +23,6 @@ var windowsTimezoneMap = map[string]string{
 	"South Africa Standard Time": "Africa/Johannesburg",
 	"UTC":                        "UTC",
 	"US Mountain Standard Time":  "America/Phoenix",
-	"W. Europe Standard Time":    "Europe/Berlin",
-}
-
-func init() {
-	gocal.SetTZMapper(func(tzid string) (*time.Location, error) {
-		location, _, err := loadLocation(tzid)
-		if err != nil {
-			return nil, errors.New("unmapped timezone")
-		}
-		return location, nil
-	})
 }
 
 func loadLocation(value string) (*time.Location, string, error) {
@@ -45,82 +35,266 @@ func loadLocation(value string) (*time.Location, string, error) {
 	return location, value, err
 }
 
-// ParseICS parses event instances between now and now+lookahead.
+// ParseICS parses event instances between now-24h and now+lookahead.
 func ParseICS(raw string, now time.Time, lookahead time.Duration) ([]EventInstance, error) {
-	start := now.UTC().Add(-24 * time.Hour)
-	end := now.UTC().Add(lookahead)
+	windowStart := now.UTC().Add(-24 * time.Hour)
+	windowEnd := now.UTC().Add(lookahead)
 	if err := validateICSTimezones(raw); err != nil {
 		return nil, err
 	}
-	parser := gocal.NewParser(strings.NewReader(raw))
-	parser.Start = &start
-	parser.End = &end
-	if err := parser.Parse(); err != nil {
+	cal, err := ical.ParseCalendarWithOptions(strings.NewReader(raw), ical.WithWindowsTimezoneMapping())
+	if err != nil {
 		return nil, fmt.Errorf("parse ics: %w", err)
 	}
-	events := make([]EventInstance, 0, len(parser.Events))
-	for _, parsed := range parser.Events {
-		event, ok := normalizeParsedEvent(parsed)
-		if !ok {
-			continue
+	vevents := cal.Events()
+	overrides := recurrenceOverrides(vevents)
+	events := make([]EventInstance, 0, len(vevents))
+	for _, ve := range vevents {
+		instances, err := expandEvent(ve, overrides, windowStart, windowEnd)
+		if err != nil {
+			return nil, err
 		}
-		events = append(events, event)
+		events = append(events, instances...)
 	}
 	return events, nil
 }
 
-func normalizeParsedEvent(parsed gocal.Event) (EventInstance, bool) {
-	if parsed.Start == nil || parsed.End == nil {
-		return EventInstance{}, false
+// recurrenceOverrides maps each recurring series UID to the UTC instants of
+// RECURRENCE-ID exception events so generated occurrences can be suppressed.
+func recurrenceOverrides(vevents []*ical.VEvent) map[string]map[int64]bool {
+	overrides := map[string]map[int64]bool{}
+	for _, ve := range vevents {
+		if ve.GetProperty(ical.ComponentPropertyRrule) != nil {
+			continue
+		}
+		ridProp := ve.GetProperty(ical.ComponentPropertyRecurrenceId)
+		if ridProp == nil {
+			continue
+		}
+		rid, err := ve.GetRecurrenceID()
+		if err != nil {
+			continue
+		}
+		if isAllDayValue(ve.GetProperty(ical.ComponentPropertyDtStart)) {
+			rid = utcDateMidnight(rid)
+		}
+		uid := propertyValue(ve, ical.ComponentPropertyUniqueId)
+		if overrides[uid] == nil {
+			overrides[uid] = map[int64]bool{}
+		}
+		overrides[uid][rid.UTC().Unix()] = true
 	}
-	name := parsed.Summary
+	return overrides
+}
+
+func expandEvent(ve *ical.VEvent, overrides map[string]map[int64]bool, windowStart, windowEnd time.Time) ([]EventInstance, error) {
+	uid := propertyValue(ve, ical.ComponentPropertyUniqueId)
+	if uid == "" {
+		return nil, fmt.Errorf("could not parse event without UID")
+	}
+	startProp := ve.GetProperty(ical.ComponentPropertyDtStart)
+	if startProp == nil {
+		return nil, fmt.Errorf("could not parse event without DTSTART")
+	}
+	startAllDay := isAllDayValue(startProp)
+	var start time.Time
+	var err error
+	if startAllDay {
+		var t time.Time
+		t, err = ve.GetAllDayStartAt()
+		start = utcDateMidnight(t)
+	} else {
+		start, err = ve.GetStartAt()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse event start: %w", err)
+	}
+	end, ok, err := eventEnd(ve, start, startAllDay)
+	if err != nil {
+		return nil, fmt.Errorf("parse event end: %w", err)
+	}
+	if !ok {
+		return nil, nil
+	}
+
+	name := propertyValue(ve, ical.ComponentPropertySummary)
 	if name == "" {
 		name = "(untitled)"
 	}
-	uid := parsed.Uid
-	if uid == "" {
-		uid = uuid.NewString()
+	description := propertyValue(ve, ical.ComponentPropertyDescription)
+	location := propertyValue(ve, ical.ComponentPropertyLocation)
+	url := propertyValue(ve, ical.ComponentPropertyUrl)
+	status := propertyValue(ve, ical.ComponentPropertyStatus)
+	meetingURL, meetingURLType := ExtractMeetingURL(url, location, description)
+	cancelled := strings.EqualFold(status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
+
+	recurrenceID := ""
+	if ridProp := ve.GetProperty(ical.ComponentPropertyRecurrenceId); ridProp != nil {
+		recurrenceID = ridProp.Value
 	}
-	meetingURL, meetingURLType := ExtractMeetingURL(parsed.URL, parsed.Location, parsed.Description)
-	attendanceStatus := unambiguousAttendanceStatus(parsed.Attendees)
-	cancelled := strings.EqualFold(parsed.Status, "CANCELLED") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "canceled:") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "cancelled:")
-	start := parsed.Start.UTC()
-	end := parsed.End.UTC()
-	allDay := end.Sub(start) >= 24*time.Hour
-	// gocal expands VALUE=DATE DTEND into the final day at 23:59:59.999.
-	// Canonicalize that inclusive representation back to the RFC 5545 exclusive
-	// midnight boundary. Without this, a one-day all-day event is 1 ms short of
-	// 24 hours and is incorrectly rendered as a timed event.
-	if start.Hour() == 0 && start.Minute() == 0 && start.Second() == 0 && start.Nanosecond() == 0 &&
-		end.Hour() == 23 && end.Minute() == 59 && end.Second() == 59 && end.Nanosecond() == 999000000 {
-		allDay = true
-		end = end.Add(time.Millisecond)
+	rruleProps := ve.GetProperties(ical.ComponentPropertyRrule)
+
+	newInstance := func(start, end time.Time, recurring bool, recurrenceID string) EventInstance {
+		// gocal canonicalized inclusive all-day DTEND representations (23:59:59.999)
+		// to the exclusive midnight boundary; keep that normalization for parity.
+		if start.Hour() == 0 && start.Minute() == 0 && start.Second() == 0 && start.Nanosecond() == 0 &&
+			end.Hour() == 23 && end.Minute() == 59 && end.Second() == 59 && end.Nanosecond() == 999000000 {
+			end = end.Add(time.Millisecond)
+		}
+		allDay := end.Sub(start) >= 24*time.Hour
+		return EventInstance{
+			ID:               uuid.NewString(),
+			UID:              uid,
+			Name:             name,
+			Description:      description,
+			MeetingURL:       meetingURL,
+			MeetingURLType:   meetingURLType,
+			AttendanceStatus: unambiguousAttendanceStatus(attendeeStatuses(ve)),
+			Cancelled:        cancelled,
+			AllDay:           allDay,
+			Recurring:        recurring,
+			RecurrenceID:     recurrenceID,
+			Start:            start.UTC(),
+			End:              end.UTC(),
+		}
 	}
-	return EventInstance{
-		ID:               uuid.NewString(),
-		UID:              uid,
-		Name:             name,
-		Description:      parsed.Description,
-		MeetingURL:       meetingURL,
-		MeetingURLType:   meetingURLType,
-		AttendanceStatus: attendanceStatus,
-		Cancelled:        cancelled,
-		AllDay:           allDay,
-		Recurring:        parsed.IsRecurring || parsed.RecurrenceID != "",
-		RecurrenceID:     parsed.RecurrenceID,
-		Start:            start,
-		End:              end,
-	}, true
+
+	if len(rruleProps) == 0 {
+		if !overlapsWindow(start, end, windowStart, windowEnd) {
+			return nil, nil
+		}
+		return []EventInstance{newInstance(start, end, recurrenceID != "", recurrenceID)}, nil
+	}
+
+	duration := end.Sub(start)
+	exdates, err := ve.GetExDates()
+	if err != nil {
+		exdates = nil
+	}
+	rdates, err := ve.GetRDates()
+	if err != nil {
+		rdates = nil
+	}
+	if startAllDay {
+		exdates = utcMidnights(exdates)
+		rdates = utcMidnights(rdates)
+	}
+
+	var out []EventInstance
+	for _, rp := range rruleProps {
+		rule, err := rrule.StrToRRule(strings.TrimSpace(rp.Value))
+		if err != nil {
+			return nil, fmt.Errorf("parse ics rrule %q: %w", rp.Value, err)
+		}
+		set := &rrule.Set{}
+		set.DTStart(start)
+		set.RRule(rule)
+		if len(exdates) > 0 {
+			set.SetExDates(exdates)
+		}
+		if len(rdates) > 0 {
+			set.SetRDates(rdates)
+		}
+		// Expand far enough back that an occurrence starting before the window can
+		// still overlap it, then apply the same overlap test gocal used.
+		for _, occurrence := range set.Between(windowStart.Add(-duration), windowEnd, true) {
+			occurrenceEnd := occurrence.Add(duration)
+			if !occurrenceEnd.After(windowStart) || !occurrence.Before(windowEnd) {
+				continue
+			}
+			if overrides[uid][occurrence.UTC().Unix()] {
+				continue
+			}
+			out = append(out, newInstance(occurrence, occurrenceEnd, true, ""))
+		}
+	}
+	return out, nil
+}
+
+func overlapsWindow(start, end, windowStart, windowEnd time.Time) bool {
+	return start.Before(windowEnd) && end.After(windowStart)
+}
+
+func eventEnd(ve *ical.VEvent, start time.Time, startAllDay bool) (time.Time, bool, error) {
+	if endProp := ve.GetProperty(ical.ComponentPropertyDtEnd); endProp != nil {
+		var end time.Time
+		var err error
+		if isAllDayValue(endProp) {
+			var t time.Time
+			t, err = ve.GetAllDayEndAt()
+			end = utcDateMidnight(t)
+		} else {
+			end, err = ve.GetEndAt()
+		}
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		return end, true, nil
+	}
+	if durationProp := ve.GetProperty(ical.ComponentPropertyDuration); durationProp != nil {
+		d, err := duration.FromString(durationProp.Value)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		return start.Add(d.ToDuration()), true, nil
+	}
+	if startAllDay {
+		return start.Add(24 * time.Hour), true, nil
+	}
+	return time.Time{}, false, nil
+}
+
+func propertyValue(ve *ical.VEvent, name ical.ComponentProperty) string {
+	prop := ve.GetProperty(name)
+	if prop == nil {
+		return ""
+	}
+	return prop.Value
+}
+
+func propertyParam(prop *ical.IANAProperty, name string) string {
+	for key, values := range prop.ICalParameters {
+		if strings.EqualFold(key, name) && len(values) > 0 {
+			return values[0]
+		}
+	}
+	return ""
+}
+
+func isAllDayValue(prop *ical.IANAProperty) bool {
+	return prop != nil && strings.EqualFold(propertyParam(prop, "VALUE"), "DATE")
+}
+
+func utcDateMidnight(t time.Time) time.Time {
+	year, month, day := t.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func utcMidnights(times []time.Time) []time.Time {
+	out := make([]time.Time, 0, len(times))
+	for _, t := range times {
+		out = append(out, utcDateMidnight(t))
+	}
+	return out
+}
+
+func attendeeStatuses(ve *ical.VEvent) []string {
+	props := ve.GetProperties(ical.ComponentPropertyAttendee)
+	statuses := make([]string, 0, len(props))
+	for _, prop := range props {
+		statuses = append(statuses, propertyParam(prop, "PARTSTAT"))
+	}
+	return statuses
 }
 
 // unambiguousAttendanceStatus returns a response only when an ICS event has one
 // attendee. Multi-attendee events do not identify the calendar owner, so their
 // individual response states must not be guessed or exposed.
-func unambiguousAttendanceStatus(attendees []gocal.Attendee) string {
-	if len(attendees) != 1 {
+func unambiguousAttendanceStatus(statuses []string) string {
+	if len(statuses) != 1 {
 		return ""
 	}
-	switch strings.ToUpper(strings.TrimSpace(attendees[0].Status)) {
+	switch strings.ToUpper(strings.TrimSpace(statuses[0])) {
 	case "ACCEPTED":
 		return "accepted"
 	case "TENTATIVE":
@@ -142,7 +316,10 @@ func validateICSTimezones(raw string) error {
 			continue
 		}
 		seen[tzid] = true
-		if _, _, err := loadLocation(tzid); err != nil {
+		if ical.WindowsTimezoneToIANA(tzid) != nil {
+			continue
+		}
+		if _, err := time.LoadLocation(tzid); err != nil {
 			return fmt.Errorf("parse ics timezone %q: %w", tzid, err)
 		}
 	}

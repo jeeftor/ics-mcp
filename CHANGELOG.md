@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.9.3 - 2026-11-09
+
+- Fix recurring meetings silently landing on the wrong date for monthly and yearly `BYDAY` rules with ordinals (for example `BYDAY=2MO`, `BYDAY=-1FR`, `BYDAY=4TH`). The previous ICS engine ignored the ordinal and anchored expansion to the DTSTART day-of-month, so "second Tuesday" meetings could appear a week late or vanish from the queried window entirely. Recurrence expansion now uses `rrule-go` (a port of python-dateutil's reference implementation), which also fixes plain multi-weekday `BYDAY` sets, `RDATE`, and `BYSETPOS` rules.
+- Replace the `gocal` ICS parser with `arran4/golang-ical` for VEVENT decoding. Windows timezone names (for example `Eastern Standard Time`) are now resolved through the full Unicode CLDR Windows→IANA map instead of a six-entry table, and TEXT property values now unescape `\n`/`\N` sequences into real newlines per RFC 5545.
+
 ## v2.9.0 - 2026-08-13
 
 - Add an in-memory log ring buffer (200 entries, INFO and above) that captures structured slog records alongside the existing console output. Expose recent entries through a new `GET /api/logs?limit=100` REST endpoint and a read-only `get_logs` MCP tool so AI assistants can diagnose server issues without access to stderr. Each entry includes timestamp, level, message, and all structured attributes (calendar name, error, duration, etc.).

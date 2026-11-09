@@ -2849,6 +2849,34 @@ func sampleUntitledICS() string {
 		"END:VCALENDAR\r\n"
 }
 
+func sampleMonthlySecondMondayICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:monthly-sync-1\r\n" +
+		"DTSTAMP:20260801T120000Z\r\n" +
+		"DTSTART:20260810T140000Z\r\n" +
+		"DTEND:20260810T150000Z\r\n" +
+		"RRULE:FREQ=MONTHLY;BYDAY=2MO;UNTIL=20261231T000000Z\r\n" +
+		"SUMMARY:Second Monday Sync\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
+func sampleMonthlyEveryMondayICS() string {
+	return "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:monthly-monday-1\r\n" +
+		"DTSTAMP:20261101T120000Z\r\n" +
+		"DTSTART:20261102T140000Z\r\n" +
+		"DTEND:20261102T150000Z\r\n" +
+		"RRULE:FREQ=MONTHLY;BYDAY=MO;COUNT=6\r\n" +
+		"SUMMARY:Every Monday\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+}
+
 func sampleMissingUIDICS() string {
 	return "BEGIN:VCALENDAR\r\n" +
 		"VERSION:2.0\r\n" +

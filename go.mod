@@ -3,7 +3,8 @@ module github.com/jeeftor/icsmcp
 go 1.26.0
 
 require (
-	github.com/apognu/gocal v0.9.1
+	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61
+	github.com/arran4/golang-ical v0.3.8
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
@@ -11,12 +12,13 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/subosito/gotenv v1.6.0
+	github.com/teambition/rrule-go v1.8.2
 	modernc.org/sqlite v1.53.0
 )
 
 require (
-	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/channelmeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
