@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.10.1 - 2026-11-11
+
+- Fix popup layering in the calendar UI: dialogs (About, Add calendar, calendar/tag editors) had no z-index and rendered beneath the sticky toolbar and overlapping event cards, and the event hover preview for all-day events was trapped inside the all-day grid's isolated stacking context so it painted under timed events. Dialogs now sit above bottom sheets at z-index 300/301, and the event preview popover is portaled to the document body so its z-index applies at the root level.
+
 ## v2.10.0 - 2026-11-09
 
 - Add `start`/`end` query parameters (`YYYY-MM-DD` calendar dates, `end` inclusive) to the meeting and event read endpoints (`/api/events`, `/api/meetings`, `/api/free-busy`, and calendar-scoped variants). These parameters were previously ignored, so date-range consumers such as the household dashboard always received the default 30-day window no matter what range they requested. Explicit `after`/`before` instants still take precedence when both forms are supplied.

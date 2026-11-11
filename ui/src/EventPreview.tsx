@@ -1,5 +1,6 @@
 import { ExternalLink, MapPin } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarGlyph, calendarColor } from './CalendarGlyph';
 import { meetingTime } from './calendarUtils';
 import type { Calendar, Meeting } from './api';
@@ -78,10 +79,10 @@ export function EventPreview({ meeting, calendar, timeFormat, children }: { meet
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   return <>{children({ ref: anchor, onFocus: () => { cancelClose(); setOpen(true); }, onBlur: scheduleClose, onMouseEnter: () => { cancelClose(); setOpen(true); }, onMouseLeave: scheduleClose, onKeyDown: event => { if (event.key === 'Escape') { event.preventDefault(); setOpen(false); anchor.current?.blur(); } }, 'aria-describedby': open ? id : undefined })}
-    {open && <div id={id} className={`event-preview-popover${position.above ? ' above' : ''}`} role="tooltip" style={{ left: position.left, top: position.top, '--event-preview-color': color } as React.CSSProperties}>
+    {open && createPortal(<div id={id} className={`event-preview-popover${position.above ? ' above' : ''}`} role="tooltip" style={{ left: position.left, top: position.top, '--event-preview-color': color } as React.CSSProperties}>
       <div className="event-preview-calendar"><CalendarGlyph icon={calendar?.icon} color={color} size={18}/><span>{details.calendarName}</span></div>
       <strong>{meeting.name}</strong>
       <div className="event-preview-meta"><span>{details.time}</span>{details.rsvp && <span className={`event-preview-rsvp attendance-${meeting.attendance_status}`}>RSVP: {details.rsvp}</span>}{meeting.cancelled && <span className="event-preview-warning">Cancelled</span>}</div>
       {(details.location || details.hasMeetingLink) && <div className="event-preview-aux">{details.location && <span><MapPin size={14}/>{details.location}</span>}{details.hasMeetingLink && <span><ExternalLink size={14}/>Meeting link available</span>}</div>}
-    </div>}</>;
+    </div>, document.body)}</>;
 }
